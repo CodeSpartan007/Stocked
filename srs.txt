@@ -1,0 +1,477 @@
+STOCKED | Software Requirements Specification
+
+STOCKED
+Capital Market Stock Management Application
+
+Software Requirements Specification
+Document Type
+
+Software Requirements Specification
+(SRS)
+
+Application
+
+Stocked – Capital Market Stock
+Management
+
+Version
+
+1.0
+
+Status
+
+Final
+
+Classification
+
+Internal / Educational
+
+1. Introduction
+1.1 Purpose
+This document defines the functional and non-functional requirements for Stocked, a Capital Market Stock
+Management Application. The specification serves as the authoritative reference for design, development,
+testing, and stakeholder communication.
+
+1.2 Scope
+Stocked is designed for educational and portfolio-management purposes. It simulates core stock market
+operations including stock registration, daily price tracking, transaction recording, P&L computation,
+real-time price feed integration, advanced portfolio analytics, multi-user support, and report exports.
+
+1.3 Definitions & Abbreviations
+Term
+
+Definition
+
+SRS
+
+Software Requirements Specification
+
+FR
+
+Functional Requirement
+
+NFR
+
+Non-Functional Requirement
+
+Stocked – Capital Market Stock Management Application
+
+Page
+
+STOCKED | Software Requirements Specification
+
+Term
+
+Definition
+
+API
+
+Application Programming Interface
+
+REST
+
+Representational State Transfer
+
+P&L
+
+Profit and Loss
+
+FIFO
+
+First In, First Out – cost-basis accounting method
+
+1.4 Document Conventions
+Requirements use the following prefix codes:
+•​ FR – Functional Requirement
+•​ NFR – Non-Functional Requirement
+•​ DB – Database Entity
+•​ UI – User Interface Requirement
+
+2. Project Overview
+Stocked provides a comprehensive platform for tracking and analysing stock market portfolio activity. The
+application targets individual investors, students, and finance enthusiasts who need a structured tool to
+simulate and record market operations.
+
+2.1 Key Capabilities
+•​ Stock counter registration and management
+•​ Daily stock price and volume tracking
+•​ Recording of purchase and sale transactions
+•​ Profit / Loss calculations and portfolio valuation
+•​ Real-time stock price integration via external APIs
+•​ Advanced portfolio analytics and performance metrics
+•​ Multi-user account management with role-based access
+•​ Export of reports to PDF and Excel formats
+•​ Interactive dashboards and visualisation charts
+
+3. Technology Stack
+Layer
+
+Primary Technologies
+
+Optional / Alternative
+
+Frontend
+
+React.js / Next.js, TypeScript
+
+JavaScript
+
+Visualisation
+
+Recharts / Chart.js
+
+D3.js
+
+Stocked – Capital Market Stock Management Application
+
+Page
+
+STOCKED | Software Requirements Specification
+
+Layer
+
+Primary Technologies
+
+Optional / Alternative
+
+Backend
+
+Node.js, Express.js, REST API
+
+—
+
+Database
+
+MongoDB
+
+SQLite (lightweight deployments)
+
+Authentication
+
+Firebase Authentication
+
+JWT / Session-based
+
+External Data
+
+Real-time stock price APIs (e.g. Alpha
+Vantage, Polygon.io)
+
+Manual entry fallback
+
+Export
+
+PDF & XLSX generation libraries
+
+CSV export
+
+4. Functional Requirements
+FR1 – Stock Counter Management
+[FR1.1] Users shall be able to create a new stock counter providing name, ticker symbol, and optional
+
+description.
+[FR1.2] Users shall be able to edit existing stock counter information.
+[FR1.3] Users shall be able to view all registered stock counters with summary data.
+[FR1.4] Users shall be able to delete a stock counter and its associated records.
+
+FR2 – Daily Price Recording
+[FR2.1] Users shall be able to manually record a stock's price and trading volume for any given date.
+[FR2.2] The system shall display full historical price and volume records per stock.
+[FR2.3] Users shall be able to update or delete incorrect price entries.
+[FR2.4] When a real-time API is enabled, the system shall auto-populate daily prices from the configured
+
+feed.
+
+FR3 – Purchase Management
+[FR3.1] Users shall be able to record stock purchases specifying counter, quantity, purchase price, and date.
+[FR3.2] The system shall maintain a full purchase history per stock.
+[FR3.3] The system shall prevent invalid entries (e.g. negative quantities, zero price).
+
+FR4 – Sales Management
+[FR4.1] Users shall be able to record stock sales specifying counter, quantity, selling price, and date.
+[FR4.2] The system shall calculate and store P&L for each sale transaction.
+[FR4.3] The system shall prevent sale of quantities exceeding available holdings.
+
+Stocked – Capital Market Stock Management Application
+
+Page
+
+STOCKED | Software Requirements Specification
+
+[FR4.4] Users shall be able to view full sales history including per-transaction P&L.
+
+FR5 – Portfolio Tracking
+[FR5.1] The system shall calculate and display total shares held per stock counter.
+[FR5.2] The system shall calculate and display total invested capital.
+[FR5.3] The system shall calculate and display realised and unrealised P&L.
+[FR5.4] The portfolio summary shall refresh when new transactions or price data are recorded.
+
+FR6 – Analytics and Reporting
+[FR6.1] The system shall render price trend line charts per stock counter.
+[FR6.2] The system shall render volume trend bar charts per stock counter.
+[FR6.3] The system shall provide a portfolio performance graph showing cumulative P&L over time.
+[FR6.4] Users shall be able to apply date-range filters to all charts and reports.
+
+FR7 – Real-Time Stock Price Integration
+[FR7.1] The system shall integrate with at least one external real-time stock price API.
+[FR7.2] Users shall be able to configure their preferred price-feed provider and API credentials in settings.
+[FR7.3] Price data fetched from external APIs shall be cached locally to ensure availability during outages.
+[FR7.4] The system shall display the data source (live or manual) and last-updated timestamp for all price
+
+data.
+[FR7.5] If the external API is unavailable, the system shall fall back to cached data and notify the user.
+
+FR8 – Advanced Portfolio Analytics
+[FR8.1] The system shall compute portfolio-level metrics including total return, annualised return, and
+
+volatility.
+[FR8.2] The system shall provide stock-level allocation breakdowns by portfolio value and holding
+
+percentage.
+[FR8.3] The analytics module shall support performance benchmarking across multiple stock counters.
+[FR8.4] Users shall be able to set performance targets and view progress tracking against those targets.
+
+FR9 – Multi-User Support
+[FR9.1] The system shall support multiple independent user accounts each with isolated portfolio data.
+[FR9.2] Users shall register and authenticate via a secure login mechanism.
+[FR9.3] Role-based access control shall prevent any user from viewing or modifying another user's data.
+[FR9.4] An administrator role shall have the ability to manage user accounts.
+
+Stocked – Capital Market Stock Management Application
+
+Page
+
+STOCKED | Software Requirements Specification
+
+FR10 – Report Export (PDF and Excel)
+[FR10.1] Users shall be able to export any portfolio summary, transaction history, or analytics view as a PDF
+
+document.
+[FR10.2] Users shall be able to export tabular data (transactions, holdings, price history) as an Excel (.xlsx)
+
+file.
+[FR10.3] Exported filenames shall include the stock counter, report type, and date range.
+[FR10.4] PDF exports shall include Stocked branding, generation timestamp, and user identifier.
+
+5. Non-Functional Requirements
+ID
+
+Category
+
+Requirement
+
+NFR1.1
+
+Performance
+
+API responses shall complete within 2 seconds under normal load.
+
+NFR1.2
+
+Performance
+
+Real-time price data shall refresh at intervals no greater than 60
+seconds when an active feed is configured.
+
+NFR2.1
+
+Usability
+
+The interface shall be fully responsive across desktop, tablet, and
+mobile viewports.
+
+NFR2.2
+
+Usability
+
+Navigation shall be intuitive; a new user shall be able to record a
+transaction within 3 minutes of first use.
+
+NFR3.1
+
+Reliability
+
+All transaction inputs shall be validated server-side before persistence.
+
+NFR3.2
+
+Reliability
+
+Cached price data shall ensure report generation remains available
+during API outages.
+
+NFR4.1
+
+Security
+
+All API endpoints shall validate and sanitise user input to prevent
+injection attacks.
+
+NFR4.2
+
+Security
+
+User authentication shall be enforced across all protected routes when
+multi-user mode is active.
+
+NFR4.3
+
+Security
+
+API keys for external price feeds shall be stored securely in environment
+variables and never exposed client-side.
+
+NFR5.1
+
+Scalability
+
+The architecture shall support horizontal scaling to accommodate
+growing multi-user workloads.
+
+6. Database Design
+The following entities form the core data model for Stocked. Relationships are enforced via foreign-key
+references at the application layer.
+
+Stocked – Capital Market Stock Management Application
+
+Page
+
+STOCKED | Software Requirements Specification
+
+Entity
+
+Key Fields
+
+Notes
+
+Users
+
+id, email, passwordHash, role
+
+Multi-user support. Roles: admin | user.
+
+Stocks
+
+id, userId, name, symbol
+
+Scoped per user. Symbol unique per user.
+
+DailyPrices
+
+id, stockId, date, price,
+volume, source
+
+source: manual | api. Composite unique key (stockId,
+date).
+
+Purchases
+
+id, stockId, quantity,
+purchasePrice, purchaseDate
+
+Supports average cost or FIFO basis.
+
+Sales
+
+id, stockId, quantity, sellPrice,
+saleDate, profitLoss
+
+profitLoss calculated and stored at time of sale.
+
+ExportLogs
+
+id, userId, exportType,
+generatedAt, filename
+
+Audit trail for PDF/Excel exports.
+
+7. User Interface Requirements
+Screen
+
+Requirements
+
+Dashboard
+
+Portfolio summary cards (total value, total P&L, top performers). Recent transactions list.
+Real-time price ticker when live feed is active.
+
+Stocks Page
+
+Add / Edit / Delete stock counters. Search and filter. Real-time price badge per counter
+when API is enabled.
+
+Prices Page
+
+Manual price and volume entry form. Data-source indicator (manual vs. live). Historical
+price table with pagination.
+
+Transactions
+
+Purchase and sale entry forms with validation feedback. Transaction history with
+date-range filtering. Per-transaction P&L display.
+
+Analytics
+
+Line charts (price trends), bar charts (volume), portfolio performance graphs. Advanced
+metrics panel. Export to PDF / Excel buttons.
+
+Settings
+
+API key configuration for price feeds. Refresh-interval preferences. User account
+management (multi-user mode).
+
+8. Assumptions and Constraints
+8.1 Assumptions
+•​ Manual data entry remains available as a fallback when external API feeds are unavailable or not
+configured.
+
+Stocked – Capital Market Stock Management Application
+
+Page
+
+STOCKED | Software Requirements Specification
+
+•​ P&L calculations use average purchase cost by default; FIFO may be implemented as an optional
+configuration.
+•​ The application targets modern evergreen browsers (Chrome, Firefox, Edge, Safari).
+•​ Users are responsible for obtaining valid API credentials for any third-party price services they
+configure.
+
+8.2 Constraints
+•​ Real-time price data accuracy depends on the reliability and terms of the configured third-party API
+provider.
+•​ Export file sizes for large datasets may be subject to browser or server memory limits.
+•​ Stocked is classified as an educational application and is not intended for regulated financial advisory
+use.
+
+9. Revision History
+Version
+1.0
+
+2.0
+
+Date
+Initial
+
+Current
+
+Author
+
+Summary
+
+Project Team
+
+Initial SRS draft – Capital Market Stock App
+
+Project Team
+
+Renamed to Stocked. FR7-FR10 added
+(real-time API, advanced analytics,
+multi-user, PDF/Excel export). All sections
+refined. Users, ExportLogs entities added.
+
+Stocked – Capital Market Stock Management Application
+
+Page
+
+
