@@ -13,6 +13,8 @@ interface StockSummary {
     latestPrice: number;
     priceChange: number;
     priceChangePercent: number;
+    source?: 'live' | 'manual fallback';
+    lastUpdated?: string | null;
   };
 }
 
@@ -142,8 +144,8 @@ export default function Dashboard() {
         <div className="relative w-full overflow-hidden bg-slate-950/40 backdrop-blur-xl border border-slate-800/80 rounded-2xl py-3.5 mb-2 shadow-2xl">
           <div className="flex w-full overflow-hidden">
             <div className="animate-marquee whitespace-nowrap flex gap-8 items-center">
-              {/* Duplicated items for infinite marquee loop */}
-              {[...tickerItems, ...tickerItems, ...tickerItems].map((item, idx) => {
+              {/* Duplicated items for infinite marquee loop (2x matching -50% translateX) */}
+              {[...tickerItems, ...tickerItems].map((item, idx) => {
                 const isPositive = item.change >= 0;
                 return (
                   <div

@@ -6,9 +6,36 @@ import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
 import { handleValidationErrors } from '../middleware/validate';
 import { getLivePriceForStock } from '../services/priceFeedService';
 
+/**
+ * Zero-dependency concurrency-limiting runner that executes items using Promise.allSettled
+ */
+async function limitConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T) => Promise<R>
+): Promise<PromiseSettledResult<R>[]> {
+  const results: PromiseSettledResult<R>[] = new Array(items.length);
+  let index = 0;
+
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (index < items.length) {
+      const i = index++;
+      try {
+        const value = await fn(items[i]);
+        results[i] = { status: 'fulfilled', value };
+      } catch (reason) {
+        results[i] = { status: 'rejected', reason };
+      }
+    }
+  });
+
+  await Promise.all(workers);
+  return results;
+}
+
 const router = Router();
 
-// GET /api/stocks/live-prices -> View live price metadata for active tickers
+// GET /api/stocks/live-prices -> View live price metadata for active tickers (with concurrency limit)
 router.get('/live-prices', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
@@ -19,13 +46,21 @@ router.get('/live-prices', requireAuth, async (req: AuthenticatedRequest, res: R
       order: [['symbol', 'ASC']],
     });
 
-    const livePrices = await Promise.all(
-      stocks.map(async (stock) => {
-        // Retrieve live price (or fallback cache if offline/error)
-        const priceDetail = await getLivePriceForStock(stock, userId);
-        return priceDetail;
-      })
+    // Bound external API requests to a max concurrency of 3, utilizing allSettled to prevent partial failures from rejecting the whole response
+    const settledResults = await limitConcurrency(stocks, 3, (stock) =>
+      getLivePriceForStock(stock, userId)
     );
+
+    const livePrices = settledResults
+      .map((result, idx) => {
+        if (result.status === 'fulfilled') {
+          return result.value;
+        } else {
+          console.error(`[StocksRouter Alert] Live price fetch failed for stock ${stocks[idx].symbol}:`, result.reason);
+          return null;
+        }
+      })
+      .filter((price): price is NonNullable<typeof price> => price !== null);
 
     return res.status(200).json({
       success: true,
@@ -102,7 +137,7 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res: Response) =>
             lowestPrice: Number(lowestPrice.toFixed(2)),
             priceChange: Number(priceChange.toFixed(2)),
             priceChangePercent: Number(priceChangePercent.toFixed(2)),
-            source: prices[0]?.source || 'manual',
+            source: prices[0]?.source === 'api' ? 'live' : 'manual fallback',
             lastUpdated: prices[0]?.updatedAt ? prices[0].updatedAt.toISOString() : null,
           },
         };

@@ -2,12 +2,6 @@
 
 import React, { useEffect, useState } from 'react';
 
-interface SettingData {
-  provider: 'alphavantage' | 'polygon' | 'manual';
-  apiKey: string;
-  refreshInterval: number;
-}
-
 interface ToastState {
   show: boolean;
   message: string;
@@ -17,6 +11,7 @@ interface ToastState {
 export default function FeedSettings() {
   const [provider, setProvider] = useState<'alphavantage' | 'polygon' | 'manual'>('manual');
   const [apiKey, setApiKey] = useState('');
+  const [apiKeyDirty, setApiKeyDirty] = useState(false);
   const [refreshInterval, setRefreshInterval] = useState(60);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -36,6 +31,7 @@ export default function FeedSettings() {
         if (json.success && json.data) {
           setProvider(json.data.provider);
           setApiKey(json.data.apiKey || '');
+          setApiKeyDirty(false); // Reset dirty tracking after load
           setRefreshInterval(json.data.refreshInterval);
         }
       } catch (err: any) {
@@ -61,14 +57,26 @@ export default function FeedSettings() {
     setSaving(true);
 
     try {
+      const payload: any = {
+        provider,
+        refreshInterval: Number(refreshInterval),
+      };
+
+      const isMasked = apiKey.includes('•') || apiKey.includes('★') || apiKey.includes('*');
+      
+      if (provider !== 'manual') {
+        // Only submit the API Key if the user has actively modified it and it is not a masked placeholder
+        if (apiKeyDirty && !isMasked) {
+          payload.apiKey = apiKey;
+        }
+      } else {
+        payload.apiKey = '';
+      }
+
       const response = await fetch('http://localhost:5001/api/settings/feed', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider,
-          apiKey: provider === 'manual' ? '' : apiKey,
-          refreshInterval: Number(refreshInterval),
-        }),
+        body: JSON.stringify(payload),
       });
 
       const json = await response.json();
@@ -76,9 +84,11 @@ export default function FeedSettings() {
         triggerToast('Credentials and pricing configurations updated successfully.', 'success');
         if (json.data) {
           setApiKey(json.data.apiKey || '');
+          setApiKeyDirty(false); // Reset dirty tracking on successful save
         }
       } else {
-        const errorMsg = json.errors ? json.errors[0].message : json.message;
+        // Safe computation check for errors array length
+        const errorMsg = json.errors && json.errors.length > 0 ? json.errors[0].message : json.message;
         throw new Error(errorMsg || 'Failed to persist feed parameters.');
       }
     } catch (err: any) {
@@ -150,17 +160,31 @@ export default function FeedSettings() {
                 <p className="text-xs text-slate-400 mt-0.5">Choose your live external feed provider or toggle manual offline fallback mode.</p>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Keyboard accessible radio group */}
+              <div 
+                className="grid grid-cols-1 md:grid-cols-3 gap-4" 
+                role="radiogroup" 
+                aria-label="Pricing Provider Selection"
+              >
                 {/* Provider Card - Alpha Vantage */}
                 <div
                   onClick={() => setProvider('alphavantage')}
-                  className={`cursor-pointer rounded-2xl p-5 border transition-all duration-300 relative flex flex-col justify-between h-32 hover:border-indigo-500/40 hover:bg-slate-900/60 ${
+                  role="radio"
+                  aria-checked={provider === 'alphavantage'}
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === ' ' || e.key === 'Enter') {
+                      e.preventDefault();
+                      setProvider('alphavantage');
+                    }
+                  }}
+                  className={`cursor-pointer rounded-2xl p-5 border transition-all duration-300 relative flex flex-col justify-between h-32 hover:border-indigo-500/40 hover:bg-slate-900/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
                     provider === 'alphavantage'
                       ? 'border-indigo-500 bg-indigo-500/5 shadow-[0_0_15px_rgba(99,102,241,0.15)]'
                       : 'border-slate-850 bg-slate-950/40'
                   }`}
                 >
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between pointer-events-none">
                     <span className="text-xs font-black text-slate-400 tracking-wider">ALPHA VANTAGE</span>
                     <div
                       className={`h-4.5 w-4.5 rounded-full border flex items-center justify-center transition-colors ${
@@ -170,7 +194,7 @@ export default function FeedSettings() {
                       {provider === 'alphavantage' && <div className="h-2 w-2 rounded-full bg-indigo-400" />}
                     </div>
                   </div>
-                  <p className="text-[11px] text-slate-400 leading-relaxed mt-2">
+                  <p className="text-[11px] text-slate-400 leading-relaxed mt-2 pointer-events-none">
                     Global stock market queries via high-resolution quote payloads. Ideal for standard catalog listings.
                   </p>
                 </div>
@@ -178,13 +202,22 @@ export default function FeedSettings() {
                 {/* Provider Card - Polygon.io */}
                 <div
                   onClick={() => setProvider('polygon')}
-                  className={`cursor-pointer rounded-2xl p-5 border transition-all duration-300 relative flex flex-col justify-between h-32 hover:border-indigo-500/40 hover:bg-slate-900/60 ${
+                  role="radio"
+                  aria-checked={provider === 'polygon'}
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === ' ' || e.key === 'Enter') {
+                      e.preventDefault();
+                      setProvider('polygon');
+                    }
+                  }}
+                  className={`cursor-pointer rounded-2xl p-5 border transition-all duration-300 relative flex flex-col justify-between h-32 hover:border-indigo-500/40 hover:bg-slate-900/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
                     provider === 'polygon'
                       ? 'border-indigo-500 bg-indigo-500/5 shadow-[0_0_15px_rgba(99,102,241,0.15)]'
                       : 'border-slate-850 bg-slate-950/40'
                   }`}
                 >
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between pointer-events-none">
                     <span className="text-xs font-black text-slate-400 tracking-wider">POLYGON.IO</span>
                     <div
                       className={`h-4.5 w-4.5 rounded-full border flex items-center justify-center transition-colors ${
@@ -194,7 +227,7 @@ export default function FeedSettings() {
                       {provider === 'polygon' && <div className="h-2 w-2 rounded-full bg-indigo-400" />}
                     </div>
                   </div>
-                  <p className="text-[11px] text-slate-400 leading-relaxed mt-2">
+                  <p className="text-[11px] text-slate-400 leading-relaxed mt-2 pointer-events-none">
                     Highly scalable REST responses using historic prev-close aggregates. Perfect for charts and graphs.
                   </p>
                 </div>
@@ -202,13 +235,22 @@ export default function FeedSettings() {
                 {/* Provider Card - Manual Fallback */}
                 <div
                   onClick={() => setProvider('manual')}
-                  className={`cursor-pointer rounded-2xl p-5 border transition-all duration-300 relative flex flex-col justify-between h-32 hover:border-emerald-500/40 hover:bg-slate-900/60 ${
+                  role="radio"
+                  aria-checked={provider === 'manual'}
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === ' ' || e.key === 'Enter') {
+                      e.preventDefault();
+                      setProvider('manual');
+                    }
+                  }}
+                  className={`cursor-pointer rounded-2xl p-5 border transition-all duration-300 relative flex flex-col justify-between h-32 hover:border-emerald-500/40 hover:bg-slate-900/60 focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
                     provider === 'manual'
                       ? 'border-emerald-500 bg-emerald-500/5 shadow-[0_0_15px_rgba(16,185,129,0.15)]'
                       : 'border-slate-850 bg-slate-950/40'
                   }`}
                 >
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between pointer-events-none">
                     <span className="text-xs font-black text-slate-400 tracking-wider">MANUAL FALLBACK</span>
                     <div
                       className={`h-4.5 w-4.5 rounded-full border flex items-center justify-center transition-colors ${
@@ -218,7 +260,7 @@ export default function FeedSettings() {
                       {provider === 'manual' && <div className="h-2 w-2 rounded-full bg-emerald-400" />}
                     </div>
                   </div>
-                  <p className="text-[11px] text-slate-400 leading-relaxed mt-2">
+                  <p className="text-[11px] text-slate-400 leading-relaxed mt-2 pointer-events-none">
                     Local pricing. Keeps transactions linked exclusively to your manually logged and seeded price logs.
                   </p>
                 </div>
@@ -245,7 +287,10 @@ export default function FeedSettings() {
                     type={showKey ? 'text' : 'password'}
                     placeholder="Input external market provider API key..."
                     value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
+                    onChange={(e) => {
+                      setApiKey(e.target.value);
+                      setApiKeyDirty(true); // Track active input modification
+                    }}
                     required
                     className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 rounded-xl pl-11 pr-12 py-3 text-sm text-slate-100 placeholder-slate-650 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
                   />

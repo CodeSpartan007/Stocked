@@ -8,7 +8,7 @@ import transactionRouter from './routes/transactions';
 import portfolioRouter from './routes/portfolio';
 import analyticsRouter from './routes/analytics';
 import settingsRouter from './routes/settings';
-import { startPriceSyncPoller } from './services/priceFeedService';
+import { initializeAllPollers } from './services/priceFeedService';
 
 // Load environment variables
 dotenv.config();
@@ -47,8 +47,8 @@ async function startServer() {
     // Sync DB and Seed Mock Data
     await initDb();
 
-    // Initialize the automated background price feed caching synchronizer
-    startPriceSyncPoller();
+    // Initialize active user synchronization timers on system startup
+    await initializeAllPollers();
 
     app.listen(PORT, () => {
       console.log(`========================================`);

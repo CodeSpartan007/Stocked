@@ -1,6 +1,7 @@
 import { Model, DataTypes } from 'sequelize';
 import { sequelize } from '../config/database';
 import { User } from './User';
+import { encrypt, decrypt } from '../utils/crypto';
 
 export class UserSetting extends Model {
   declare userId: string;
@@ -30,8 +31,19 @@ UserSetting.init(
       defaultValue: 'manual',
     },
     apiKey: {
-      type: DataTypes.STRING,
+      type: DataTypes.TEXT,
       allowNull: true,
+      get() {
+        const rawValue = this.getDataValue('apiKey');
+        return rawValue ? decrypt(rawValue) : null;
+      },
+      set(value: string | null) {
+        if (value) {
+          this.setDataValue('apiKey', encrypt(value));
+        } else {
+          this.setDataValue('apiKey', null);
+        }
+      },
     },
     refreshInterval: {
       type: DataTypes.INTEGER,
@@ -43,5 +55,13 @@ UserSetting.init(
     sequelize,
     modelName: 'UserSetting',
     tableName: 'UserSettings',
+    defaultScope: {
+      attributes: { exclude: ['apiKey'] },
+    },
+    scopes: {
+      withApiKey: {
+        attributes: { include: ['apiKey'] },
+      },
+    },
   }
 );

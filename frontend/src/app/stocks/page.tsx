@@ -17,7 +17,7 @@ interface StockSummary {
     lowestPrice: number;
     priceChange: number;
     priceChangePercent: number;
-    source?: 'api' | 'manual';
+    source?: 'live' | 'manual fallback';
     lastUpdated?: string | null;
   };
 }
@@ -326,19 +326,19 @@ export default function StocksCatalog() {
                           {/* Pulsing real-time badge */}
                           <span className="relative flex h-2 w-2">
                             <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
-                              stock.summary.source === 'api' ? 'bg-cyan-400' : 'bg-amber-400'
+                              stock.summary.source === 'live' ? 'bg-cyan-400' : 'bg-amber-400'
                             }`}></span>
                             <span className={`relative inline-flex rounded-full h-2 w-2 ${
-                              stock.summary.source === 'api' ? 'bg-cyan-500' : 'bg-amber-500'
+                              stock.summary.source === 'live' ? 'bg-cyan-500' : 'bg-amber-500'
                             }`}></span>
                           </span>
                           {/* Origin Label */}
                           <span className={`inline-flex px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded border ${
-                            stock.summary.source === 'api'
+                            stock.summary.source === 'live'
                               ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-300 shadow-[0_0_10px_rgba(34,211,238,0.1)]'
                               : 'bg-amber-500/10 border-amber-500/20 text-amber-300'
                           }`}>
-                            {stock.summary.source === 'api' ? 'Live Feed' : 'Manual'}
+                            {stock.summary.source === 'live' ? 'Live Feed' : 'Manual'}
                           </span>
                           {stock.summary.lastUpdated && (
                             <span className="text-[9px] text-slate-500 font-mono">

@@ -12,23 +12,24 @@ router.get('/feed', requireAuth, async (req: AuthenticatedRequest, res: Response
   try {
     const userId = req.user!.id;
 
-    let settings = await UserSetting.findByPk(userId);
+    let settings = await UserSetting.scope('withApiKey').findByPk(userId);
     if (!settings) {
       // Default initial setting
-      settings = await UserSetting.create({
+      await UserSetting.create({
         userId,
         provider: 'manual',
         apiKey: null,
         refreshInterval: 60,
       });
+      settings = await UserSetting.scope('withApiKey').findByPk(userId);
     }
 
     return res.status(200).json({
       success: true,
       data: {
-        provider: settings.provider,
-        apiKey: settings.apiKey ? '••••••••••••••••' : '',
-        refreshInterval: settings.refreshInterval,
+        provider: settings!.provider,
+        apiKey: settings!.apiKey ? '••••••••••••••••' : '',
+        refreshInterval: settings!.refreshInterval,
       },
     });
   } catch (error: any) {
@@ -65,7 +66,7 @@ router.post(
       // Ensure API key is provided if provider is alphavantage or polygon
       if (provider !== 'manual' && (!apiKey || apiKey.trim() === '')) {
         // If we already have a saved key, we can allow keeping it
-        const existing = await UserSetting.findByPk(userId);
+        const existing = await UserSetting.scope('withApiKey').findByPk(userId);
         if (!existing || !existing.apiKey) {
           return res.status(400).json({
             success: false,
@@ -79,7 +80,7 @@ router.post(
         }
       }
 
-      const existing = await UserSetting.findByPk(userId);
+      const existing = await UserSetting.scope('withApiKey').findByPk(userId);
       let updatedApiKey = apiKey;
 
       // If key is masked (e.g. dots or stars) and we have an existing setting, do not overwrite the real key
@@ -98,7 +99,7 @@ router.post(
 
       // Proactively restart poller if live sync is active
       if (provider !== 'manual' && updatedApiKey) {
-        startPriceSyncPoller(refreshInterval);
+        startPriceSyncPoller(userId, refreshInterval);
       }
 
       return res.status(200).json({
@@ -106,7 +107,7 @@ router.post(
         message: 'Settings updated successfully.',
         data: {
           provider: settings.provider,
-          apiKey: settings.apiKey ? '••••••••••••••••' : '',
+          apiKey: updatedApiKey ? '••••••••••••••••' : '',
           refreshInterval: settings.refreshInterval,
         },
       });

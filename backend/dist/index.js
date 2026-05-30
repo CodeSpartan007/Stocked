@@ -42,8 +42,8 @@ async function startServer() {
     try {
         // Sync DB and Seed Mock Data
         await (0, models_1.initDb)();
-        // Initialize the automated background price feed caching synchronizer
-        (0, priceFeedService_1.startPriceSyncPoller)();
+        // Initialize active user synchronization timers on system startup
+        await (0, priceFeedService_1.initializeAllPollers)();
         app.listen(PORT, () => {
             console.log(`========================================`);
             console.log(`🚀 STOCKED BACKEND SERVER RUNNING`);
