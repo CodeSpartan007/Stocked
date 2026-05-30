@@ -239,23 +239,29 @@ export default function Dashboard() {
               <div className="text-slate-500 text-[10px] py-4 text-center">No active gains computed.</div>
             ) : (
               <div className="space-y-2.5">
-                {topPerformers.slice(0, 3).map((item, idx) => (
-                  <div key={item.stockId} className="flex items-center justify-between p-2 bg-slate-950/40 rounded-lg border border-slate-850">
-                    <div className="flex items-center gap-2">
-                      <span className={`text-[9px] font-black h-4.5 w-4.5 rounded-full flex items-center justify-center ${
-                        idx === 0 ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
-                        idx === 1 ? 'bg-slate-350/10 text-slate-300 border border-slate-350/20' :
-                        'bg-amber-700/10 text-amber-600 border border-amber-850/20'
+                {topPerformers
+                  .slice()
+                  .sort((a, b) => b.performanceGain - a.performanceGain)
+                  .slice(0, 3)
+                  .map((item, idx) => (
+                    <div key={item.stockId} className="flex items-center justify-between p-2 bg-slate-950/40 rounded-lg border border-slate-850">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[9px] font-black h-5 w-5 rounded-full flex items-center justify-center ${
+                          idx === 0 ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
+                          idx === 1 ? 'bg-slate-400/10 text-slate-300 border border-slate-400/20' :
+                          'bg-amber-700/10 text-amber-600 border border-amber-800/20'
+                        }`}>
+                          {idx + 1}
+                        </span>
+                        <span className="font-extrabold text-slate-200 text-xs font-mono">{item.symbol}</span>
+                      </div>
+                      <span className={`text-xs font-black font-mono ${
+                        item.performanceGain > 0 ? 'text-emerald-400' : item.performanceGain < 0 ? 'text-rose-400' : 'text-slate-400'
                       }`}>
-                        {idx + 1}
+                        {item.performanceGain > 0 ? '+' : ''}{item.performanceGain.toFixed(1)}%
                       </span>
-                      <span className="font-extrabold text-slate-200 text-xs font-mono">{item.symbol}</span>
                     </div>
-                    <span className="text-xs font-black text-emerald-405 font-mono">
-                      +{item.performanceGain.toFixed(1)}%
-                    </span>
-                  </div>
-                ))}
+                  ))}
               </div>
             )}
           </div>

@@ -119,7 +119,9 @@ export default function AnalyticsPage() {
   useEffect(() => {
     async function fetchStocks() {
       try {
-        const res = await fetch('http://localhost:5001/api/stocks');
+        const res = await fetch('http://localhost:5001/api/stocks', {
+          credentials: 'include'
+        });
         if (!res.ok) throw new Error();
         const json = await res.json();
         if (json.success) {
@@ -152,10 +154,10 @@ export default function AnalyticsPage() {
         const queryParams = `startDate=${startDate}&endDate=${endDate}`;
 
         const [chartsRes, metricsRes, benchmarkRes, targetsRes] = await Promise.all([
-          fetch(`http://localhost:5001/api/analytics/charts/${selectedStockId}?${queryParams}`, { signal }),
-          fetch(`http://localhost:5001/api/analytics/advanced?${queryParams}`, { signal }),
-          fetch(`http://localhost:5001/api/analytics/benchmark?${queryParams}`, { signal }),
-          fetch(`http://localhost:5001/api/analytics/targets`, { signal })
+          fetch(`http://localhost:5001/api/analytics/charts/${selectedStockId}?${queryParams}`, { signal, credentials: 'include' }),
+          fetch(`http://localhost:5001/api/analytics/advanced?${queryParams}`, { signal, credentials: 'include' }),
+          fetch(`http://localhost:5001/api/analytics/benchmark?${queryParams}`, { signal, credentials: 'include' }),
+          fetch(`http://localhost:5001/api/analytics/targets`, { signal, credentials: 'include' })
         ]);
 
         if (!chartsRes.ok || !metricsRes.ok || !benchmarkRes.ok || !targetsRes.ok) {
@@ -217,7 +219,8 @@ export default function AnalyticsPage() {
           targetType: newTargetType,
           targetValue: Number(newTargetValue),
           targetDate: newTargetDate
-        })
+        }),
+        credentials: 'include'
       });
 
       const json = await res.json();
@@ -226,7 +229,9 @@ export default function AnalyticsPage() {
         setNewTargetName('');
         setNewTargetValue('');
         // Refresh targets checklist
-        const updatedTargetsRes = await fetch('http://localhost:5001/api/analytics/targets');
+        const updatedTargetsRes = await fetch('http://localhost:5001/api/analytics/targets', {
+          credentials: 'include'
+        });
         const updatedJson = await updatedTargetsRes.json();
         if (updatedJson.success) {
           setTargets(updatedJson.data);
@@ -700,7 +705,7 @@ export default function AnalyticsPage() {
                           isPositive ? 'text-emerald-400' : 'text-rose-400'
                         }`}>
                           {item.startPrice !== null && item.endPrice !== null ? (
-                            `${isPositive ? '+' : ''}${item.performanceGain}%`
+                            `${isPositive ? '+' : ''}${item.performanceGain.toFixed(2)}%`
                           ) : (
                             '0.00%'
                           )}

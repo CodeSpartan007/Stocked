@@ -47,7 +47,11 @@ PerformanceTarget.init(
       type: DataTypes.DECIMAL(12, 4),
       allowNull: false,
       validate: {
-        min: 0,
+        gtZero(value: any) {
+          if (Number(value) <= 0) {
+            throw new Error('Target value must be greater than 0.');
+          }
+        }
       },
     },
     targetDate: {

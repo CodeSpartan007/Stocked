@@ -38,7 +38,11 @@ PerformanceTarget.init({
         type: sequelize_1.DataTypes.DECIMAL(12, 4),
         allowNull: false,
         validate: {
-            min: 0,
+            gtZero(value) {
+                if (Number(value) <= 0) {
+                    throw new Error('Target value must be greater than 0.');
+                }
+            }
         },
     },
     targetDate: {

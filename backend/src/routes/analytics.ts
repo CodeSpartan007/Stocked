@@ -5,6 +5,18 @@ import { Stock, DailyPrice, Purchase, Sales, PerformanceTarget } from '../models
 
 const router = Router();
 
+function parseOptionalDate(dateStr: any): Date | null {
+  if (!dateStr) return null;
+  if (typeof dateStr !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    throw new Error('Invalid date format. Must be YYYY-MM-DD.');
+  }
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) {
+    throw new Error('Invalid date.');
+  }
+  return date;
+}
+
 // Helper to find all dates in YYYY-MM-DD between start and end
 function getDatesInRange(startStr: string, endStr: string): string[] {
   const dates: string[] = [];
@@ -73,6 +85,11 @@ function computeStockHoldingsTimeline(purchases: Purchase[], sales: Sales[]): Ho
       averageCost = remainingShares > 0 ? totalCostBasis / remainingShares : 0;
     } else {
       averageCost = remainingShares > 0 ? totalCostBasis / remainingShares : 0;
+      if (tx.quantity > remainingShares) {
+        console.error(
+          `[DATA INTEGRITY ERROR] ${new Date().toISOString()}: Sales transaction quantity (${tx.quantity}) exceeds remaining shares (${remainingShares}) for transaction date ${tx.date} (createdAt: ${tx.createdAt}). Capping saleQty to remainingShares.`
+        );
+      }
       const saleQty = Math.min(tx.quantity, remainingShares);
       const profitLoss = saleQty * (tx.price - averageCost);
       cumulativeRealizedPL += profitLoss;
@@ -114,6 +131,15 @@ router.get(
       const { stockId } = req.params;
       const { startDate, endDate } = req.query;
 
+      let parsedStart: Date | null = null;
+      let parsedEnd: Date | null = null;
+      try {
+        parsedStart = parseOptionalDate(startDate);
+        parsedEnd = parseOptionalDate(endDate);
+      } catch (err: any) {
+        return res.status(400).json({ success: false, message: err.message });
+      }
+
       // 1. Fetch user's stocks
       const userStocks = await Stock.findAll({ where: { userId } });
       const stockIds = userStocks.map((s) => s.id);
@@ -138,10 +164,10 @@ router.get(
 
       // Date range filtering
       const priceWhereClause: any = { stockId: targetStockIds };
-      if (startDate || endDate) {
+      if (parsedStart || parsedEnd) {
         priceWhereClause.date = {};
-        if (startDate) priceWhereClause.date[Op.gte] = startDate;
-        if (endDate) priceWhereClause.date[Op.lte] = endDate;
+        if (parsedStart) priceWhereClause.date[Op.gte] = parsedStart;
+        if (parsedEnd) priceWhereClause.date[Op.lte] = parsedEnd;
       }
 
       // 2. Extract historical closing prices & volume
@@ -242,11 +268,11 @@ router.get(
       let allUniqueDates = Array.from(allUniqueDatesSet).sort();
 
       // Apply range filters if provided
-      if (startDate) {
-        allUniqueDates = allUniqueDates.filter((d) => d >= startDate);
+      if (parsedStart) {
+        allUniqueDates = allUniqueDates.filter((d) => new Date(d) >= parsedStart!);
       }
-      if (endDate) {
-        allUniqueDates = allUniqueDates.filter((d) => d <= endDate);
+      if (parsedEnd) {
+        allUniqueDates = allUniqueDates.filter((d) => new Date(d) <= parsedEnd!);
       }
 
       // Build the cumulative points
@@ -309,6 +335,15 @@ router.get(
     try {
       const userId = req.user!.id;
       const { startDate, endDate } = req.query;
+
+      let parsedStart: Date | null = null;
+      let parsedEnd: Date | null = null;
+      try {
+        parsedStart = parseOptionalDate(startDate);
+        parsedEnd = parseOptionalDate(endDate);
+      } catch (err: any) {
+        return res.status(400).json({ success: false, message: err.message });
+      }
 
       // 1. Fetch user's stocks
       const userStocks = await Stock.findAll({ where: { userId } });
@@ -454,8 +489,8 @@ router.get(
       let uniquePriceDates = Array.from(uniquePriceDatesSet).sort();
 
       // Filter by date range if provided
-      if (startDate) uniquePriceDates = uniquePriceDates.filter((d) => d >= startDate);
-      if (endDate) uniquePriceDates = uniquePriceDates.filter((d) => d <= endDate);
+      if (parsedStart) uniquePriceDates = uniquePriceDates.filter((d) => new Date(d) >= parsedStart!);
+      if (parsedEnd) uniquePriceDates = uniquePriceDates.filter((d) => new Date(d) <= parsedEnd!);
 
       const dailyPortfolioValues: number[] = [];
       uniquePriceDates.forEach((dStr) => {
@@ -521,11 +556,18 @@ router.get(
       const userId = req.user!.id;
       const { startDate, endDate } = req.query;
 
-      if (!startDate || !endDate) {
-        return res.status(400).json({
-          success: false,
-          message: 'Both startDate and endDate query parameters are required for benchmarking.',
-        });
+      let parsedStart: Date;
+      let parsedEnd: Date;
+      try {
+        const start = parseOptionalDate(startDate);
+        const end = parseOptionalDate(endDate);
+        if (!start || !end) {
+          throw new Error('Both startDate and endDate query parameters are required for benchmarking.');
+        }
+        parsedStart = start;
+        parsedEnd = end;
+      } catch (err: any) {
+        return res.status(400).json({ success: false, message: err.message });
       }
 
       const userStocks = await Stock.findAll({ where: { userId } });
@@ -536,7 +578,7 @@ router.get(
         const startPriceRecord = await DailyPrice.findOne({
           where: {
             stockId: stock.id,
-            date: { [Op.gte]: startDate },
+            date: { [Op.gte]: parsedStart },
           },
           order: [['date', 'ASC']],
         });
@@ -545,7 +587,7 @@ router.get(
         const endPriceRecord = await DailyPrice.findOne({
           where: {
             stockId: stock.id,
-            date: { [Op.lte]: endDate },
+            date: { [Op.lte]: parsedEnd },
           },
           order: [['date', 'DESC']],
         });
