@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.PerformanceTarget = exports.Sales = exports.Purchase = exports.DailyPrice = exports.Stock = exports.User = exports.sequelize = void 0;
+exports.UserSetting = exports.PerformanceTarget = exports.Sales = exports.Purchase = exports.DailyPrice = exports.Stock = exports.User = exports.sequelize = void 0;
 exports.initDb = initDb;
 const database_1 = require("../config/database");
 Object.defineProperty(exports, "sequelize", { enumerable: true, get: function () { return database_1.sequelize; } });
@@ -16,6 +16,8 @@ const Sales_1 = require("./Sales");
 Object.defineProperty(exports, "Sales", { enumerable: true, get: function () { return Sales_1.Sales; } });
 const PerformanceTarget_1 = require("./PerformanceTarget");
 Object.defineProperty(exports, "PerformanceTarget", { enumerable: true, get: function () { return PerformanceTarget_1.PerformanceTarget; } });
+const UserSetting_1 = require("./UserSetting");
+Object.defineProperty(exports, "UserSetting", { enumerable: true, get: function () { return UserSetting_1.UserSetting; } });
 // Set up associations
 User_1.User.hasMany(Stock_1.Stock, { foreignKey: 'userId', onDelete: 'CASCADE', as: 'Stocks' });
 Stock_1.Stock.belongsTo(User_1.User, { foreignKey: 'userId', as: 'User' });
@@ -27,6 +29,8 @@ Stock_1.Stock.hasMany(Sales_1.Sales, { foreignKey: 'stockId', onDelete: 'CASCADE
 Sales_1.Sales.belongsTo(Stock_1.Stock, { foreignKey: 'stockId', as: 'Stock' });
 User_1.User.hasMany(PerformanceTarget_1.PerformanceTarget, { foreignKey: 'userId', onDelete: 'CASCADE', as: 'PerformanceTargets' });
 PerformanceTarget_1.PerformanceTarget.belongsTo(User_1.User, { foreignKey: 'userId', as: 'User' });
+User_1.User.hasOne(UserSetting_1.UserSetting, { foreignKey: 'userId', onDelete: 'CASCADE', as: 'UserSetting' });
+UserSetting_1.UserSetting.belongsTo(User_1.User, { foreignKey: 'userId', as: 'User' });
 async function initDb() {
     // Sync the database
     await database_1.sequelize.sync();

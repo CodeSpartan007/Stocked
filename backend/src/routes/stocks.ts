@@ -4,8 +4,41 @@ import { Op } from 'sequelize';
 import { Stock, DailyPrice } from '../models';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
 import { handleValidationErrors } from '../middleware/validate';
+import { getLivePriceForStock } from '../services/priceFeedService';
 
 const router = Router();
+
+// GET /api/stocks/live-prices -> View live price metadata for active tickers
+router.get('/live-prices', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+
+    // Fetch all stock counters registered for this user
+    const stocks = await Stock.findAll({
+      where: { userId },
+      order: [['symbol', 'ASC']],
+    });
+
+    const livePrices = await Promise.all(
+      stocks.map(async (stock) => {
+        // Retrieve live price (or fallback cache if offline/error)
+        const priceDetail = await getLivePriceForStock(stock, userId);
+        return priceDetail;
+      })
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: livePrices,
+    });
+  } catch (error: any) {
+    console.error('Error fetching live stock prices:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve live prices.',
+    });
+  }
+});
 
 // GET /api/stocks -> View all registered stocks with aggregated summary data
 router.get('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
@@ -69,6 +102,8 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res: Response) =>
             lowestPrice: Number(lowestPrice.toFixed(2)),
             priceChange: Number(priceChange.toFixed(2)),
             priceChangePercent: Number(priceChangePercent.toFixed(2)),
+            source: prices[0]?.source || 'manual',
+            lastUpdated: prices[0]?.updatedAt ? prices[0].updatedAt.toISOString() : null,
           },
         };
       })

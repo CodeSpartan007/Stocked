@@ -7,6 +7,8 @@ import priceRouter from './routes/prices';
 import transactionRouter from './routes/transactions';
 import portfolioRouter from './routes/portfolio';
 import analyticsRouter from './routes/analytics';
+import settingsRouter from './routes/settings';
+import { startPriceSyncPoller } from './services/priceFeedService';
 
 // Load environment variables
 dotenv.config();
@@ -32,6 +34,7 @@ app.use('/api/prices', priceRouter);
 app.use('/api/transactions', transactionRouter);
 app.use('/api/portfolio', portfolioRouter);
 app.use('/api/analytics', analyticsRouter);
+app.use('/api/settings', settingsRouter);
 
 // Health Check
 app.get('/health', (req, res) => {
@@ -43,6 +46,9 @@ async function startServer() {
   try {
     // Sync DB and Seed Mock Data
     await initDb();
+
+    // Initialize the automated background price feed caching synchronizer
+    startPriceSyncPoller();
 
     app.listen(PORT, () => {
       console.log(`========================================`);

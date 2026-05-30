@@ -12,6 +12,8 @@ const prices_1 = __importDefault(require("./routes/prices"));
 const transactions_1 = __importDefault(require("./routes/transactions"));
 const portfolio_1 = __importDefault(require("./routes/portfolio"));
 const analytics_1 = __importDefault(require("./routes/analytics"));
+const settings_1 = __importDefault(require("./routes/settings"));
+const priceFeedService_1 = require("./services/priceFeedService");
 // Load environment variables
 dotenv_1.default.config();
 const app = (0, express_1.default)();
@@ -30,6 +32,7 @@ app.use('/api/prices', prices_1.default);
 app.use('/api/transactions', transactions_1.default);
 app.use('/api/portfolio', portfolio_1.default);
 app.use('/api/analytics', analytics_1.default);
+app.use('/api/settings', settings_1.default);
 // Health Check
 app.get('/health', (req, res) => {
     res.status(200).json({ status: 'OK', message: 'Stocked backend is running.' });
@@ -39,6 +42,8 @@ async function startServer() {
     try {
         // Sync DB and Seed Mock Data
         await (0, models_1.initDb)();
+        // Initialize the automated background price feed caching synchronizer
+        (0, priceFeedService_1.startPriceSyncPoller)();
         app.listen(PORT, () => {
             console.log(`========================================`);
             console.log(`🚀 STOCKED BACKEND SERVER RUNNING`);

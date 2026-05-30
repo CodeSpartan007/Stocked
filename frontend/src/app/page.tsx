@@ -35,6 +35,15 @@ interface RecentTransaction {
   profitLoss: number | null;
 }
 
+interface LiveTickerItem {
+  symbol: string;
+  price: number;
+  change: number;
+  changePercent: number;
+  source: 'live' | 'manual fallback';
+  lastUpdated: string;
+}
+
 interface BenchmarkItem {
   stockId: string;
   symbol: string;
@@ -49,19 +58,35 @@ export default function Dashboard() {
   const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null);
   const [recentTx, setRecentTx] = useState<RecentTransaction[]>([]);
   const [topPerformers, setTopPerformers] = useState<BenchmarkItem[]>([]);
+  const [tickerItems, setTickerItems] = useState<LiveTickerItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const fetchTickerPrices = async () => {
+    try {
+      const res = await fetch('http://localhost:5001/api/stocks/live-prices');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success) {
+          setTickerItems(json.data);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to update live tickers:', err);
+    }
+  };
 
   useEffect(() => {
     async function fetchDashboardData() {
       try {
         setLoading(true);
-        // Fetch all registered stocks, portfolio summary, recent transactions, and benchmarking in parallel
-        const [stocksRes, portfolioRes, txRes, benchmarkRes] = await Promise.all([
+        // Fetch all registered stocks, portfolio summary, recent transactions, benchmarking, and tickers in parallel
+        const [stocksRes, portfolioRes, txRes, benchmarkRes, tickerRes] = await Promise.all([
           fetch('http://localhost:5001/api/stocks'),
           fetch('http://localhost:5001/api/portfolio/summary'),
           fetch('http://localhost:5001/api/transactions/history'),
-          fetch('http://localhost:5001/api/analytics/benchmark?startDate=2026-05-01&endDate=2026-05-31')
+          fetch('http://localhost:5001/api/analytics/benchmark?startDate=2026-05-01&endDate=2026-05-31'),
+          fetch('http://localhost:5001/api/stocks/live-prices')
         ]);
 
         if (!stocksRes.ok || !portfolioRes.ok || !txRes.ok) {
@@ -76,6 +101,13 @@ export default function Dashboard() {
           const benchmarkJson = await benchmarkRes.json();
           if (benchmarkJson.success) {
             parsedBenchmarks = benchmarkJson.data;
+          }
+        }
+
+        if (tickerRes.ok) {
+          const tickerJson = await tickerRes.json();
+          if (tickerJson.success) {
+            setTickerItems(tickerJson.data);
           }
         }
 
@@ -97,10 +129,49 @@ export default function Dashboard() {
     }
 
     fetchDashboardData();
+
+    // Secondary interval to poll live stock price tickers every 30 seconds for live updating
+    const tickerInterval = setInterval(fetchTickerPrices, 30000);
+    return () => clearInterval(tickerInterval);
   }, []);
 
   return (
     <div className="space-y-8 animate-fade-in text-slate-100">
+      {/* Horizontally Scrolling Stock Price Ticker Bar */}
+      {tickerItems.length > 0 && (
+        <div className="relative w-full overflow-hidden bg-slate-950/40 backdrop-blur-xl border border-slate-800/80 rounded-2xl py-3.5 mb-2 shadow-2xl">
+          <div className="flex w-full overflow-hidden">
+            <div className="animate-marquee whitespace-nowrap flex gap-8 items-center">
+              {/* Duplicated items for infinite marquee loop */}
+              {[...tickerItems, ...tickerItems, ...tickerItems].map((item, idx) => {
+                const isPositive = item.change >= 0;
+                return (
+                  <div
+                    key={`${item.symbol}-${idx}`}
+                    className={`inline-flex items-center gap-2.5 px-3 py-1.5 rounded-xl border bg-slate-900/40 text-xs font-semibold select-none transition-all duration-300 ${
+                      isPositive
+                        ? 'border-emerald-500/20 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.03)] hover:border-emerald-500/40 hover:shadow-[0_0_15px_rgba(16,185,129,0.12)]'
+                        : 'border-rose-500/20 text-rose-400 shadow-[0_0_10px_rgba(244,63,94,0.03)] hover:border-rose-500/40 hover:shadow-[0_0_15px_rgba(244,63,94,0.12)]'
+                    }`}
+                  >
+                    <span className="font-extrabold text-slate-200 font-mono tracking-wider">{item.symbol}</span>
+                    <span className="font-bold font-mono text-slate-100">${item.price.toFixed(2)}</span>
+                    <span className="flex items-center gap-0.5 text-[10px] font-black">
+                      {isPositive ? '▲' : '▼'} {Math.abs(item.changePercent).toFixed(2)}%
+                    </span>
+                    <span className="text-[9px] text-slate-500 font-medium">
+                      ({item.source === 'live' ? 'Live Feed' : 'Fallback'} @ {new Date(item.lastUpdated).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })})
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          {/* Ambient shading fades on sides */}
+          <div className="absolute top-0 bottom-0 left-0 w-16 bg-gradient-to-r from-slate-950 to-transparent pointer-events-none rounded-l-2xl" />
+          <div className="absolute top-0 bottom-0 right-0 w-16 bg-gradient-to-l from-slate-950 to-transparent pointer-events-none rounded-r-2xl" />
+        </div>
+      )}
       {/* Welcome Banner */}
       <div className="relative rounded-3xl overflow-hidden bg-gradient-to-r from-indigo-600 via-indigo-900 to-emerald-950 p-8 sm:p-10 shadow-2xl border border-indigo-500/20">
         <div className="absolute right-0 bottom-0 top-0 w-1/2 bg-gradient-to-l from-emerald-500/10 to-transparent pointer-events-none" />

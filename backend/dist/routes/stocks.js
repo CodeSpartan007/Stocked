@@ -6,7 +6,35 @@ const sequelize_1 = require("sequelize");
 const models_1 = require("../models");
 const auth_1 = require("../middleware/auth");
 const validate_1 = require("../middleware/validate");
+const priceFeedService_1 = require("../services/priceFeedService");
 const router = (0, express_1.Router)();
+// GET /api/stocks/live-prices -> View live price metadata for active tickers
+router.get('/live-prices', auth_1.requireAuth, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        // Fetch all stock counters registered for this user
+        const stocks = await models_1.Stock.findAll({
+            where: { userId },
+            order: [['symbol', 'ASC']],
+        });
+        const livePrices = await Promise.all(stocks.map(async (stock) => {
+            // Retrieve live price (or fallback cache if offline/error)
+            const priceDetail = await (0, priceFeedService_1.getLivePriceForStock)(stock, userId);
+            return priceDetail;
+        }));
+        return res.status(200).json({
+            success: true,
+            data: livePrices,
+        });
+    }
+    catch (error) {
+        console.error('Error fetching live stock prices:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to retrieve live prices.',
+        });
+    }
+});
 // GET /api/stocks -> View all registered stocks with aggregated summary data
 router.get('/', auth_1.requireAuth, async (req, res) => {
     try {
@@ -61,6 +89,8 @@ router.get('/', auth_1.requireAuth, async (req, res) => {
                     lowestPrice: Number(lowestPrice.toFixed(2)),
                     priceChange: Number(priceChange.toFixed(2)),
                     priceChangePercent: Number(priceChangePercent.toFixed(2)),
+                    source: prices[0]?.source || 'manual',
+                    lastUpdated: prices[0]?.updatedAt ? prices[0].updatedAt.toISOString() : null,
                 },
             };
         }));

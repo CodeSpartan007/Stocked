@@ -17,6 +17,8 @@ interface StockSummary {
     lowestPrice: number;
     priceChange: number;
     priceChangePercent: number;
+    source?: 'api' | 'manual';
+    lastUpdated?: string | null;
   };
 }
 
@@ -67,6 +69,8 @@ export default function StocksCatalog() {
 
   useEffect(() => {
     fetchStocks();
+    const interval = setInterval(fetchStocks, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const openAddModal = () => {
@@ -312,10 +316,38 @@ export default function StocksCatalog() {
 
                 {/* Top Row: Symbol, Category & Action buttons */}
                 <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <span className="inline-flex items-center justify-center px-3 py-1 text-sm font-black tracking-wider bg-indigo-500/10 text-indigo-300 rounded-lg">
-                      {stock.symbol}
-                    </span>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3">
+                      <span className="inline-flex items-center justify-center px-3 py-1 text-sm font-black tracking-wider bg-indigo-500/10 text-indigo-300 rounded-lg">
+                        {stock.symbol}
+                      </span>
+                      {hasData && (
+                        <div className="flex items-center gap-1.5">
+                          {/* Pulsing real-time badge */}
+                          <span className="relative flex h-2 w-2">
+                            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                              stock.summary.source === 'api' ? 'bg-cyan-400' : 'bg-amber-400'
+                            }`}></span>
+                            <span className={`relative inline-flex rounded-full h-2 w-2 ${
+                              stock.summary.source === 'api' ? 'bg-cyan-500' : 'bg-amber-500'
+                            }`}></span>
+                          </span>
+                          {/* Origin Label */}
+                          <span className={`inline-flex px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider rounded border ${
+                            stock.summary.source === 'api'
+                              ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-300 shadow-[0_0_10px_rgba(34,211,238,0.1)]'
+                              : 'bg-amber-500/10 border-amber-500/20 text-amber-300'
+                          }`}>
+                            {stock.summary.source === 'api' ? 'Live Feed' : 'Manual'}
+                          </span>
+                          {stock.summary.lastUpdated && (
+                            <span className="text-[9px] text-slate-500 font-mono">
+                              @{new Date(stock.summary.lastUpdated).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
                     <h3 className="text-lg font-bold text-slate-100 mt-2">{stock.name}</h3>
                     <span className="inline-flex px-2 py-0.5 text-[10px] font-bold bg-slate-800 text-slate-400 rounded mt-1">
                       {stock.category}
