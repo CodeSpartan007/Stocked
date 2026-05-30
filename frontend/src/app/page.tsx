@@ -35,10 +35,20 @@ interface RecentTransaction {
   profitLoss: number | null;
 }
 
+interface BenchmarkItem {
+  stockId: string;
+  symbol: string;
+  name: string;
+  startPrice: number | null;
+  endPrice: number | null;
+  performanceGain: number;
+}
+
 export default function Dashboard() {
   const [stocks, setStocks] = useState<StockSummary[]>([]);
   const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null);
   const [recentTx, setRecentTx] = useState<RecentTransaction[]>([]);
+  const [topPerformers, setTopPerformers] = useState<BenchmarkItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,11 +56,12 @@ export default function Dashboard() {
     async function fetchDashboardData() {
       try {
         setLoading(true);
-        // Fetch all registered stocks, portfolio summary, and recent transactions in parallel
-        const [stocksRes, portfolioRes, txRes] = await Promise.all([
+        // Fetch all registered stocks, portfolio summary, recent transactions, and benchmarking in parallel
+        const [stocksRes, portfolioRes, txRes, benchmarkRes] = await Promise.all([
           fetch('http://localhost:5001/api/stocks'),
           fetch('http://localhost:5001/api/portfolio/summary'),
-          fetch('http://localhost:5001/api/transactions/history')
+          fetch('http://localhost:5001/api/transactions/history'),
+          fetch('http://localhost:5001/api/analytics/benchmark?startDate=2026-05-01&endDate=2026-05-31')
         ]);
 
         if (!stocksRes.ok || !portfolioRes.ok || !txRes.ok) {
@@ -60,10 +71,18 @@ export default function Dashboard() {
         const stocksJson = await stocksRes.json();
         const portfolioJson = await portfolioRes.json();
         const txJson = await txRes.json();
+        let parsedBenchmarks: BenchmarkItem[] = [];
+        if (benchmarkRes.ok) {
+          const benchmarkJson = await benchmarkRes.json();
+          if (benchmarkJson.success) {
+            parsedBenchmarks = benchmarkJson.data;
+          }
+        }
 
         if (stocksJson.success && portfolioJson.success && txJson.success) {
           setStocks(stocksJson.data);
           setPortfolio(portfolioJson.data);
+          setTopPerformers(parsedBenchmarks);
           // Limit to 5 most recent transaction rows
           setRecentTx(txJson.data.slice(0, 5));
         } else {
@@ -87,7 +106,7 @@ export default function Dashboard() {
         <div className="absolute right-0 bottom-0 top-0 w-1/2 bg-gradient-to-l from-emerald-500/10 to-transparent pointer-events-none" />
         <div className="relative z-10 space-y-3 max-w-2xl">
           <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-            📊 Capital Market System — Phase 2 Active
+            📊 Capital Market System — Phase 3 Active
           </span>
           <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
             Welcome back, <span className="bg-gradient-to-r from-emerald-300 to-teal-200 bg-clip-text text-transparent">Developer</span>!
@@ -107,89 +126,144 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Grid: High-Fidelity Portfolio Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* Total Portfolio Value */}
-        <div className="bg-slate-900/40 backdrop-blur-xl border border-slate-800/80 rounded-2xl p-6 shadow-lg group hover:border-indigo-500/30 transition-all duration-300 relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-indigo-500" />
-          <div>
-            <p className="text-xs font-semibold tracking-wider text-slate-400 uppercase">Total Portfolio Value</p>
-            <h3 className="text-2xl font-black text-white mt-2 group-hover:scale-105 transition-transform duration-200 origin-left">
-              {loading ? (
-                <span className="inline-block w-24 h-8 rounded bg-slate-800 animate-pulse" />
-              ) : (
-                `$${(portfolio?.totalPortfolioValue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-              )}
-            </h3>
-            <p className="text-[11px] font-medium text-indigo-400 mt-2">Combined holdings market valuation</p>
+      {/* Grid: High-Fidelity Portfolio Summary Cards & Top Performers Panel */}
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+        {/* Left Side: Summary Cards Grid */}
+        <div className="xl:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-6">
+          {/* Total Portfolio Value */}
+          <div className="bg-slate-900/40 backdrop-blur-xl border border-slate-800/80 rounded-2xl p-6 shadow-lg group hover:border-indigo-500/30 transition-all duration-300 relative overflow-hidden">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-indigo-500" />
+            <div>
+              <p className="text-xs font-semibold tracking-wider text-slate-400 uppercase">Total Portfolio Value</p>
+              <h3 className="text-2xl font-black text-white mt-2 group-hover:scale-105 transition-transform duration-200 origin-left">
+                {loading ? (
+                  <span className="inline-block w-24 h-8 rounded bg-slate-800 animate-pulse" />
+                ) : (
+                  `$${(portfolio?.totalPortfolioValue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                )}
+              </h3>
+              <p className="text-[11px] font-medium text-indigo-400 mt-2">Combined holdings market valuation</p>
+            </div>
+          </div>
+
+          {/* Total Invested Capital */}
+          <div className="bg-slate-900/40 backdrop-blur-xl border border-slate-800/80 rounded-2xl p-6 shadow-lg group hover:border-slate-700 transition-all duration-300 relative overflow-hidden">
+            <div className="absolute top-0 left-0 right-0 h-1 bg-slate-600" />
+            <div>
+              <p className="text-xs font-semibold tracking-wider text-slate-400 uppercase">Total Invested Capital</p>
+              <h3 className="text-2xl font-black text-white mt-2 group-hover:scale-105 transition-transform duration-200 origin-left">
+                {loading ? (
+                  <span className="inline-block w-24 h-8 rounded bg-slate-800 animate-pulse" />
+                ) : (
+                  `$${(portfolio?.totalInvestedCapital ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                )}
+              </h3>
+              <p className="text-[11px] font-medium text-slate-400 mt-2">Remaining shares net cost basis</p>
+            </div>
+          </div>
+
+          {/* Realized P&L (with green/red glow outline) */}
+          <div className={`bg-slate-900/40 backdrop-blur-xl border rounded-2xl p-6 shadow-lg group transition-all duration-300 relative overflow-hidden ${
+            loading 
+              ? 'border-slate-800/80' 
+              : (portfolio?.realizedPL ?? 0) >= 0 
+                ? 'border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.1)] hover:border-emerald-500/50' 
+                : 'border-rose-500/30 shadow-[0_0_15px_rgba(244,63,94,0.1)] hover:border-rose-500/50'
+          }`}>
+            <div className={`absolute top-0 left-0 right-0 h-1 ${
+              loading ? 'bg-slate-800' : (portfolio?.realizedPL ?? 0) >= 0 ? 'bg-emerald-500' : 'bg-rose-500'
+            }`} />
+            <div>
+              <p className="text-xs font-semibold tracking-wider text-slate-400 uppercase">Realized P&L</p>
+              <h3 className={`text-2xl font-black mt-2 group-hover:scale-105 transition-transform duration-200 origin-left ${
+                loading ? 'text-white' : (portfolio?.realizedPL ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
+              }`}>
+                {loading ? (
+                  <span className="inline-block w-24 h-8 rounded bg-slate-800 animate-pulse" />
+                ) : (
+                  `${(portfolio?.realizedPL ?? 0) >= 0 ? '+' : ''}$${(portfolio?.realizedPL ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                )}
+              </h3>
+              <p className="text-[11px] font-medium text-slate-400 mt-2">Locked gains from sales history</p>
+            </div>
+          </div>
+
+          {/* Unrealized P&L (with green/red glow outline) */}
+          <div className={`bg-slate-900/40 backdrop-blur-xl border rounded-2xl p-6 shadow-lg group transition-all duration-300 relative overflow-hidden ${
+            loading 
+              ? 'border-slate-800/80' 
+              : (portfolio?.unrealizedPL ?? 0) >= 0 
+                ? 'border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.1)] hover:border-emerald-500/50' 
+                : 'border-rose-500/30 shadow-[0_0_15px_rgba(244,63,94,0.1)] hover:border-rose-500/50'
+          }`}>
+            <div className={`absolute top-0 left-0 right-0 h-1 ${
+              loading ? 'bg-slate-800' : (portfolio?.unrealizedPL ?? 0) >= 0 ? 'bg-emerald-500' : 'bg-rose-500'
+            }`} />
+            <div>
+              <p className="text-xs font-semibold tracking-wider text-slate-400 uppercase">Unrealized P&L</p>
+              <h3 className={`text-2xl font-black mt-2 group-hover:scale-105 transition-transform duration-200 origin-left ${
+                loading ? 'text-white' : (portfolio?.unrealizedPL ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
+              }`}>
+                {loading ? (
+                  <span className="inline-block w-24 h-8 rounded bg-slate-800 animate-pulse" />
+                ) : (
+                  `${(portfolio?.unrealizedPL ?? 0) >= 0 ? '+' : ''}$${(portfolio?.unrealizedPL ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                )}
+              </h3>
+              <p className="text-[11px] font-medium text-slate-400 mt-2">Paper profit based on current price</p>
+            </div>
           </div>
         </div>
 
-        {/* Total Invested Capital */}
-        <div className="bg-slate-900/40 backdrop-blur-xl border border-slate-800/80 rounded-2xl p-6 shadow-lg group hover:border-slate-700 transition-all duration-300 relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-slate-600" />
-          <div>
-            <p className="text-xs font-semibold tracking-wider text-slate-400 uppercase">Total Invested Capital</p>
-            <h3 className="text-2xl font-black text-white mt-2 group-hover:scale-105 transition-transform duration-200 origin-left">
-              {loading ? (
-                <span className="inline-block w-24 h-8 rounded bg-slate-800 animate-pulse" />
-              ) : (
-                `$${(portfolio?.totalInvestedCapital ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-              )}
-            </h3>
-            <p className="text-[11px] font-medium text-slate-400 mt-2">Remaining shares net cost basis</p>
-          </div>
-        </div>
+        {/* Right Side: Top Performers visual panel */}
+        <div className="bg-slate-900/40 backdrop-blur-xl border border-slate-800/80 rounded-2xl p-6 shadow-lg hover:border-indigo-500/20 transition-all duration-300 relative overflow-hidden flex flex-col justify-between">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 to-emerald-400" />
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider">Top Performers</h3>
+                <p className="text-[9px] text-slate-400 mt-0.5">Asset returns (May 2026)</p>
+              </div>
+              <span className="text-[9px] font-extrabold text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
+                📈 GAINS
+              </span>
+            </div>
 
-        {/* Realized P&L (with green/red glow outline) */}
-        <div className={`bg-slate-900/40 backdrop-blur-xl border rounded-2xl p-6 shadow-lg group transition-all duration-300 relative overflow-hidden ${
-          loading 
-            ? 'border-slate-800/80' 
-            : (portfolio?.realizedPL ?? 0) >= 0 
-              ? 'border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.1)] hover:border-emerald-500/50' 
-              : 'border-rose-500/30 shadow-[0_0_15px_rgba(244,63,94,0.1)] hover:border-rose-500/50'
-        }`}>
-          <div className={`absolute top-0 left-0 right-0 h-1 ${
-            loading ? 'bg-slate-800' : (portfolio?.realizedPL ?? 0) >= 0 ? 'bg-emerald-500' : 'bg-rose-500'
-          }`} />
-          <div>
-            <p className="text-xs font-semibold tracking-wider text-slate-400 uppercase">Realized P&L</p>
-            <h3 className={`text-2xl font-black mt-2 group-hover:scale-105 transition-transform duration-200 origin-left ${
-              loading ? 'text-white' : (portfolio?.realizedPL ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
-            }`}>
-              {loading ? (
-                <span className="inline-block w-24 h-8 rounded bg-slate-800 animate-pulse" />
-              ) : (
-                `${(portfolio?.realizedPL ?? 0) >= 0 ? '+' : ''}$${(portfolio?.realizedPL ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-              )}
-            </h3>
-            <p className="text-[11px] font-medium text-slate-400 mt-2">Locked gains from sales history</p>
+            {loading ? (
+              <div className="space-y-2.5">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-9 w-full rounded bg-slate-850 animate-pulse" />
+                ))}
+              </div>
+            ) : topPerformers.length === 0 ? (
+              <div className="text-slate-500 text-[10px] py-4 text-center">No active gains computed.</div>
+            ) : (
+              <div className="space-y-2.5">
+                {topPerformers.slice(0, 3).map((item, idx) => (
+                  <div key={item.stockId} className="flex items-center justify-between p-2 bg-slate-950/40 rounded-lg border border-slate-850">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[9px] font-black h-4.5 w-4.5 rounded-full flex items-center justify-center ${
+                        idx === 0 ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
+                        idx === 1 ? 'bg-slate-350/10 text-slate-300 border border-slate-350/20' :
+                        'bg-amber-700/10 text-amber-600 border border-amber-850/20'
+                      }`}>
+                        {idx + 1}
+                      </span>
+                      <span className="font-extrabold text-slate-200 text-xs font-mono">{item.symbol}</span>
+                    </div>
+                    <span className="text-xs font-black text-emerald-405 font-mono">
+                      +{item.performanceGain.toFixed(1)}%
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        </div>
-
-        {/* Unrealized P&L (with green/red glow outline) */}
-        <div className={`bg-slate-900/40 backdrop-blur-xl border rounded-2xl p-6 shadow-lg group transition-all duration-300 relative overflow-hidden ${
-          loading 
-            ? 'border-slate-800/80' 
-            : (portfolio?.unrealizedPL ?? 0) >= 0 
-              ? 'border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.1)] hover:border-emerald-500/50' 
-              : 'border-rose-500/30 shadow-[0_0_15px_rgba(244,63,94,0.1)] hover:border-rose-500/50'
-        }`}>
-          <div className={`absolute top-0 left-0 right-0 h-1 ${
-            loading ? 'bg-slate-800' : (portfolio?.unrealizedPL ?? 0) >= 0 ? 'bg-emerald-500' : 'bg-rose-500'
-          }`} />
-          <div>
-            <p className="text-xs font-semibold tracking-wider text-slate-400 uppercase">Unrealized P&L</p>
-            <h3 className={`text-2xl font-black mt-2 group-hover:scale-105 transition-transform duration-200 origin-left ${
-              loading ? 'text-white' : (portfolio?.unrealizedPL ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
-            }`}>
-              {loading ? (
-                <span className="inline-block w-24 h-8 rounded bg-slate-800 animate-pulse" />
-              ) : (
-                `${(portfolio?.unrealizedPL ?? 0) >= 0 ? '+' : ''}$${(portfolio?.unrealizedPL ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-              )}
-            </h3>
-            <p className="text-[11px] font-medium text-slate-400 mt-2">Paper profit based on current price</p>
+          <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between">
+            <span className="text-[9px] text-slate-500 font-mono">Real-time indicators</span>
+            <Link href="/analytics" className="text-[10px] font-bold text-indigo-400 hover:text-indigo-300 flex items-center">
+              Analytics &rarr;
+            </Link>
           </div>
         </div>
       </div>

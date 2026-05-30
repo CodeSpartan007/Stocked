@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.Sales = exports.Purchase = exports.DailyPrice = exports.Stock = exports.User = exports.sequelize = void 0;
+exports.PerformanceTarget = exports.Sales = exports.Purchase = exports.DailyPrice = exports.Stock = exports.User = exports.sequelize = void 0;
 exports.initDb = initDb;
 const database_1 = require("../config/database");
 Object.defineProperty(exports, "sequelize", { enumerable: true, get: function () { return database_1.sequelize; } });
@@ -14,6 +14,8 @@ const Purchase_1 = require("./Purchase");
 Object.defineProperty(exports, "Purchase", { enumerable: true, get: function () { return Purchase_1.Purchase; } });
 const Sales_1 = require("./Sales");
 Object.defineProperty(exports, "Sales", { enumerable: true, get: function () { return Sales_1.Sales; } });
+const PerformanceTarget_1 = require("./PerformanceTarget");
+Object.defineProperty(exports, "PerformanceTarget", { enumerable: true, get: function () { return PerformanceTarget_1.PerformanceTarget; } });
 // Set up associations
 User_1.User.hasMany(Stock_1.Stock, { foreignKey: 'userId', onDelete: 'CASCADE', as: 'Stocks' });
 Stock_1.Stock.belongsTo(User_1.User, { foreignKey: 'userId', as: 'User' });
@@ -23,6 +25,8 @@ Stock_1.Stock.hasMany(Purchase_1.Purchase, { foreignKey: 'stockId', onDelete: 'C
 Purchase_1.Purchase.belongsTo(Stock_1.Stock, { foreignKey: 'stockId', as: 'Stock' });
 Stock_1.Stock.hasMany(Sales_1.Sales, { foreignKey: 'stockId', onDelete: 'CASCADE', as: 'Sales' });
 Sales_1.Sales.belongsTo(Stock_1.Stock, { foreignKey: 'stockId', as: 'Stock' });
+User_1.User.hasMany(PerformanceTarget_1.PerformanceTarget, { foreignKey: 'userId', onDelete: 'CASCADE', as: 'PerformanceTargets' });
+PerformanceTarget_1.PerformanceTarget.belongsTo(User_1.User, { foreignKey: 'userId', as: 'User' });
 async function initDb() {
     // Sync the database
     await database_1.sequelize.sync();

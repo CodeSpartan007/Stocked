@@ -6,6 +6,7 @@ import stockRouter from './routes/stocks';
 import priceRouter from './routes/prices';
 import transactionRouter from './routes/transactions';
 import portfolioRouter from './routes/portfolio';
+import analyticsRouter from './routes/analytics';
 
 // Load environment variables
 dotenv.config();
@@ -30,6 +31,7 @@ app.use('/api/stocks', stockRouter);
 app.use('/api/prices', priceRouter);
 app.use('/api/transactions', transactionRouter);
 app.use('/api/portfolio', portfolioRouter);
+app.use('/api/analytics', analyticsRouter);
 
 // Health Check
 app.get('/health', (req, res) => {
