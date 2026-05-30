@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 
 interface StockOption {
   id: string;
@@ -73,8 +73,9 @@ export default function TransactionsPage() {
   }, []);
 
   // Fetch Transaction Ledger history with date-range filters [FR5]
-  const fetchLedger = async () => {
+  const fetchLedger = useCallback(async (signal?: AbortSignal) => {
     setLoadingLedger(true);
+    setErrorMessage(null); // Clear preceding error on reload attempts
     try {
       let url = 'http://localhost:5001/api/transactions/history';
       const params = new URLSearchParams();
@@ -85,24 +86,36 @@ export default function TransactionsPage() {
         url += `?${params.toString()}`;
       }
 
-      const res = await fetch(url);
+      const res = await fetch(url, { signal });
       const json = await res.json();
       if (json.success) {
         setTransactions(json.data);
       } else {
-        throw new Error(json.message);
+        throw new Error(json.message || 'Failed to retrieve chronological transactions ledger.');
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err.name === 'AbortError' || err.name === 'DOMException') {
+        // Superseded request, ignore state updates
+        return;
+      }
       console.error('Failed to fetch ledger rows:', err);
+      setErrorMessage(`Failed to retrieve transaction history: ${err.message || err}`);
+      setTransactions([]); // Reset to clear table on failure
     } finally {
-      setLoadingLedger(false);
+      if (!signal || !signal.aborted) {
+        setLoadingLedger(false);
+      }
     }
-  };
-
-  // Trigger ledger reload on date filter change
-  useEffect(() => {
-    fetchLedger();
   }, [startDate, endDate]);
+
+  // Trigger ledger reload on date filter change with request cancellation
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchLedger(controller.signal);
+    return () => {
+      controller.abort();
+    };
+  }, [fetchLedger]);
 
   // Handle transaction recording submit
   const handleSubmit = async (e: React.FormEvent) => {

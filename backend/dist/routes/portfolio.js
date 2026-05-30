@@ -25,47 +25,52 @@ router.get('/summary', auth_1.requireAuth, async (req, res) => {
             });
             totalRealizedPL = Number(salesSum || 0);
         }
-        // 3. Process remaining assets chronologically
+        // 3. Process remaining assets concurrently
         const activeHoldings = [];
-        for (const stock of userStocks) {
+        const holdingsAndPrices = await Promise.all(userStocks.map(async (stock) => {
             const holdings = await (0, transactions_1.computeStockHoldings)(stock.id);
-            if (holdings.remainingShares > 0) {
-                // Find the latest DailyPrice record for the stock
-                const latestPriceRecord = await models_1.DailyPrice.findOne({
-                    where: { stockId: stock.id },
-                    order: [
-                        ['date', 'DESC'],
-                        ['createdAt', 'DESC'],
-                    ],
-                });
-                // Fallback to average purchase price if no daily price feed exists
-                const currentPrice = latestPriceRecord
-                    ? Number(latestPriceRecord.price)
-                    : holdings.averageCost;
-                const remainingShares = holdings.remainingShares;
-                const averageCost = holdings.averageCost;
-                // Cost basis of remaining shares = remaining shares * average purchase cost
-                const costBasisOfRemainingShares = remainingShares * averageCost;
-                // Current Market Value = remaining shares * current price
-                const currentMarketValue = remainingShares * currentPrice;
-                // Unrealized P&L = Current Market Value - Cost Basis
-                const unrealizedPL = currentMarketValue - costBasisOfRemainingShares;
-                totalInvestedCapital += costBasisOfRemainingShares;
-                totalUnrealizedPL += unrealizedPL;
-                totalPortfolioValue += currentMarketValue;
-                activeHoldings.push({
-                    id: stock.id,
-                    symbol: stock.symbol,
-                    name: stock.name,
-                    category: stock.category,
-                    remainingShares: Number(remainingShares.toFixed(4)),
-                    averageCost: Number(averageCost.toFixed(2)),
-                    currentPrice: Number(currentPrice.toFixed(2)),
-                    costBasis: Number(costBasisOfRemainingShares.toFixed(2)),
-                    marketValue: Number(currentMarketValue.toFixed(2)),
-                    unrealizedPL: Number(unrealizedPL.toFixed(2)),
-                });
-            }
+            if (holdings.remainingShares <= 0)
+                return null;
+            const latestPriceRecord = await models_1.DailyPrice.findOne({
+                where: { stockId: stock.id },
+                order: [
+                    ['date', 'DESC'],
+                    ['createdAt', 'DESC'],
+                ],
+            });
+            return { stock, holdings, latestPriceRecord };
+        }));
+        for (const item of holdingsAndPrices) {
+            if (!item)
+                continue;
+            const { stock, holdings, latestPriceRecord } = item;
+            // Fallback to average purchase price if no daily price feed exists
+            const currentPrice = latestPriceRecord
+                ? Number(latestPriceRecord.price)
+                : holdings.averageCost;
+            const remainingShares = holdings.remainingShares;
+            const averageCost = holdings.averageCost;
+            // Cost basis of remaining shares = remaining shares * average purchase cost
+            const costBasisOfRemainingShares = remainingShares * averageCost;
+            // Current Market Value = remaining shares * current price
+            const currentMarketValue = remainingShares * currentPrice;
+            // Unrealized P&L = Current Market Value - Cost Basis
+            const unrealizedPL = currentMarketValue - costBasisOfRemainingShares;
+            totalInvestedCapital += costBasisOfRemainingShares;
+            totalUnrealizedPL += unrealizedPL;
+            totalPortfolioValue += currentMarketValue;
+            activeHoldings.push({
+                id: stock.id,
+                symbol: stock.symbol,
+                name: stock.name,
+                category: stock.category,
+                remainingShares: Number(remainingShares.toFixed(4)),
+                averageCost: Number(averageCost.toFixed(2)),
+                currentPrice: Number(currentPrice.toFixed(2)),
+                costBasis: Number(costBasisOfRemainingShares.toFixed(2)),
+                marketValue: Number(currentMarketValue.toFixed(2)),
+                unrealizedPL: Number(unrealizedPL.toFixed(2)),
+            });
         }
         return res.status(200).json({
             success: true,

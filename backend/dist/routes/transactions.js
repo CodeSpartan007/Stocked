@@ -8,14 +8,16 @@ const auth_1 = require("../middleware/auth");
 const validate_1 = require("../middleware/validate");
 const router = (0, express_1.Router)();
 // Helper to compute holdings and average cost basis chronologically
-async function computeStockHoldings(stockId) {
+async function computeStockHoldings(stockId, tx) {
     const purchases = await models_1.Purchase.findAll({
         where: { stockId },
         order: [['purchaseDate', 'ASC'], ['createdAt', 'ASC']],
+        transaction: tx,
     });
     const sales = await models_1.Sales.findAll({
         where: { stockId },
         order: [['saleDate', 'ASC'], ['createdAt', 'ASC']],
+        transaction: tx,
     });
     const transactions = [
         ...purchases.map((p) => ({
@@ -67,14 +69,23 @@ async function computeStockHoldings(stockId) {
 router.post('/purchases', auth_1.requireAuth, [
     (0, express_validator_1.body)('stockId').isUUID().withMessage('Invalid Stock ID.'),
     (0, express_validator_1.body)('quantity')
-        .isFloat({ gt: 0 })
-        .withMessage('Quantity must be strictly greater than 0.'),
+        .isFloat({ min: 0.0001 })
+        .withMessage('Quantity must be at least 0.0001.'),
     (0, express_validator_1.body)('purchasePrice')
-        .isFloat({ gt: 0 })
-        .withMessage('Purchase price must be strictly greater than 0.'),
+        .isFloat({ min: 0.01 })
+        .withMessage('Purchase price must be at least 0.01.'),
     (0, express_validator_1.body)('purchaseDate')
-        .isISO8601()
-        .withMessage('Purchase date must be a valid date (YYYY-MM-DD).'),
+        .matches(/^\d{4}-\d{2}-\d{2}$/)
+        .withMessage('Purchase date must be in YYYY-MM-DD format.')
+        .custom((value) => {
+        const inputDate = new Date(value);
+        const today = new Date();
+        today.setHours(23, 59, 59, 999);
+        if (inputDate > today) {
+            throw new Error('Purchase date cannot be in the future.');
+        }
+        return true;
+    }),
 ], validate_1.handleValidationErrors, async (req, res) => {
     try {
         const userId = req.user.id;
@@ -119,14 +130,23 @@ router.post('/purchases', auth_1.requireAuth, [
 router.post('/sales', auth_1.requireAuth, [
     (0, express_validator_1.body)('stockId').isUUID().withMessage('Invalid Stock ID.'),
     (0, express_validator_1.body)('quantity')
-        .isFloat({ gt: 0 })
-        .withMessage('Quantity must be strictly greater than 0.'),
+        .isFloat({ min: 0.0001 })
+        .withMessage('Quantity must be at least 0.0001.'),
     (0, express_validator_1.body)('sellPrice')
-        .isFloat({ gt: 0 })
-        .withMessage('Selling price must be strictly greater than 0.'),
+        .isFloat({ min: 0.01 })
+        .withMessage('Selling price must be at least 0.01.'),
     (0, express_validator_1.body)('saleDate')
-        .isISO8601()
-        .withMessage('Sale date must be a valid date (YYYY-MM-DD).'),
+        .matches(/^\d{4}-\d{2}-\d{2}$/)
+        .withMessage('Sale date must be in YYYY-MM-DD format.')
+        .custom((value) => {
+        const inputDate = new Date(value);
+        const today = new Date();
+        today.setHours(23, 59, 59, 999);
+        if (inputDate > today) {
+            throw new Error('Sale date cannot be in the future.');
+        }
+        return true;
+    }),
 ], validate_1.handleValidationErrors, async (req, res) => {
     const transaction = await models_1.sequelize.transaction();
     try {
@@ -134,10 +154,11 @@ router.post('/sales', auth_1.requireAuth, [
         const { stockId, quantity, sellPrice, saleDate } = req.body;
         const saleQty = Number(quantity);
         const sPrice = Number(sellPrice);
-        // Verify Stock counter ownership
+        // Verify Stock counter ownership and acquire an exclusive lock to avoid races
         const stock = await models_1.Stock.findOne({
             where: { id: stockId, userId },
             transaction,
+            lock: transaction.LOCK.UPDATE,
         });
         if (!stock) {
             await transaction.rollback();
@@ -151,8 +172,8 @@ router.post('/sales', auth_1.requireAuth, [
                 ],
             });
         }
-        // Calculate total available holdings (Purchased - Sold) before this transaction
-        const holdings = await computeStockHoldings(stockId);
+        // Calculate total available holdings (Purchased - Sold) inside transaction context
+        const holdings = await computeStockHoldings(stockId, transaction);
         // Short-Selling check
         if (saleQty > holdings.remainingShares) {
             await transaction.rollback();

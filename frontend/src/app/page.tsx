@@ -93,7 +93,7 @@ export default function Dashboard() {
             Welcome back, <span className="bg-gradient-to-r from-emerald-300 to-teal-200 bg-clip-text text-transparent">Developer</span>!
           </h1>
           <p className="text-slate-300 text-sm leading-relaxed">
-            Monitor overall portfolio health using the **Valuation Engine (Average Cost Basis)**. Review real-time asset costs, realized sales earnings, paper gains, and commit audit transactions seamlessly.
+            Monitor overall portfolio health using the <strong className="font-semibold text-slate-100">Valuation Engine (Average Cost Basis)</strong>. Review real-time asset costs, realized sales earnings, paper gains, and commit audit transactions seamlessly.
           </p>
         </div>
       </div>
@@ -298,11 +298,16 @@ export default function Dashboard() {
                         <span className="text-[11px] font-medium text-slate-300 truncate max-w-[100px]">{stock.name}</span>
                       </div>
 
-                      <div className="text-right">
+                      <div className="text-right flex flex-col items-end">
                         {stock.summary.totalPriceRecords > 0 ? (
-                          <span className={`text-[10px] font-extrabold ${isPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
-                            ${stock.summary.latestPrice.toFixed(2)}
-                          </span>
+                          <>
+                            <span className="text-[11px] font-extrabold text-slate-200">
+                              ${stock.summary.latestPrice.toFixed(2)}
+                            </span>
+                            <span className={`text-[9px] font-bold ${isPositive ? 'text-emerald-400' : 'text-rose-400'}`}>
+                              {isPositive ? '+' : ''}{stock.summary.priceChange.toFixed(2)} ({isPositive ? '+' : ''}{stock.summary.priceChangePercent.toFixed(2)}%)
+                            </span>
+                          </>
                         ) : (
                           <span className="text-[10px] text-slate-500">No prices</span>
                         )}

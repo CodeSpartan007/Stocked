@@ -1,5 +1,6 @@
 import { Router, Response } from 'express';
 import { body } from 'express-validator';
+import { Transaction } from 'sequelize';
 import { sequelize, Stock, Purchase, Sales } from '../models';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
 import { handleValidationErrors } from '../middleware/validate';
@@ -7,15 +8,17 @@ import { handleValidationErrors } from '../middleware/validate';
 const router = Router();
 
 // Helper to compute holdings and average cost basis chronologically
-export async function computeStockHoldings(stockId: string) {
+export async function computeStockHoldings(stockId: string, tx?: Transaction) {
   const purchases = await Purchase.findAll({
     where: { stockId },
     order: [['purchaseDate', 'ASC'], ['createdAt', 'ASC']],
+    transaction: tx,
   });
 
   const sales = await Sales.findAll({
     where: { stockId },
     order: [['saleDate', 'ASC'], ['createdAt', 'ASC']],
+    transaction: tx,
   });
 
   interface UnifiedTx {
@@ -81,14 +84,23 @@ router.post(
   [
     body('stockId').isUUID().withMessage('Invalid Stock ID.'),
     body('quantity')
-      .isFloat({ gt: 0 })
-      .withMessage('Quantity must be strictly greater than 0.'),
+      .isFloat({ min: 0.0001 })
+      .withMessage('Quantity must be at least 0.0001.'),
     body('purchasePrice')
-      .isFloat({ gt: 0 })
-      .withMessage('Purchase price must be strictly greater than 0.'),
+      .isFloat({ min: 0.01 })
+      .withMessage('Purchase price must be at least 0.01.'),
     body('purchaseDate')
-      .isISO8601()
-      .withMessage('Purchase date must be a valid date (YYYY-MM-DD).'),
+      .matches(/^\d{4}-\d{2}-\d{2}$/)
+      .withMessage('Purchase date must be in YYYY-MM-DD format.')
+      .custom((value) => {
+        const inputDate = new Date(value);
+        const today = new Date();
+        today.setHours(23, 59, 59, 999);
+        if (inputDate > today) {
+          throw new Error('Purchase date cannot be in the future.');
+        }
+        return true;
+      }),
   ],
   handleValidationErrors,
   async (req: AuthenticatedRequest, res: Response) => {
@@ -143,14 +155,23 @@ router.post(
   [
     body('stockId').isUUID().withMessage('Invalid Stock ID.'),
     body('quantity')
-      .isFloat({ gt: 0 })
-      .withMessage('Quantity must be strictly greater than 0.'),
+      .isFloat({ min: 0.0001 })
+      .withMessage('Quantity must be at least 0.0001.'),
     body('sellPrice')
-      .isFloat({ gt: 0 })
-      .withMessage('Selling price must be strictly greater than 0.'),
+      .isFloat({ min: 0.01 })
+      .withMessage('Selling price must be at least 0.01.'),
     body('saleDate')
-      .isISO8601()
-      .withMessage('Sale date must be a valid date (YYYY-MM-DD).'),
+      .matches(/^\d{4}-\d{2}-\d{2}$/)
+      .withMessage('Sale date must be in YYYY-MM-DD format.')
+      .custom((value) => {
+        const inputDate = new Date(value);
+        const today = new Date();
+        today.setHours(23, 59, 59, 999);
+        if (inputDate > today) {
+          throw new Error('Sale date cannot be in the future.');
+        }
+        return true;
+      }),
   ],
   handleValidationErrors,
   async (req: AuthenticatedRequest, res: Response) => {
@@ -161,10 +182,11 @@ router.post(
       const saleQty = Number(quantity);
       const sPrice = Number(sellPrice);
 
-      // Verify Stock counter ownership
+      // Verify Stock counter ownership and acquire an exclusive lock to avoid races
       const stock = await Stock.findOne({
         where: { id: stockId, userId },
         transaction,
+        lock: transaction.LOCK.UPDATE,
       });
 
       if (!stock) {
@@ -180,8 +202,8 @@ router.post(
         });
       }
 
-      // Calculate total available holdings (Purchased - Sold) before this transaction
-      const holdings = await computeStockHoldings(stockId);
+      // Calculate total available holdings (Purchased - Sold) inside transaction context
+      const holdings = await computeStockHoldings(stockId, transaction);
 
       // Short-Selling check
       if (saleQty > holdings.remainingShares) {
