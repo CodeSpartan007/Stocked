@@ -9,6 +9,8 @@ const dotenv_1 = __importDefault(require("dotenv"));
 const models_1 = require("./models");
 const stocks_1 = __importDefault(require("./routes/stocks"));
 const prices_1 = __importDefault(require("./routes/prices"));
+const transactions_1 = __importDefault(require("./routes/transactions"));
+const portfolio_1 = __importDefault(require("./routes/portfolio"));
 // Load environment variables
 dotenv_1.default.config();
 const app = (0, express_1.default)();
@@ -24,6 +26,8 @@ app.use(express_1.default.json());
 // Routes
 app.use('/api/stocks', stocks_1.default);
 app.use('/api/prices', prices_1.default);
+app.use('/api/transactions', transactions_1.default);
+app.use('/api/portfolio', portfolio_1.default);
 // Health Check
 app.get('/health', (req, res) => {
     res.status(200).json({ status: 'OK', message: 'Stocked backend is running.' });

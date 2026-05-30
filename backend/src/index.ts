@@ -4,6 +4,8 @@ import dotenv from 'dotenv';
 import { initDb } from './models';
 import stockRouter from './routes/stocks';
 import priceRouter from './routes/prices';
+import transactionRouter from './routes/transactions';
+import portfolioRouter from './routes/portfolio';
 
 // Load environment variables
 dotenv.config();
@@ -26,6 +28,8 @@ app.use(express.json());
 // Routes
 app.use('/api/stocks', stockRouter);
 app.use('/api/prices', priceRouter);
+app.use('/api/transactions', transactionRouter);
+app.use('/api/portfolio', portfolioRouter);
 
 // Health Check
 app.get('/health', (req, res) => {

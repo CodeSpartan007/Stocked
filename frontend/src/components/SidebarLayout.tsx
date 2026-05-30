@@ -66,6 +66,25 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
         </svg>
       ),
     },
+    {
+      name: 'Transactions Ledger',
+      href: '/transactions',
+      icon: (active: boolean) => (
+        <svg
+          className={`h-5 w-5 mr-3 transition-colors ${active ? 'text-indigo-400' : 'text-slate-400 group-hover:text-slate-200'}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+          />
+        </svg>
+      ),
+    },
   ];
 
   return (
