@@ -69,7 +69,9 @@ export default function Dashboard() {
 
   const fetchTickerPrices = async () => {
     try {
-      const res = await fetch('http://localhost:5001/api/stocks/live-prices');
+      const res = await fetch('http://localhost:5001/api/stocks/live-prices', {
+        credentials: 'include'
+      });
       if (res.ok) {
         const json = await res.json();
         if (json.success) {
@@ -87,11 +89,11 @@ export default function Dashboard() {
         setLoading(true);
         // Fetch all registered stocks, portfolio summary, recent transactions, benchmarking, and tickers in parallel
         const [stocksRes, portfolioRes, txRes, benchmarkRes, tickerRes] = await Promise.all([
-          fetch('http://localhost:5001/api/stocks'),
-          fetch('http://localhost:5001/api/portfolio/summary'),
-          fetch('http://localhost:5001/api/transactions/history'),
-          fetch('http://localhost:5001/api/analytics/benchmark?startDate=2026-05-01&endDate=2026-05-31'),
-          fetch('http://localhost:5001/api/stocks/live-prices')
+          fetch('http://localhost:5001/api/stocks', { credentials: 'include' }),
+          fetch('http://localhost:5001/api/portfolio/summary', { credentials: 'include' }),
+          fetch('http://localhost:5001/api/transactions/history', { credentials: 'include' }),
+          fetch('http://localhost:5001/api/analytics/benchmark?startDate=2026-05-01&endDate=2026-05-31', { credentials: 'include' }),
+          fetch('http://localhost:5001/api/stocks/live-prices', { credentials: 'include' })
         ]);
 
         if (!stocksRes.ok || !portfolioRes.ok || !txRes.ok) {

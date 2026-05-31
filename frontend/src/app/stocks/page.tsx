@@ -48,7 +48,9 @@ export default function StocksCatalog() {
   const fetchStocks = async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:5001/api/stocks');
+      const response = await fetch('http://localhost:5001/api/stocks', {
+        credentials: 'include'
+      });
       if (!response.ok) {
         throw new Error('Could not fetch stock counters.');
       }
@@ -114,6 +116,7 @@ export default function StocksCatalog() {
           category: formCategory,
           description: formDescription,
         }),
+        credentials: 'include',
       });
 
       const json = await response.json();
@@ -150,6 +153,7 @@ export default function StocksCatalog() {
           category: formCategory,
           description: formDescription,
         }),
+        credentials: 'include',
       });
 
       const json = await response.json();
@@ -176,6 +180,7 @@ export default function StocksCatalog() {
     try {
       const response = await fetch(`http://localhost:5001/api/stocks/${activeStockId}`, {
         method: 'DELETE',
+        credentials: 'include',
       });
 
       const json = await response.json();

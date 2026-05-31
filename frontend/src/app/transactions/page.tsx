@@ -57,7 +57,9 @@ export default function TransactionsPage() {
   useEffect(() => {
     async function loadStocks() {
       try {
-        const res = await fetch('http://localhost:5001/api/stocks');
+        const res = await fetch('http://localhost:5001/api/stocks', {
+          credentials: 'include'
+        });
         const json = await res.json();
         if (json.success && json.data.length > 0) {
           setStocks(json.data);
@@ -87,7 +89,7 @@ export default function TransactionsPage() {
         url += `?${params.toString()}`;
       }
 
-      const res = await fetch(url, { signal });
+      const res = await fetch(url, { signal, credentials: 'include' });
       const json = await res.json();
       if (json.success) {
         setTransactions(json.data);
@@ -160,6 +162,7 @@ export default function TransactionsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(bodyData),
+        credentials: 'include',
       });
 
       const json = await res.json();

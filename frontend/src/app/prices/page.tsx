@@ -58,7 +58,9 @@ export default function DailyPricesRecording() {
   const fetchStocksList = async () => {
     try {
       setLoadingStocks(true);
-      const response = await fetch('http://localhost:5001/api/stocks');
+      const response = await fetch('http://localhost:5001/api/stocks', {
+        credentials: 'include'
+      });
       if (!response.ok) {
         throw new Error('Failed to retrieve stocks list.');
       }
@@ -83,7 +85,9 @@ export default function DailyPricesRecording() {
 
     try {
       setLoadingHistory(true);
-      const response = await fetch(`http://localhost:5001/api/prices/${stockId}?page=${pageNum}&limit=5`);
+      const response = await fetch(`http://localhost:5001/api/prices/${stockId}?page=${pageNum}&limit=5`, {
+        credentials: 'include'
+      });
       if (!response.ok) {
         throw new Error('Failed to retrieve price recordings.');
       }
@@ -131,6 +135,7 @@ export default function DailyPricesRecording() {
           price: parseFloat(formPrice),
           volume: parseInt(formVolume),
         }),
+        credentials: 'include',
       });
 
       const json = await response.json();
@@ -180,6 +185,7 @@ export default function DailyPricesRecording() {
           price: parseFloat(editPrice),
           volume: parseInt(editVolume),
         }),
+        credentials: 'include',
       });
 
       const json = await response.json();
@@ -206,6 +212,7 @@ export default function DailyPricesRecording() {
     try {
       const response = await fetch(`http://localhost:5001/api/prices/${recordId}`, {
         method: 'DELETE',
+        credentials: 'include',
       });
 
       const json = await response.json();
