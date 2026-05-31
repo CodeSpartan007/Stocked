@@ -1,9 +1,11 @@
 import { Model, DataTypes } from 'sequelize';
 import { sequelize } from '../config/database';
 import { Stock } from './Stock';
+import { User } from './User';
 
 export class DailyPrice extends Model {
   declare id: string;
+  declare userId: string;
   declare stockId: string;
   declare date: string; // YYYY-MM-DD format
   declare price: number;
@@ -21,6 +23,15 @@ DailyPrice.init(
       defaultValue: DataTypes.UUIDV4,
       primaryKey: true,
       allowNull: false,
+    },
+    userId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      references: {
+        model: User,
+        key: 'id',
+      },
+      onDelete: 'CASCADE',
     },
     stockId: {
       type: DataTypes.UUID,

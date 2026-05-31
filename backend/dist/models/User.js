@@ -8,7 +8,8 @@ class User extends sequelize_1.Model {
 exports.User = User;
 User.init({
     id: {
-        type: sequelize_1.DataTypes.STRING,
+        type: sequelize_1.DataTypes.UUID,
+        defaultValue: sequelize_1.DataTypes.UUIDV4,
         primaryKey: true,
         allowNull: false,
     },

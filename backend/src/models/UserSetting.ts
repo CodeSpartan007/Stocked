@@ -16,7 +16,7 @@ export class UserSetting extends Model {
 UserSetting.init(
   {
     userId: {
-      type: DataTypes.STRING,
+      type: DataTypes.UUID,
       primaryKey: true,
       allowNull: false,
       references: {

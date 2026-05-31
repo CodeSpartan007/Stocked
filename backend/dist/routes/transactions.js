@@ -8,14 +8,18 @@ const auth_1 = require("../middleware/auth");
 const validate_1 = require("../middleware/validate");
 const router = (0, express_1.Router)();
 // Helper to compute holdings and average cost basis chronologically
-async function computeStockHoldings(stockId, tx) {
+async function computeStockHoldings(stockId, userId, tx) {
+    const queryWhere = { stockId };
+    if (userId) {
+        queryWhere.userId = userId;
+    }
     const purchases = await models_1.Purchase.findAll({
-        where: { stockId },
+        where: queryWhere,
         order: [['purchaseDate', 'ASC'], ['createdAt', 'ASC']],
         transaction: tx,
     });
     const sales = await models_1.Sales.findAll({
-        where: { stockId },
+        where: queryWhere,
         order: [['saleDate', 'ASC'], ['createdAt', 'ASC']],
         transaction: tx,
     });
@@ -107,6 +111,7 @@ router.post('/purchases', auth_1.requireAuth, [
         }
         // Record the purchase
         const purchase = await models_1.Purchase.create({
+            userId,
             stockId,
             quantity: Number(quantity),
             purchasePrice: Number(purchasePrice),
@@ -173,7 +178,7 @@ router.post('/sales', auth_1.requireAuth, [
             });
         }
         // Calculate total available holdings (Purchased - Sold) inside transaction context
-        const holdings = await computeStockHoldings(stockId, transaction);
+        const holdings = await computeStockHoldings(stockId, userId, transaction);
         // Short-Selling check
         if (saleQty > holdings.remainingShares) {
             await transaction.rollback();
@@ -192,6 +197,7 @@ router.post('/sales', auth_1.requireAuth, [
         const profitLoss = Number((saleQty * (sPrice - holdings.averageCost)).toFixed(2));
         // Persist the Sales transaction inside DB
         const newSale = await models_1.Sales.create({
+            userId,
             stockId,
             quantity: saleQty,
             sellPrice: sPrice,
@@ -232,11 +238,11 @@ router.get('/history', auth_1.requireAuth, async (req, res) => {
         }
         // Fetch all purchases and sales associated with user's stocks
         const purchases = await models_1.Purchase.findAll({
-            where: { stockId: stockIds },
+            where: { userId },
             include: [{ model: models_1.Stock, as: 'Stock', attributes: ['symbol', 'name'] }],
         });
         const sales = await models_1.Sales.findAll({
-            where: { stockId: stockIds },
+            where: { userId },
             include: [{ model: models_1.Stock, as: 'Stock', attributes: ['symbol', 'name'] }],
         });
         // Map purchases and sales into unified structures

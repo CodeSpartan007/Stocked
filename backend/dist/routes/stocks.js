@@ -76,7 +76,7 @@ router.get('/', auth_1.requireAuth, async (req, res) => {
         const stocksWithSummaries = await Promise.all(stocks.map(async (stock) => {
             // Fetch all prices for this stock to aggregate metrics
             const prices = await models_1.DailyPrice.findAll({
-                where: { stockId: stock.id },
+                where: { stockId: stock.id, userId },
                 order: [['date', 'DESC']],
             });
             const totalRecords = prices.length;

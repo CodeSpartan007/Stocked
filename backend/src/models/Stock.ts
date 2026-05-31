@@ -23,7 +23,7 @@ Stock.init(
       allowNull: false,
     },
     userId: {
-      type: DataTypes.STRING,
+      type: DataTypes.UUID,
       allowNull: false,
       references: {
         model: User,

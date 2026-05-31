@@ -142,7 +142,7 @@ router.get('/charts/:stockId', auth_1.requireAuth, async (req, res) => {
         }
         // 2. Extract historical closing prices & volume
         const dailyPrices = await models_1.DailyPrice.findAll({
-            where: priceWhereClause,
+            where: { ...priceWhereClause, userId },
             order: [['date', 'ASC']],
         });
         // Price Trend Line Chart & Volume Trend Bar Chart buckets
@@ -173,11 +173,11 @@ router.get('/charts/:stockId', auth_1.requireAuth, async (req, res) => {
         // 3. Cumulative Portfolio Performance Timeline
         // Query all transactions
         const purchases = await models_1.Purchase.findAll({
-            where: { stockId: targetStockIds },
+            where: { stockId: targetStockIds, userId },
             order: [['purchaseDate', 'ASC']],
         });
         const sales = await models_1.Sales.findAll({
-            where: { stockId: targetStockIds },
+            where: { stockId: targetStockIds, userId },
             order: [['saleDate', 'ASC']],
         });
         // Calculate in-memory holdings timelines per stock
@@ -189,7 +189,7 @@ router.get('/charts/:stockId', auth_1.requireAuth, async (req, res) => {
         });
         // Query all daily prices for cumulative matching
         const allDailyPrices = await models_1.DailyPrice.findAll({
-            where: { stockId: targetStockIds },
+            where: { stockId: targetStockIds, userId },
             order: [['date', 'ASC']],
         });
         // Sort price feeds by stockId and date for easy lookup
@@ -308,8 +308,8 @@ router.get('/advanced', auth_1.requireAuth, async (req, res) => {
             });
         }
         // Fetch all purchases & sales
-        const purchases = await models_1.Purchase.findAll({ where: { stockId: stockIds }, order: [['purchaseDate', 'ASC']] });
-        const sales = await models_1.Sales.findAll({ where: { stockId: stockIds }, order: [['saleDate', 'ASC']] });
+        const purchases = await models_1.Purchase.findAll({ where: { stockId: stockIds, userId }, order: [['purchaseDate', 'ASC']] });
+        const sales = await models_1.Sales.findAll({ where: { stockId: stockIds, userId }, order: [['saleDate', 'ASC']] });
         // Compute in-memory holdings timelines per stock
         const stockTimelines = {};
         userStocks.forEach((stock) => {
@@ -320,7 +320,7 @@ router.get('/advanced', auth_1.requireAuth, async (req, res) => {
         // Query latest price records for asset allocation
         const latestPrices = await Promise.all(userStocks.map(async (stock) => {
             const lp = await models_1.DailyPrice.findOne({
-                where: { stockId: stock.id },
+                where: { stockId: stock.id, userId },
                 order: [['date', 'DESC'], ['createdAt', 'DESC']],
             });
             return { stockId: stock.id, price: lp ? Number(lp.price) : 0 };
@@ -382,7 +382,7 @@ router.get('/advanced', auth_1.requireAuth, async (req, res) => {
         // 6. Calculate Volatility (Sample Standard Deviation of daily returns)
         // We need to build a chronological timeline of portfolio values to get daily returns.
         const allDailyPrices = await models_1.DailyPrice.findAll({
-            where: { stockId: stockIds },
+            where: { stockId: stockIds, userId },
             order: [['date', 'ASC']],
         });
         // Group prices by stock and date
@@ -498,6 +498,7 @@ router.get('/benchmark', auth_1.requireAuth, async (req, res) => {
                 where: {
                     stockId: stock.id,
                     date: { [sequelize_1.Op.gte]: parsedStart },
+                    userId,
                 },
                 order: [['date', 'ASC']],
             });
@@ -506,6 +507,7 @@ router.get('/benchmark', auth_1.requireAuth, async (req, res) => {
                 where: {
                     stockId: stock.id,
                     date: { [sequelize_1.Op.lte]: parsedEnd },
+                    userId,
                 },
                 order: [['date', 'DESC']],
             });
@@ -565,8 +567,8 @@ router.get('/targets', auth_1.requireAuth, async (req, res) => {
         let totalReturnPercent = 0;
         let annualizedReturnPercent = 0;
         if (stockIds.length > 0) {
-            const purchases = await models_1.Purchase.findAll({ where: { stockId: stockIds }, order: [['purchaseDate', 'ASC']] });
-            const sales = await models_1.Sales.findAll({ where: { stockId: stockIds }, order: [['saleDate', 'ASC']] });
+            const purchases = await models_1.Purchase.findAll({ where: { stockId: stockIds, userId }, order: [['purchaseDate', 'ASC']] });
+            const sales = await models_1.Sales.findAll({ where: { stockId: stockIds, userId }, order: [['saleDate', 'ASC']] });
             const stockTimelines = {};
             userStocks.forEach((stock) => {
                 const stockPurchases = purchases.filter((p) => p.stockId === stock.id);
@@ -575,7 +577,7 @@ router.get('/targets', auth_1.requireAuth, async (req, res) => {
             });
             const latestPrices = await Promise.all(userStocks.map(async (stock) => {
                 const lp = await models_1.DailyPrice.findOne({
-                    where: { stockId: stock.id },
+                    where: { stockId: stock.id, userId },
                     order: [['date', 'DESC'], ['createdAt', 'DESC']],
                 });
                 return { stockId: stock.id, price: lp ? Number(lp.price) : 0 };

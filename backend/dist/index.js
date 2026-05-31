@@ -5,8 +5,11 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
+const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const models_1 = require("./models");
+const auth_1 = __importDefault(require("./routes/auth"));
+const admin_1 = __importDefault(require("./routes/admin"));
 const stocks_1 = __importDefault(require("./routes/stocks"));
 const prices_1 = __importDefault(require("./routes/prices"));
 const transactions_1 = __importDefault(require("./routes/transactions"));
@@ -25,9 +28,12 @@ app.use((0, cors_1.default)({
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     credentials: true,
 }));
-// Body Parser
+// Middleware
 app.use(express_1.default.json());
+app.use((0, cookie_parser_1.default)());
 // Routes
+app.use('/api/auth', auth_1.default);
+app.use('/api/admin', admin_1.default);
 app.use('/api/stocks', stocks_1.default);
 app.use('/api/prices', prices_1.default);
 app.use('/api/transactions', transactions_1.default);

@@ -4,6 +4,7 @@ exports.Purchase = void 0;
 const sequelize_1 = require("sequelize");
 const database_1 = require("../config/database");
 const Stock_1 = require("./Stock");
+const User_1 = require("./User");
 class Purchase extends sequelize_1.Model {
 }
 exports.Purchase = Purchase;
@@ -13,6 +14,15 @@ Purchase.init({
         defaultValue: sequelize_1.DataTypes.UUIDV4,
         primaryKey: true,
         allowNull: false,
+    },
+    userId: {
+        type: sequelize_1.DataTypes.UUID,
+        allowNull: false,
+        references: {
+            model: User_1.User,
+            key: 'id',
+        },
+        onDelete: 'CASCADE',
     },
     stockId: {
         type: sequelize_1.DataTypes.UUID,

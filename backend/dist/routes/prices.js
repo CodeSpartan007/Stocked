@@ -31,7 +31,7 @@ router.get('/:stockId', auth_1.requireAuth, [
         }
         // Fetch prices with pagination
         const { count, rows } = await models_1.DailyPrice.findAndCountAll({
-            where: { stockId },
+            where: { stockId, userId },
             order: [['date', 'DESC']],
             limit,
             offset,
@@ -85,7 +85,7 @@ router.post('/', auth_1.requireAuth, [
         }
         // Check if price record for this stock and date already exists
         const existingPrice = await models_1.DailyPrice.findOne({
-            where: { stockId, date },
+            where: { stockId, date, userId },
         });
         if (existingPrice) {
             return res.status(400).json({
@@ -100,6 +100,7 @@ router.post('/', auth_1.requireAuth, [
         }
         // Create new price log (default source is manual, as required)
         const newPrice = await models_1.DailyPrice.create({
+            userId,
             stockId,
             date,
             price,
@@ -132,21 +133,13 @@ router.put('/:id', auth_1.requireAuth, [
         const { id } = req.params;
         const { price, volume, date } = req.body;
         // Find the price entry
-        const priceEntry = await models_1.DailyPrice.findByPk(id);
+        const priceEntry = await models_1.DailyPrice.findOne({
+            where: { id, userId },
+        });
         if (!priceEntry) {
             return res.status(404).json({
                 success: false,
-                message: 'Price record not found.',
-            });
-        }
-        // Ensure the associated stock belongs to the current user
-        const stock = await models_1.Stock.findOne({
-            where: { id: priceEntry.stockId, userId },
-        });
-        if (!stock) {
-            return res.status(403).json({
-                success: false,
-                message: 'Unauthorized. You do not own this stock.',
+                message: 'Price record not found or unauthorized.',
             });
         }
         // Check if updating date creates a duplicate (stockId, date)
@@ -155,6 +148,7 @@ router.put('/:id', auth_1.requireAuth, [
                 where: {
                     stockId: priceEntry.stockId,
                     date,
+                    userId,
                     id: { [sequelize_1.Op.ne]: id },
                 },
             });
@@ -194,21 +188,13 @@ router.delete('/:id', auth_1.requireAuth, [(0, express_validator_1.param)('id').
     try {
         const userId = req.user.id;
         const { id } = req.params;
-        const priceEntry = await models_1.DailyPrice.findByPk(id);
+        const priceEntry = await models_1.DailyPrice.findOne({
+            where: { id, userId },
+        });
         if (!priceEntry) {
             return res.status(404).json({
                 success: false,
-                message: 'Price record not found.',
-            });
-        }
-        // Ensure the associated stock belongs to the current user
-        const stock = await models_1.Stock.findOne({
-            where: { id: priceEntry.stockId, userId },
-        });
-        if (!stock) {
-            return res.status(403).json({
-                success: false,
-                message: 'Unauthorized. You do not own this stock.',
+                message: 'Price record not found or unauthorized.',
             });
         }
         await priceEntry.destroy();

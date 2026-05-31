@@ -90,7 +90,7 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res: Response) =>
       stocks.map(async (stock) => {
         // Fetch all prices for this stock to aggregate metrics
         const prices = await DailyPrice.findAll({
-          where: { stockId: stock.id },
+          where: { stockId: stock.id, userId },
           order: [['date', 'DESC']],
         });
 

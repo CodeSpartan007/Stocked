@@ -3,10 +3,37 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useAuth } from '@/app/context/AuthContext';
 
 export default function SidebarLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { user, loading, logout } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen w-screen flex flex-col items-center justify-center bg-slate-950 text-slate-100 relative overflow-hidden">
+        <div className="absolute top-1/4 left-1/4 w-[400px] h-[400px] bg-indigo-500/5 rounded-full blur-[100px] pointer-events-none" />
+        <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-emerald-500/5 rounded-full blur-[100px] pointer-events-none" />
+        <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-emerald-400 flex items-center justify-center animate-spin mb-4">
+          <svg className="h-5 w-5 text-slate-900" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H12" />
+          </svg>
+        </div>
+        <p className="text-xs text-slate-500 font-bold tracking-widest uppercase">Hydrating Session Context...</p>
+      </div>
+    );
+  }
+
+  const isAuthPage = pathname?.startsWith('/auth');
+
+  if (isAuthPage) {
+    return <main className="min-h-screen w-screen bg-slate-950 text-slate-100">{children}</main>;
+  }
+
+  if (!user) {
+    return null;
+  }
 
   const navigation = [
     {
@@ -170,16 +197,22 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
         </div>
 
         {/* User profile section */}
-        <div className="flex-shrink-0 flex border-t border-slate-800 p-4 bg-slate-900/40">
+        <div className="flex-shrink-0 flex flex-col border-t border-slate-800 p-4 bg-slate-900/40 space-y-3">
           <div className="flex items-center w-full">
-            <div className="h-9 w-9 rounded-full bg-gradient-to-tr from-indigo-600 to-pink-500 flex items-center justify-center text-slate-100 font-bold text-sm shadow-md">
-              JD
+            <div className="h-9 w-9 rounded-full bg-gradient-to-tr from-indigo-600 to-pink-505 flex items-center justify-center text-slate-100 font-bold text-sm shadow-md">
+              {user.email.substring(0, 2).toUpperCase()}
             </div>
-            <div className="ml-3 overflow-hidden">
-              <p className="text-sm font-semibold text-slate-200 truncate">John Doe</p>
-              <p className="text-xs font-medium text-indigo-400/90 truncate">mock-user-123 (User)</p>
+            <div className="ml-3 overflow-hidden flex-1">
+              <p className="text-sm font-semibold text-slate-200 truncate">{user.email}</p>
+              <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-wide">{user.role}</p>
             </div>
           </div>
+          <button
+            onClick={logout}
+            className="w-full flex items-center justify-center px-4 py-2 border border-rose-500/20 bg-rose-500/5 hover:bg-rose-500/10 hover:border-rose-500/40 text-rose-400 text-xs font-bold rounded-xl transition-all duration-200 cursor-pointer"
+          >
+            Sign Out
+          </button>
         </div>
       </aside>
 
@@ -236,16 +269,22 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
               })}
             </nav>
 
-            <div className="flex-shrink-0 flex border-t border-slate-800 p-4 bg-slate-950/20">
+            <div className="flex-shrink-0 flex flex-col border-t border-slate-800 p-4 bg-slate-950/20 space-y-3">
               <div className="flex items-center">
                 <div className="h-9 w-9 rounded-full bg-gradient-to-tr from-indigo-600 to-pink-500 flex items-center justify-center text-slate-100 font-bold text-sm">
-                  JD
+                  {user.email.substring(0, 2).toUpperCase()}
                 </div>
                 <div className="ml-3">
-                  <p className="text-sm font-semibold text-slate-200">John Doe</p>
-                  <p className="text-xs text-indigo-400 font-medium">mock-user-123</p>
+                  <p className="text-sm font-semibold text-slate-200">{user.email}</p>
+                  <p className="text-[10px] text-indigo-400 font-bold uppercase">{user.role}</p>
                 </div>
               </div>
+              <button
+                onClick={logout}
+                className="w-full flex items-center justify-center px-4 py-2 border border-rose-500/20 bg-rose-500/5 hover:bg-rose-500/10 text-rose-450 text-xs font-bold rounded-xl transition-all cursor-pointer"
+              >
+                Sign Out
+              </button>
             </div>
           </div>
         </div>

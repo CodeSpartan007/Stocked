@@ -10,7 +10,7 @@ class UserSetting extends sequelize_1.Model {
 exports.UserSetting = UserSetting;
 UserSetting.init({
     userId: {
-        type: sequelize_1.DataTypes.STRING,
+        type: sequelize_1.DataTypes.UUID,
         primaryKey: true,
         allowNull: false,
         references: {

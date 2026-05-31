@@ -1,4 +1,7 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ExportLogs = exports.UserSetting = exports.PerformanceTarget = exports.Sales = exports.Purchase = exports.DailyPrice = exports.Stock = exports.User = exports.sequelize = void 0;
 exports.initDb = initDb;
@@ -20,6 +23,7 @@ const UserSetting_1 = require("./UserSetting");
 Object.defineProperty(exports, "UserSetting", { enumerable: true, get: function () { return UserSetting_1.UserSetting; } });
 const ExportLogs_1 = require("./ExportLogs");
 Object.defineProperty(exports, "ExportLogs", { enumerable: true, get: function () { return ExportLogs_1.ExportLogs; } });
+const bcrypt_1 = __importDefault(require("bcrypt"));
 // Set up associations
 User_1.User.hasMany(Stock_1.Stock, { foreignKey: 'userId', onDelete: 'CASCADE', as: 'Stocks' });
 Stock_1.Stock.belongsTo(User_1.User, { foreignKey: 'userId', as: 'User' });
@@ -35,20 +39,42 @@ User_1.User.hasOne(UserSetting_1.UserSetting, { foreignKey: 'userId', onDelete: 
 UserSetting_1.UserSetting.belongsTo(User_1.User, { foreignKey: 'userId', as: 'User' });
 User_1.User.hasMany(ExportLogs_1.ExportLogs, { foreignKey: 'userId', onDelete: 'CASCADE', as: 'ExportLogs' });
 ExportLogs_1.ExportLogs.belongsTo(User_1.User, { foreignKey: 'userId', as: 'User' });
+// Direct User Relations for secure multi-tenant isolation
+User_1.User.hasMany(Purchase_1.Purchase, { foreignKey: 'userId', onDelete: 'CASCADE', as: 'Purchases' });
+Purchase_1.Purchase.belongsTo(User_1.User, { foreignKey: 'userId', as: 'User' });
+User_1.User.hasMany(Sales_1.Sales, { foreignKey: 'userId', onDelete: 'CASCADE', as: 'Sales' });
+Sales_1.Sales.belongsTo(User_1.User, { foreignKey: 'userId', as: 'User' });
+User_1.User.hasMany(DailyPrice_1.DailyPrice, { foreignKey: 'userId', onDelete: 'CASCADE', as: 'DailyPrices' });
+DailyPrice_1.DailyPrice.belongsTo(User_1.User, { foreignKey: 'userId', as: 'User' });
 async function initDb() {
+    // Enable foreign key support in SQLite before syncing
+    await database_1.sequelize.query('PRAGMA foreign_keys = ON;');
+    console.log('SQLite Foreign Keys constraint strictly enabled.');
     // Sync the database
     await database_1.sequelize.sync();
     console.log('Database synced successfully.');
     // Seed default user if not exists
     const mockUser = await User_1.User.findByPk('mock-user-123');
     if (!mockUser) {
+        // Generate secure cryptographically hashed passwords for seeding
+        const userPasswordHash = await bcrypt_1.default.hash('UserPassword123!', 12);
+        const adminPasswordHash = await bcrypt_1.default.hash('AdminPassword123!', 12);
+        // Create user
         await User_1.User.create({
             id: 'mock-user-123',
             email: 'user@stocked.com',
-            passwordHash: 'seeded_dummy_password_hash', // Simulated secure hash for Phase 1
+            passwordHash: userPasswordHash,
             role: 'user',
         });
         console.log('Default mock user (mock-user-123) seeded.');
+        // Create administrator
+        await User_1.User.create({
+            id: 'admin-user-456',
+            email: 'admin@stocked.com',
+            passwordHash: adminPasswordHash,
+            role: 'admin',
+        });
+        console.log('Default administrator user (admin-user-456) seeded.');
         // Seed some initial stocks so there's rich data out of the box
         const apple = await Stock_1.Stock.create({
             id: 'a9f24300-d85f-4029-9e8c-8c0827284ea4',
@@ -76,18 +102,18 @@ async function initDb() {
         };
         // AAPL Price History
         await DailyPrice_1.DailyPrice.bulkCreate([
-            { stockId: apple.id, date: formatDate(5), price: 175.50, volume: 52000000, source: 'manual' },
-            { stockId: apple.id, date: formatDate(4), price: 177.20, volume: 48000000, source: 'manual' },
-            { stockId: apple.id, date: formatDate(3), price: 176.80, volume: 43000000, source: 'api' },
-            { stockId: apple.id, date: formatDate(2), price: 178.45, volume: 55000000, source: 'api' },
-            { stockId: apple.id, date: formatDate(1), price: 180.10, volume: 60000000, source: 'manual' },
+            { id: '1a111111-1111-1111-1111-111111111111', stockId: apple.id, userId: 'mock-user-123', date: formatDate(5), price: 175.50, volume: 52000000, source: 'manual' },
+            { id: '1a111111-1111-1111-1111-222222222222', stockId: apple.id, userId: 'mock-user-123', date: formatDate(4), price: 177.20, volume: 48000000, source: 'manual' },
+            { id: '1a111111-1111-1111-1111-333333333333', stockId: apple.id, userId: 'mock-user-123', date: formatDate(3), price: 176.80, volume: 43000000, source: 'api' },
+            { id: '1a111111-1111-1111-1111-444444444444', stockId: apple.id, userId: 'mock-user-123', date: formatDate(2), price: 178.45, volume: 55000000, source: 'api' },
+            { id: '1a111111-1111-1111-1111-555555555555', stockId: apple.id, userId: 'mock-user-123', date: formatDate(1), price: 180.10, volume: 60000000, source: 'manual' },
         ]);
         // TSLA Price History
         await DailyPrice_1.DailyPrice.bulkCreate([
-            { stockId: tesla.id, date: formatDate(4), price: 185.00, volume: 85000000, source: 'manual' },
-            { stockId: tesla.id, date: formatDate(3), price: 182.30, volume: 92000000, source: 'manual' },
-            { stockId: tesla.id, date: formatDate(2), price: 187.60, volume: 105000000, source: 'api' },
-            { stockId: tesla.id, date: formatDate(1), price: 191.00, volume: 99000000, source: 'manual' },
+            { id: '2b222222-2222-2222-2222-111111111111', stockId: tesla.id, userId: 'mock-user-123', date: formatDate(4), price: 185.00, volume: 85000000, source: 'manual' },
+            { id: '2b222222-2222-2222-2222-222222222222', stockId: tesla.id, userId: 'mock-user-123', date: formatDate(3), price: 182.30, volume: 92000000, source: 'manual' },
+            { id: '2b222222-2222-2222-2222-333333333333', stockId: tesla.id, userId: 'mock-user-123', date: formatDate(2), price: 187.60, volume: 105000000, source: 'api' },
+            { id: '2b222222-2222-2222-2222-444444444444', stockId: tesla.id, userId: 'mock-user-123', date: formatDate(1), price: 191.00, volume: 99000000, source: 'manual' },
         ]);
         console.log('Initial price records seeded.');
     }

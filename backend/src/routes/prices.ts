@@ -39,7 +39,7 @@ router.get(
 
       // Fetch prices with pagination
       const { count, rows } = await DailyPrice.findAndCountAll({
-        where: { stockId },
+        where: { stockId, userId },
         order: [['date', 'DESC']],
         limit,
         offset,
@@ -104,7 +104,7 @@ router.post(
 
       // Check if price record for this stock and date already exists
       const existingPrice = await DailyPrice.findOne({
-        where: { stockId, date },
+        where: { stockId, date, userId },
       });
 
       if (existingPrice) {
@@ -121,6 +121,7 @@ router.post(
 
       // Create new price log (default source is manual, as required)
       const newPrice = await DailyPrice.create({
+        userId,
         stockId,
         date,
         price,
@@ -161,23 +162,13 @@ router.put(
       const { price, volume, date } = req.body;
 
       // Find the price entry
-      const priceEntry = await DailyPrice.findByPk(id);
+      const priceEntry = await DailyPrice.findOne({
+        where: { id, userId },
+      });
       if (!priceEntry) {
         return res.status(404).json({
           success: false,
-          message: 'Price record not found.',
-        });
-      }
-
-      // Ensure the associated stock belongs to the current user
-      const stock = await Stock.findOne({
-        where: { id: priceEntry.stockId, userId },
-      });
-
-      if (!stock) {
-        return res.status(403).json({
-          success: false,
-          message: 'Unauthorized. You do not own this stock.',
+          message: 'Price record not found or unauthorized.',
         });
       }
 
@@ -187,6 +178,7 @@ router.put(
           where: {
             stockId: priceEntry.stockId,
             date,
+            userId,
             id: { [Op.ne]: id },
           },
         });
@@ -236,23 +228,13 @@ router.delete(
       const userId = req.user!.id;
       const { id } = req.params;
 
-      const priceEntry = await DailyPrice.findByPk(id);
+      const priceEntry = await DailyPrice.findOne({
+        where: { id, userId },
+      });
       if (!priceEntry) {
         return res.status(404).json({
           success: false,
-          message: 'Price record not found.',
-        });
-      }
-
-      // Ensure the associated stock belongs to the current user
-      const stock = await Stock.findOne({
-        where: { id: priceEntry.stockId, userId },
-      });
-
-      if (!stock) {
-        return res.status(403).json({
-          success: false,
-          message: 'Unauthorized. You do not own this stock.',
+          message: 'Price record not found or unauthorized.',
         });
       }
 

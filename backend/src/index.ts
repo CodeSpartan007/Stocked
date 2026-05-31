@@ -1,7 +1,10 @@
 import express from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import { initDb } from './models';
+import authRouter from './routes/auth';
+import adminRouter from './routes/admin';
 import stockRouter from './routes/stocks';
 import priceRouter from './routes/prices';
 import transactionRouter from './routes/transactions';
@@ -26,10 +29,13 @@ app.use(
   })
 );
 
-// Body Parser
+// Middleware
 app.use(express.json());
+app.use(cookieParser());
 
 // Routes
+app.use('/api/auth', authRouter);
+app.use('/api/admin', adminRouter);
 app.use('/api/stocks', stockRouter);
 app.use('/api/prices', priceRouter);
 app.use('/api/transactions', transactionRouter);

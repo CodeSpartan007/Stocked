@@ -15,7 +15,7 @@ Stock.init({
         allowNull: false,
     },
     userId: {
-        type: sequelize_1.DataTypes.STRING,
+        type: sequelize_1.DataTypes.UUID,
         allowNull: false,
         references: {
             model: User_1.User,

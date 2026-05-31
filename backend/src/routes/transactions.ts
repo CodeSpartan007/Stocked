@@ -8,15 +8,20 @@ import { handleValidationErrors } from '../middleware/validate';
 const router = Router();
 
 // Helper to compute holdings and average cost basis chronologically
-export async function computeStockHoldings(stockId: string, tx?: Transaction) {
+export async function computeStockHoldings(stockId: string, userId?: string, tx?: Transaction) {
+  const queryWhere: any = { stockId };
+  if (userId) {
+    queryWhere.userId = userId;
+  }
+
   const purchases = await Purchase.findAll({
-    where: { stockId },
+    where: queryWhere,
     order: [['purchaseDate', 'ASC'], ['createdAt', 'ASC']],
     transaction: tx,
   });
 
   const sales = await Sales.findAll({
-    where: { stockId },
+    where: queryWhere,
     order: [['saleDate', 'ASC'], ['createdAt', 'ASC']],
     transaction: tx,
   });
@@ -127,6 +132,7 @@ router.post(
 
       // Record the purchase
       const purchase = await Purchase.create({
+        userId,
         stockId,
         quantity: Number(quantity),
         purchasePrice: Number(purchasePrice),
@@ -203,7 +209,7 @@ router.post(
       }
 
       // Calculate total available holdings (Purchased - Sold) inside transaction context
-      const holdings = await computeStockHoldings(stockId, transaction);
+      const holdings = await computeStockHoldings(stockId, userId, transaction);
 
       // Short-Selling check
       if (saleQty > holdings.remainingShares) {
@@ -226,6 +232,7 @@ router.post(
       // Persist the Sales transaction inside DB
       const newSale = await Sales.create(
         {
+          userId,
           stockId,
           quantity: saleQty,
           sellPrice: sPrice,
@@ -277,12 +284,12 @@ router.get(
 
       // Fetch all purchases and sales associated with user's stocks
       const purchases = await Purchase.findAll({
-        where: { stockId: stockIds },
+        where: { userId },
         include: [{ model: Stock, as: 'Stock', attributes: ['symbol', 'name'] }],
       });
 
       const sales = await Sales.findAll({
-        where: { stockId: stockIds },
+        where: { userId },
         include: [{ model: Stock, as: 'Stock', attributes: ['symbol', 'name'] }],
       });
 

@@ -153,7 +153,7 @@ router.post(
         const activeIds = targetStock ? [targetStock.id] : userStockIds;
         if (activeIds.length > 0) {
           const salesSum = await Sales.sum('profitLoss', {
-            where: { stockId: activeIds },
+            where: { stockId: activeIds, userId },
           });
           totalRealizedPL = Number(salesSum || 0);
         }
@@ -163,11 +163,11 @@ router.post(
 
         const holdingsAndPrices = await Promise.all(
           stocksToCompute.map(async (stock) => {
-            const holdings = await computeStockHoldings(stock.id);
+            const holdings = await computeStockHoldings(stock.id, userId);
             if (holdings.remainingShares <= 0 && targetStock === null) return null;
 
             const latestPriceRecord = await DailyPrice.findOne({
-              where: { stockId: stock.id },
+              where: { stockId: stock.id, userId },
               order: [['date', 'DESC'], ['createdAt', 'DESC']],
             });
             return { stock, holdings, latestPriceRecord };
@@ -214,12 +214,12 @@ router.post(
         const activeIds = targetStock ? [targetStock.id] : userStockIds;
 
         const purchases = await Purchase.findAll({
-          where: { stockId: activeIds },
+          where: { stockId: activeIds, userId },
           include: [{ model: Stock, as: 'Stock', attributes: ['symbol', 'name'] }],
         });
 
         const sales = await Sales.findAll({
-          where: { stockId: activeIds },
+          where: { stockId: activeIds, userId },
           include: [{ model: Stock, as: 'Stock', attributes: ['symbol', 'name'] }],
         });
 
@@ -268,8 +268,8 @@ router.post(
         if (activeIds.length === 0) {
           analyticsData = { totalReturnPercent: 0, annualizedReturnPercent: 0, volatility: 0, assetAllocation: [], benchmarks: [], targets: [] };
         } else {
-          const purchases = await Purchase.findAll({ where: { stockId: activeIds }, order: [['purchaseDate', 'ASC']] });
-          const sales = await Sales.findAll({ where: { stockId: activeIds }, order: [['saleDate', 'ASC']] });
+          const purchases = await Purchase.findAll({ where: { stockId: activeIds, userId }, order: [['purchaseDate', 'ASC']] });
+          const sales = await Sales.findAll({ where: { stockId: activeIds, userId }, order: [['saleDate', 'ASC']] });
 
           const stockTimelines: { [stockId: string]: HoldingPoint[] } = {};
           const stocksToProcess = targetStock ? [targetStock] : userStocks;
@@ -282,7 +282,7 @@ router.post(
           const latestPrices = await Promise.all(
             stocksToProcess.map(async (stock) => {
               const lp = await DailyPrice.findOne({
-                where: { stockId: stock.id },
+                where: { stockId: stock.id, userId },
                 order: [['date', 'DESC'], ['createdAt', 'DESC']],
               });
               return { stockId: stock.id, price: lp ? Number(lp.price) : 0 };
@@ -351,7 +351,7 @@ router.post(
 
           // Volatility
           const allDailyPrices = await DailyPrice.findAll({
-            where: { stockId: activeIds },
+            where: { stockId: activeIds, userId },
             order: [['date', 'ASC']],
           });
 
@@ -427,11 +427,11 @@ router.post(
             const parsedEnd = new Date(parsedEndDate as string);
             for (const stock of stocksToProcess) {
               const startPriceRecord = await DailyPrice.findOne({
-                where: { stockId: stock.id, date: { [Op.gte]: parsedStart } },
+                where: { stockId: stock.id, date: { [Op.gte]: parsedStart }, userId },
                 order: [['date', 'ASC']],
               });
               const endPriceRecord = await DailyPrice.findOne({
-                where: { stockId: stock.id, date: { [Op.lte]: parsedEnd } },
+                where: { stockId: stock.id, date: { [Op.lte]: parsedEnd }, userId },
                 order: [['date', 'DESC']],
               });
               if (startPriceRecord && endPriceRecord) {

@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import ExportActionsDropdown from '../components/ExportActionsDropdown';
+import { useAuth } from '@/app/context/AuthContext';
 
 interface StockSummary {
   id: string;
@@ -57,6 +58,7 @@ interface BenchmarkItem {
 }
 
 export default function Dashboard() {
+  const { user } = useAuth();
   const [stocks, setStocks] = useState<StockSummary[]>([]);
   const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null);
   const [recentTx, setRecentTx] = useState<RecentTransaction[]>([]);
@@ -183,7 +185,7 @@ export default function Dashboard() {
             📊 Capital Market System — Phase 3 Active
           </span>
           <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
-            Welcome back, <span className="bg-gradient-to-r from-emerald-300 to-teal-200 bg-clip-text text-transparent">Developer</span>!
+            Welcome back, <span className="bg-gradient-to-r from-emerald-300 to-teal-200 bg-clip-text text-transparent">{user ? user.email.split('@')[0] : 'Developer'}</span>!
           </h1>
           <p className="text-slate-300 text-sm leading-relaxed">
             Monitor overall portfolio health using the <strong className="font-semibold text-slate-100">Valuation Engine (Average Cost Basis)</strong>. Review real-time asset costs, realized sales earnings, paper gains, and commit audit transactions seamlessly.
@@ -534,7 +536,7 @@ export default function Dashboard() {
           <div className="p-4 bg-slate-900/60 rounded-xl border border-slate-800/80 space-y-2">
             <h5 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Multi-Tenancy Check</h5>
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              Every ledger trade and aggregated valuation is stamp-isolated under active user identity <code className="bg-slate-800 px-1 py-0.5 rounded text-indigo-300 font-mono text-[10px]">mock-user-123</code>. Cross-portfolio leakage is structurally prevented at the relation filter boundaries.
+              Every ledger trade and aggregated valuation is stamp-isolated under active user identity <code className="bg-slate-800 px-1 py-0.5 rounded text-indigo-300 font-mono text-[10px]">{user ? user.email : 'mock-user-123'}</code>. Cross-portfolio leakage is structurally prevented at the relation filter boundaries.
             </p>
           </div>
         </div>

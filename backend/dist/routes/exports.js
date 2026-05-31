@@ -125,18 +125,18 @@ router.post('/generate', auth_1.requireAuth, async (req, res) => {
             const activeIds = targetStock ? [targetStock.id] : userStockIds;
             if (activeIds.length > 0) {
                 const salesSum = await models_1.Sales.sum('profitLoss', {
-                    where: { stockId: activeIds },
+                    where: { stockId: activeIds, userId },
                 });
                 totalRealizedPL = Number(salesSum || 0);
             }
             const activeHoldings = [];
             const stocksToCompute = targetStock ? [targetStock] : userStocks;
             const holdingsAndPrices = await Promise.all(stocksToCompute.map(async (stock) => {
-                const holdings = await (0, transactions_1.computeStockHoldings)(stock.id);
+                const holdings = await (0, transactions_1.computeStockHoldings)(stock.id, userId);
                 if (holdings.remainingShares <= 0 && targetStock === null)
                     return null;
                 const latestPriceRecord = await models_1.DailyPrice.findOne({
-                    where: { stockId: stock.id },
+                    where: { stockId: stock.id, userId },
                     order: [['date', 'DESC'], ['createdAt', 'DESC']],
                 });
                 return { stock, holdings, latestPriceRecord };
@@ -177,11 +177,11 @@ router.post('/generate', auth_1.requireAuth, async (req, res) => {
         else if (reportType === 'transactions') {
             const activeIds = targetStock ? [targetStock.id] : userStockIds;
             const purchases = await models_1.Purchase.findAll({
-                where: { stockId: activeIds },
+                where: { stockId: activeIds, userId },
                 include: [{ model: models_1.Stock, as: 'Stock', attributes: ['symbol', 'name'] }],
             });
             const sales = await models_1.Sales.findAll({
-                where: { stockId: activeIds },
+                where: { stockId: activeIds, userId },
                 include: [{ model: models_1.Stock, as: 'Stock', attributes: ['symbol', 'name'] }],
             });
             let combined = [
@@ -230,8 +230,8 @@ router.post('/generate', auth_1.requireAuth, async (req, res) => {
                 analyticsData = { totalReturnPercent: 0, annualizedReturnPercent: 0, volatility: 0, assetAllocation: [], benchmarks: [], targets: [] };
             }
             else {
-                const purchases = await models_1.Purchase.findAll({ where: { stockId: activeIds }, order: [['purchaseDate', 'ASC']] });
-                const sales = await models_1.Sales.findAll({ where: { stockId: activeIds }, order: [['saleDate', 'ASC']] });
+                const purchases = await models_1.Purchase.findAll({ where: { stockId: activeIds, userId }, order: [['purchaseDate', 'ASC']] });
+                const sales = await models_1.Sales.findAll({ where: { stockId: activeIds, userId }, order: [['saleDate', 'ASC']] });
                 const stockTimelines = {};
                 const stocksToProcess = targetStock ? [targetStock] : userStocks;
                 stocksToProcess.forEach((stock) => {
@@ -241,7 +241,7 @@ router.post('/generate', auth_1.requireAuth, async (req, res) => {
                 });
                 const latestPrices = await Promise.all(stocksToProcess.map(async (stock) => {
                     const lp = await models_1.DailyPrice.findOne({
-                        where: { stockId: stock.id },
+                        where: { stockId: stock.id, userId },
                         order: [['date', 'DESC'], ['createdAt', 'DESC']],
                     });
                     return { stockId: stock.id, price: lp ? Number(lp.price) : 0 };
@@ -300,7 +300,7 @@ router.post('/generate', auth_1.requireAuth, async (req, res) => {
                 }
                 // Volatility
                 const allDailyPrices = await models_1.DailyPrice.findAll({
-                    where: { stockId: activeIds },
+                    where: { stockId: activeIds, userId },
                     order: [['date', 'ASC']],
                 });
                 const stockPriceMap = {};
@@ -371,11 +371,11 @@ router.post('/generate', auth_1.requireAuth, async (req, res) => {
                     const parsedEnd = new Date(parsedEndDate);
                     for (const stock of stocksToProcess) {
                         const startPriceRecord = await models_1.DailyPrice.findOne({
-                            where: { stockId: stock.id, date: { [sequelize_1.Op.gte]: parsedStart } },
+                            where: { stockId: stock.id, date: { [sequelize_1.Op.gte]: parsedStart }, userId },
                             order: [['date', 'ASC']],
                         });
                         const endPriceRecord = await models_1.DailyPrice.findOne({
-                            where: { stockId: stock.id, date: { [sequelize_1.Op.lte]: parsedEnd } },
+                            where: { stockId: stock.id, date: { [sequelize_1.Op.lte]: parsedEnd }, userId },
                             order: [['date', 'DESC']],
                         });
                         if (startPriceRecord && endPriceRecord) {

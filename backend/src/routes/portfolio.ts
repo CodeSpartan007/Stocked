@@ -25,23 +25,21 @@ router.get(
       let totalPortfolioValue = 0;
 
       // 2. Realized P&L: Sum of all stored profitLoss items from Sales
-      if (stockIds.length > 0) {
-        const salesSum = await Sales.sum('profitLoss', {
-          where: { stockId: stockIds },
-        });
-        totalRealizedPL = Number(salesSum || 0);
-      }
+      const salesSum = await Sales.sum('profitLoss', {
+        where: { userId },
+      });
+      totalRealizedPL = Number(salesSum || 0);
 
       // 3. Process remaining assets concurrently
       const activeHoldings: any[] = [];
 
       const holdingsAndPrices = await Promise.all(
         userStocks.map(async (stock) => {
-          const holdings = await computeStockHoldings(stock.id);
+          const holdings = await computeStockHoldings(stock.id, userId);
           if (holdings.remainingShares <= 0) return null;
 
           const latestPriceRecord = await DailyPrice.findOne({
-            where: { stockId: stock.id },
+            where: { stockId: stock.id, userId },
             order: [
               ['date', 'DESC'],
               ['createdAt', 'DESC'],

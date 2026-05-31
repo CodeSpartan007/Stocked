@@ -172,7 +172,7 @@ router.get(
 
       // 2. Extract historical closing prices & volume
       const dailyPrices = await DailyPrice.findAll({
-        where: priceWhereClause,
+        where: { ...priceWhereClause, userId },
         order: [['date', 'ASC']],
       });
 
@@ -207,11 +207,11 @@ router.get(
       // 3. Cumulative Portfolio Performance Timeline
       // Query all transactions
       const purchases = await Purchase.findAll({
-        where: { stockId: targetStockIds },
+        where: { stockId: targetStockIds, userId },
         order: [['purchaseDate', 'ASC']],
       });
       const sales = await Sales.findAll({
-        where: { stockId: targetStockIds },
+        where: { stockId: targetStockIds, userId },
         order: [['saleDate', 'ASC']],
       });
 
@@ -225,7 +225,7 @@ router.get(
 
       // Query all daily prices for cumulative matching
       const allDailyPrices = await DailyPrice.findAll({
-        where: { stockId: targetStockIds },
+        where: { stockId: targetStockIds, userId },
         order: [['date', 'ASC']],
       });
 
@@ -364,8 +364,8 @@ router.get(
       }
 
       // Fetch all purchases & sales
-      const purchases = await Purchase.findAll({ where: { stockId: stockIds }, order: [['purchaseDate', 'ASC']] });
-      const sales = await Sales.findAll({ where: { stockId: stockIds }, order: [['saleDate', 'ASC']] });
+      const purchases = await Purchase.findAll({ where: { stockId: stockIds, userId }, order: [['purchaseDate', 'ASC']] });
+      const sales = await Sales.findAll({ where: { stockId: stockIds, userId }, order: [['saleDate', 'ASC']] });
 
       // Compute in-memory holdings timelines per stock
       const stockTimelines: { [stockId: string]: HoldingPoint[] } = {};
@@ -379,7 +379,7 @@ router.get(
       const latestPrices = await Promise.all(
         userStocks.map(async (stock) => {
           const lp = await DailyPrice.findOne({
-            where: { stockId: stock.id },
+            where: { stockId: stock.id, userId },
             order: [['date', 'DESC'], ['createdAt', 'DESC']],
           });
           return { stockId: stock.id, price: lp ? Number(lp.price) : 0 };
@@ -452,7 +452,7 @@ router.get(
       // 6. Calculate Volatility (Sample Standard Deviation of daily returns)
       // We need to build a chronological timeline of portfolio values to get daily returns.
       const allDailyPrices = await DailyPrice.findAll({
-        where: { stockId: stockIds },
+        where: { stockId: stockIds, userId },
         order: [['date', 'ASC']],
       });
 
@@ -579,6 +579,7 @@ router.get(
           where: {
             stockId: stock.id,
             date: { [Op.gte]: parsedStart },
+            userId,
           },
           order: [['date', 'ASC']],
         });
@@ -588,6 +589,7 @@ router.get(
           where: {
             stockId: stock.id,
             date: { [Op.lte]: parsedEnd },
+            userId,
           },
           order: [['date', 'DESC']],
         });
@@ -658,8 +660,8 @@ router.get(
       let annualizedReturnPercent = 0;
 
       if (stockIds.length > 0) {
-        const purchases = await Purchase.findAll({ where: { stockId: stockIds }, order: [['purchaseDate', 'ASC']] });
-        const sales = await Sales.findAll({ where: { stockId: stockIds }, order: [['saleDate', 'ASC']] });
+        const purchases = await Purchase.findAll({ where: { stockId: stockIds, userId }, order: [['purchaseDate', 'ASC']] });
+        const sales = await Sales.findAll({ where: { stockId: stockIds, userId }, order: [['saleDate', 'ASC']] });
 
         const stockTimelines: { [stockId: string]: HoldingPoint[] } = {};
         userStocks.forEach((stock) => {
@@ -671,7 +673,7 @@ router.get(
         const latestPrices = await Promise.all(
           userStocks.map(async (stock) => {
             const lp = await DailyPrice.findOne({
-              where: { stockId: stock.id },
+              where: { stockId: stock.id, userId },
               order: [['date', 'DESC'], ['createdAt', 'DESC']],
             });
             return { stockId: stock.id, price: lp ? Number(lp.price) : 0 };
