@@ -94,7 +94,7 @@ export default function TransactionsPage() {
       if (json.success) {
         setTransactions(json.data);
       } else {
-        throw new Error(json.message || 'Failed to retrieve chronological transactions ledger.');
+        throw new Error(json.message || 'Failed to retrieve chronological trade history.');
       }
     } catch (err: any) {
       if (err.name === 'AbortError' || err.name === 'DOMException') {
@@ -102,7 +102,7 @@ export default function TransactionsPage() {
         return;
       }
       console.error('Failed to fetch ledger rows:', err);
-      setErrorMessage(`Failed to retrieve transaction history: ${err.message || err}`);
+      setErrorMessage(`Failed to retrieve trade history: ${err.message || err}`);
       setTransactions([]); // Reset to clear table on failure
     } finally {
       if (!signal || !signal.aborted) {
@@ -196,13 +196,13 @@ export default function TransactionsPage() {
       {/* Title Header */}
       <div>
         <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 mb-3">
-          💼 Double-Entry Ledger Book
+          💼 Trade History & Recording
         </span>
         <h1 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
-          Transactions Ledger
+          Trade History
         </h1>
         <p className="text-slate-400 text-sm mt-1">
-          Record asset acquisitions or sales and review chronological profit & loss audits.
+          Record buys or sells and review trade history.
         </p>
       </div>
 
@@ -224,7 +224,7 @@ export default function TransactionsPage() {
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              📈 Buy Asset
+              📈 Buy Stock
             </button>
             <button
               onClick={() => {
@@ -238,12 +238,12 @@ export default function TransactionsPage() {
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              📉 Sell Asset
+              📉 Sell Stock
             </button>
           </div>
 
           <h3 className="text-lg font-bold text-white mb-4">
-            {activeTab === 'BUY' ? 'Record Asset Purchase' : 'Record Asset Sale'}
+            {activeTab === 'BUY' ? 'Record a Buy' : 'Record a Sell'}
           </h3>
 
           {/* Feedback banners */}
@@ -276,7 +276,7 @@ export default function TransactionsPage() {
               {/* Select Stock */}
               <div>
                 <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                  Select Stock Counter
+                  Select Stock
                 </label>
                 <select
                   value={selectedStockId}
@@ -294,7 +294,7 @@ export default function TransactionsPage() {
               {/* Quantity */}
               <div>
                 <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                  Quantity (shares)
+                  Number of Shares
                 </label>
                 <input
                   type="number"
@@ -310,7 +310,7 @@ export default function TransactionsPage() {
               {/* Purchase/Sell Price */}
               <div>
                 <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                  {activeTab === 'BUY' ? 'Purchase Price ($)' : 'Sell Price ($)'}
+                  Price per Share ($)
                 </label>
                 <input
                   type="number"
@@ -368,12 +368,12 @@ export default function TransactionsPage() {
                         d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                       />
                     </svg>
-                    Processing Transaction...
+                    Processing Trade...
                   </span>
                 ) : activeTab === 'BUY' ? (
-                  'Commit Purchase Ledger'
+                  'Record Buy'
                 ) : (
-                  'Commit Sale Ledger'
+                  'Record Sell'
                 )}
               </button>
             </form>
@@ -386,8 +386,8 @@ export default function TransactionsPage() {
           <div className="bg-slate-900/20 backdrop-blur-md border border-slate-800/80 rounded-3xl p-6 shadow-xl space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
-                <h3 className="text-lg font-bold text-white">Double-Entry Historical Ledger</h3>
-                <p className="text-xs text-slate-400 mt-1">Audit log of all security transaction executions</p>
+                <h3 className="text-lg font-bold text-white">Trade Log</h3>
+                <p className="text-xs text-slate-400 mt-1">History of all logged buys and sells</p>
               </div>
 
               {/* Date Filters with live-refresh controls */}
@@ -449,7 +449,7 @@ export default function TransactionsPage() {
                     d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2"
                   />
                 </svg>
-                <p className="text-slate-400 text-sm font-semibold">No transactions recorded in this window.</p>
+                <p className="text-slate-400 text-sm font-semibold">No trade records found within the selected dates.</p>
               </div>
             ) : (
               <div className="overflow-x-auto rounded-xl border border-slate-800/80">
@@ -457,11 +457,11 @@ export default function TransactionsPage() {
                   <thead>
                     <tr className="bg-slate-950 text-slate-400 text-[10px] font-bold uppercase tracking-wider border-b border-slate-800/85">
                       <th className="px-4 py-3.5">Type</th>
-                      <th className="px-4 py-3.5">Stock</th>
+                      <th className="px-4 py-3.5">Stock Code &amp; Name</th>
                       <th className="px-4 py-3.5 text-right">Quantity</th>
                       <th className="px-4 py-3.5 text-right">Price</th>
                       <th className="px-4 py-3.5 text-right">Date</th>
-                      <th className="px-4 py-3.5 text-right">Realized P&L</th>
+                      <th className="px-4 py-3.5 text-right">Gains/Losses</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-850 bg-slate-950/20 text-xs">

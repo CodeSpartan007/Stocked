@@ -121,7 +121,7 @@ export default function DailyPricesRecording() {
     setFormSuccessMessage(null);
 
     if (!selectedStockId) {
-      setFormErrors([{ field: 'stockId', message: 'Please select a stock ticker.' }]);
+      setFormErrors([{ field: 'stockId', message: 'Please select a stock.' }]);
       return;
     }
 
@@ -243,7 +243,7 @@ export default function DailyPricesRecording() {
       <div>
         <h1 className="text-3xl font-black tracking-tight text-white">Daily Price Recording</h1>
         <p className="text-sm text-slate-400 mt-1">
-          Manually input ticker prices and daily volumes. Fetch, paginate, and correct recordings in real-time.
+          Manually input stock prices and daily volumes. View and update entries in real-time.
         </p>
       </div>
 
@@ -261,8 +261,7 @@ export default function DailyPricesRecording() {
         {/* Left Column: Recording Form */}
         <div className="bg-slate-900/40 backdrop-blur-xl border border-slate-800 rounded-3xl p-6 shadow-xl space-y-6">
           <div>
-            <h2 className="text-lg font-bold text-white">Manual Record Form</h2>
-            <p className="text-xs text-slate-400 mt-1">Inputs default to manual data-source badges.</p>
+            <h2 className="text-lg font-bold text-white">Add Price Record</h2>
           </div>
 
           {loadingStocks ? (
@@ -271,7 +270,7 @@ export default function DailyPricesRecording() {
             <div className="text-center py-6 bg-slate-950/40 rounded-2xl border border-slate-850 px-4 space-y-3">
               <p className="text-slate-400 text-xs font-semibold">No stocks registered in catalog.</p>
               <p className="text-slate-500 text-[11px] leading-relaxed">
-                You must register at least one stock counter before logging daily prices.
+                You must register at least one stock before logging daily prices.
               </p>
             </div>
           ) : (
@@ -279,7 +278,7 @@ export default function DailyPricesRecording() {
               {/* Stock Selector */}
               <div>
                 <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                  Select Stock Counter
+                  Select Stock
                 </label>
                 <select
                   value={selectedStockId}
@@ -317,7 +316,7 @@ export default function DailyPricesRecording() {
               {/* Price field */}
               <div>
                 <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                  Close Price ($)
+                  Price per Share ($)
                 </label>
                 <input
                   type="number"
@@ -337,7 +336,7 @@ export default function DailyPricesRecording() {
               {/* Volume field */}
               <div>
                 <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                  Trading Volume (Shares)
+                  Number of Shares Traded
                 </label>
                 <input
                   type="number"
@@ -367,7 +366,7 @@ export default function DailyPricesRecording() {
                 type="submit"
                 className="w-full inline-flex items-center justify-center px-4 py-2.5 rounded-xl text-sm font-bold text-slate-900 bg-gradient-to-r from-indigo-400 to-indigo-300 hover:from-indigo-300 hover:to-indigo-200 transition-all duration-200 shadow-lg shadow-indigo-500/20 cursor-pointer active:scale-98"
               >
-                Log Price Entry
+                Save Price Record
               </button>
             </form>
           )}
@@ -377,8 +376,8 @@ export default function DailyPricesRecording() {
         <div className="lg:col-span-2 bg-slate-900/20 backdrop-blur-md border border-slate-800 rounded-3xl p-6 shadow-xl space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h2 className="text-lg font-bold text-white">Price History Logs</h2>
-              <p className="text-xs text-slate-400 mt-1">Paginated daily logs. Edit or remove erroneous records.</p>
+              <h2 className="text-lg font-bold text-white">Price History Over Time</h2>
+              <p className="text-xs text-slate-400 mt-1">View paginated daily logs, edit, or remove records.</p>
             </div>
 
             {/* Filter by Stock selector */}
@@ -413,9 +412,9 @@ export default function DailyPricesRecording() {
               <svg className="h-12 w-12 text-slate-700 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
-              <h4 className="text-sm font-bold text-slate-300">No Historical Records Found</h4>
+              <h4 className="text-sm font-bold text-slate-300">No Price History Found</h4>
               <p className="text-xs text-slate-500 mt-1.5 max-w-xs">
-                No daily price coordinates are logged in the database for this stock. Fill out the form to log your first coordinate!
+                No price history is recorded for this stock yet. Save a price above to get started!
               </p>
             </div>
           ) : (
@@ -425,9 +424,9 @@ export default function DailyPricesRecording() {
                   <thead className="bg-slate-900/60">
                     <tr>
                       <th className="px-6 py-4 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Date</th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Close Price</th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Trading Volume</th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Source</th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Price</th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Volume Traded</th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Price Type</th>
                       <th className="px-6 py-4 text-right text-xs font-bold text-slate-300 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
@@ -507,11 +506,11 @@ export default function DailyPricesRecording() {
                           <td className="px-6 py-4 whitespace-nowrap">
                             {record.source === 'api' ? (
                               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wider uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                🔌 api
+                                Live Network Price
                               </span>
                             ) : (
                               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wider uppercase bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                                ✍️ manual
+                                Added by You
                               </span>
                             )}
                           </td>

@@ -257,10 +257,10 @@ export default function AnalyticsPage() {
         <div>
           <h1 className="text-3xl font-black bg-gradient-to-r from-indigo-200 via-slate-100 to-emerald-200 bg-clip-text text-transparent flex items-center gap-3">
             <Activity className="text-indigo-400 h-8 w-8" />
-            Phase 3 Analytics Dashboard
+            Performance &amp; Insights
           </h1>
           <p className="text-slate-400 text-xs mt-1">
-            Quantitative visualizers, time-series chart filters, and performance milestone registers.
+            View net returns, investment mix, and set financial goals.
           </p>
         </div>
 
@@ -318,8 +318,8 @@ export default function AnalyticsPage() {
       {/* Metrics Header with Export Actions */}
       <div className="flex items-center justify-between bg-slate-900/10 backdrop-blur-md border border-slate-800/40 rounded-2xl p-4 shadow-md">
         <div>
-          <h2 className="text-xs font-black uppercase tracking-wider text-indigo-400">Quantitative Metrics View</h2>
-          <p className="text-[9px] text-slate-500 font-medium">Filtered returns, daily volatilities, and allocation values</p>
+          <h2 className="text-xs font-black uppercase tracking-wider text-indigo-400">Key Metrics View</h2>
+          <p className="text-[9px] text-slate-500 font-medium">Returns, growth, and total market value</p>
         </div>
         <ExportActionsDropdown 
           reportType="analytics" 
@@ -335,7 +335,7 @@ export default function AnalyticsPage() {
         <div className="bg-slate-900/40 backdrop-blur-xl border border-slate-800/80 rounded-2xl p-6 shadow-lg relative overflow-hidden group hover:border-indigo-500/30 transition-all duration-300">
           <div className="absolute top-0 left-0 right-0 h-1 bg-indigo-500/80" />
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Total Return</span>
+            <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Total Gain/Loss (%)</span>
             <span className="h-7 w-7 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
               <Percent className="h-4 w-4" />
             </span>
@@ -349,14 +349,14 @@ export default function AnalyticsPage() {
               `${(metrics?.totalReturnPercent ?? 0) >= 0 ? '+' : ''}${(metrics?.totalReturnPercent ?? 0).toFixed(2)}%`
             )}
           </h3>
-          <p className="text-[10px] text-slate-400 mt-2 font-medium">Net performance return ratio of capital</p>
+          <p className="text-[10px] text-slate-400 mt-2 font-medium">Total gain or loss on your money put in</p>
         </div>
 
         {/* Annualized Return Card */}
         <div className="bg-slate-900/40 backdrop-blur-xl border border-slate-800/80 rounded-2xl p-6 shadow-lg relative overflow-hidden group hover:border-emerald-500/30 transition-all duration-300">
           <div className="absolute top-0 left-0 right-0 h-1 bg-emerald-500/80" />
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Annualized Return</span>
+            <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Annual Growth Rate (CAGR)</span>
             <span className="h-7 w-7 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
               <TrendingUp className="h-4 w-4" />
             </span>
@@ -370,14 +370,14 @@ export default function AnalyticsPage() {
               `${(metrics?.annualizedReturnPercent ?? 0) >= 0 ? '+' : ''}${(metrics?.annualizedReturnPercent ?? 0).toFixed(2)}%`
             )}
           </h3>
-          <p className="text-[10px] text-slate-400 mt-2 font-medium">Compounded annualized CAGR yield rate</p>
+          <p className="text-[10px] text-slate-400 mt-2 font-medium">Compounded annual growth rate</p>
         </div>
 
         {/* Volatility Index Card */}
         <div className="bg-slate-900/40 backdrop-blur-xl border border-slate-800/80 rounded-2xl p-6 shadow-lg relative overflow-hidden group hover:border-rose-500/30 transition-all duration-300">
           <div className="absolute top-0 left-0 right-0 h-1 bg-rose-500/80" />
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Daily Volatility (σ)</span>
+            <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Stock Volatility</span>
             <span className="h-7 w-7 rounded-lg bg-rose-500/10 text-rose-400 flex items-center justify-center">
               <Activity className="h-4 w-4" />
             </span>
@@ -389,14 +389,14 @@ export default function AnalyticsPage() {
               `${(metrics?.volatility ?? 0).toFixed(3)}%`
             )}
           </h3>
-          <p className="text-[10px] text-slate-400 mt-2 font-medium">Standard deviation sample daily volatility</p>
+          <p className="text-[10px] text-slate-400 mt-2 font-medium">Price stability of your active shares</p>
         </div>
 
         {/* Total Assets Valuation Card */}
         <div className="bg-slate-900/40 backdrop-blur-xl border border-slate-800/80 rounded-2xl p-6 shadow-lg relative overflow-hidden group hover:border-indigo-500/30 transition-all duration-300">
           <div className="absolute top-0 left-0 right-0 h-1 bg-indigo-500" />
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Valuation Value</span>
+            <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Current Value</span>
             <span className="h-7 w-7 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
               <DollarSign className="h-4 w-4" />
             </span>
@@ -408,7 +408,7 @@ export default function AnalyticsPage() {
               `$${(metrics?.totalPortfolioValue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
             )}
           </h3>
-          <p className="text-[10px] text-slate-400 mt-2 font-medium">Current active inventory market valuation</p>
+          <p className="text-[10px] text-slate-400 mt-2 font-medium">Market value of your active shares</p>
         </div>
       </div>
 
@@ -418,10 +418,10 @@ export default function AnalyticsPage() {
           <div>
             <h2 className="text-lg font-bold text-white flex items-center gap-2">
               <BarChart2 className="text-indigo-400 h-5 w-5" />
-              Advanced Time-Series Aggregations
+              Portfolio Value Over Time
             </h2>
             <p className="text-xs text-slate-400">
-              Interactive visualizations plotting {selectedStockId === 'portfolio' ? 'cumulative portfolio metrics' : 'isolated counter trends'}.
+              Interactive visualizations plotting your {selectedStockId === 'portfolio' ? 'cumulative portfolio performance' : 'stock price history'}.
             </p>
           </div>
 
@@ -435,7 +435,7 @@ export default function AnalyticsPage() {
                   : 'text-slate-400 hover:text-slate-200 border border-transparent'
               }`}
             >
-              Cumulative P&amp;L
+              Total Gains/Losses
             </button>
             <button
               onClick={() => setActiveChartTab('price')}
@@ -478,8 +478,8 @@ export default function AnalyticsPage() {
             (activeChartTab === 'volume' && chartData.volumeTrend.length === 0) ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center border border-dashed border-slate-800 rounded-xl gap-2 text-slate-400">
               <BarChart2 className="h-10 w-10 text-slate-600" />
-              <p className="text-xs font-medium">Sparse time-series price records detected for selection.</p>
-              <p className="text-[10px] text-slate-500">Seed daily price points or adjust target scope dates.</p>
+              <p className="text-xs font-medium">No price records found for this selection.</p>
+              <p className="text-[10px] text-slate-500">Add price history points or adjust target dates.</p>
             </div>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
@@ -506,7 +506,7 @@ export default function AnalyticsPage() {
                   <Legend wrapperStyle={{ fontSize: '10px' }} />
                   <Area
                     type="monotone"
-                    name="Total P&amp;L ($)"
+                    name="Total Gains/Losses ($)"
                     dataKey="totalPL"
                     stroke="#10b981"
                     strokeWidth={2}
@@ -515,7 +515,7 @@ export default function AnalyticsPage() {
                   />
                   <Area
                     type="monotone"
-                    name="Valuation Value ($)"
+                    name="Current Value ($)"
                     dataKey="portfolioValue"
                     stroke="#6366f1"
                     strokeWidth={1.5}
@@ -524,7 +524,7 @@ export default function AnalyticsPage() {
                   />
                   <Area
                     type="monotone"
-                    name="Invested Capital ($)"
+                    name="Money Put In ($)"
                     dataKey="investedCapital"
                     stroke="#f43f5e"
                     strokeWidth={1.5}
@@ -598,9 +598,9 @@ export default function AnalyticsPage() {
           <div>
             <h2 className="text-lg font-bold text-white flex items-center gap-2">
               <PieIcon className="text-emerald-400 h-5 w-5" />
-              Asset Allocation Breakdown
+              My Investment Mix
             </h2>
-            <p className="text-xs text-slate-400 mt-1">Portfolio diversification weight by valuation percentage</p>
+            <p className="text-xs text-slate-400 mt-1">Diversification mix of your current stocks</p>
           </div>
 
           <div className="h-60 w-full relative flex items-center justify-center my-4">
@@ -675,10 +675,10 @@ export default function AnalyticsPage() {
           <div>
             <h2 className="text-lg font-bold text-white flex items-center gap-2">
               <TrendingUp className="text-indigo-400 h-5 w-5" />
-              Counter Benchmarking Table
+              Stock Performance Comparison
             </h2>
             <p className="text-xs text-slate-400 mt-1">
-              Cross-compare individual stocks relative performance gains inside date filters.
+              Compare stock price changes within the selected dates.
             </p>
           </div>
 
@@ -686,15 +686,15 @@ export default function AnalyticsPage() {
             {loading ? (
               <div className="p-12 text-center text-slate-500 text-xs">Awaiting benchmarking calculations...</div>
             ) : benchmarks.length === 0 ? (
-              <div className="p-12 text-center text-slate-500 text-xs">No stock performance datasets resolved.</div>
+              <div className="p-12 text-center text-slate-500 text-xs">No performance records found.</div>
             ) : (
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-950/70 text-slate-400 text-[10px] font-bold uppercase tracking-wider border-b border-slate-800/80">
-                    <th className="px-4 py-3">Asset Counter</th>
+                    <th className="px-4 py-3">Stock Name &amp; Symbol</th>
                     <th className="px-4 py-3 text-right">Start Price</th>
                     <th className="px-4 py-3 text-right">End Price</th>
-                    <th className="px-4 py-3 text-right">Gain (%)</th>
+                    <th className="px-4 py-3 text-right">Gains/Losses (%)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-850 text-xs font-medium">
@@ -742,9 +742,9 @@ export default function AnalyticsPage() {
           <div>
             <h2 className="text-lg font-bold text-white flex items-center gap-2">
               <Target className="text-rose-400 h-5 w-5" />
-              Active Target Performance Trackers
+              My Financial Goals
             </h2>
-            <p className="text-xs text-slate-400 mt-1">Real-time status tracking against custom targets and timelines</p>
+            <p className="text-xs text-slate-400 mt-1">Track progress towards your investment milestones</p>
           </div>
 
           <div className="space-y-4 max-h-[360px] overflow-y-auto pr-1">
@@ -753,8 +753,8 @@ export default function AnalyticsPage() {
             ) : targets.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10 border border-dashed border-slate-800 rounded-xl space-y-2">
                 <Target className="h-8 w-8 text-slate-700" />
-                <p className="text-xs text-slate-400 font-medium">No performance targets registered yet.</p>
-                <p className="text-[10px] text-slate-500">Register goals in the widget adjacent to start benchmark track.</p>
+                <p className="text-xs text-slate-400 font-medium">No financial goals set yet.</p>
+                <p className="text-[10px] text-slate-500">Create a goal in the form below to start tracking.</p>
               </div>
             ) : (
               targets.map((t) => (
@@ -823,22 +823,22 @@ export default function AnalyticsPage() {
           <div>
             <h2 className="text-lg font-bold text-white flex items-center gap-2">
               <Plus className="text-indigo-400 h-5 w-5" />
-              Register Performance Goal
+              Create a Goal
             </h2>
-            <p className="text-xs text-slate-400 mt-1">Define goals to benchmark your stock and valuation progress</p>
+            <p className="text-xs text-slate-400 mt-1">Set a new target to keep your investments on track</p>
           </div>
 
           <form onSubmit={handleAddTarget} className="space-y-4 my-4">
             <div>
               <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                Goal / Target Name
+                Goal Name
               </label>
               <input
                 type="text"
                 required
                 value={newTargetName}
                 onChange={(e) => setNewTargetName(e.target.value)}
-                placeholder="e.g. Q4 Milestone portfolio target"
+                placeholder="e.g. House Down Payment"
                 className="w-full bg-slate-950/80 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 placeholder-slate-650"
               />
             </div>
@@ -846,7 +846,7 @@ export default function AnalyticsPage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                  Target Metric Type
+                  Target Metric
                 </label>
                 <select
                   value={newTargetType}
@@ -861,7 +861,7 @@ export default function AnalyticsPage() {
 
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                  Goal Value / Target
+                  Target Amount
                 </label>
                 <input
                   type="number"
@@ -878,7 +878,7 @@ export default function AnalyticsPage() {
 
             <div>
               <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                Target Expiry Date
+                Target Date
               </label>
               <input
                 type="date"
@@ -897,7 +897,7 @@ export default function AnalyticsPage() {
               disabled={formSubmitting}
               className="w-full flex items-center justify-center bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-4 rounded-xl text-xs shadow-lg shadow-indigo-600/10 hover:shadow-indigo-500/20 active:scale-95 transition-all disabled:opacity-50"
             >
-              {formSubmitting ? 'Registering Goal...' : 'Register Goal Milestone'}
+              {formSubmitting ? 'Saving Goal...' : 'Save Goal'}
             </button>
           </form>
         </div>

@@ -75,7 +75,7 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
       ),
     },
     {
-      name: 'Stocks Counter',
+      name: 'Stocks',
       href: '/stocks',
       icon: (active: boolean) => (
         <svg
@@ -113,7 +113,7 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
       ),
     },
     {
-      name: 'Transactions Ledger',
+      name: 'Trade History',
       href: '/transactions',
       icon: (active: boolean) => (
         <svg

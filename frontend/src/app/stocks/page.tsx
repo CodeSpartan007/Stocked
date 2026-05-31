@@ -52,7 +52,7 @@ export default function StocksCatalog() {
         credentials: 'include'
       });
       if (!response.ok) {
-        throw new Error('Could not fetch stock counters.');
+        throw new Error('Could not fetch stocks.');
       }
       const json = await response.json();
       if (json.success) {
@@ -219,7 +219,7 @@ export default function StocksCatalog() {
         <div>
           <h1 className="text-3xl font-black tracking-tight text-white">Registered Stocks</h1>
           <p className="text-sm text-slate-400 mt-1">
-            Register and manage stock counters. Cascade-deletes automatically purge associated Daily Price logs.
+            Register and manage your stock catalog.
           </p>
         </div>
         <div>
@@ -227,10 +227,10 @@ export default function StocksCatalog() {
             onClick={openAddModal}
             className="inline-flex items-center px-4 py-2.5 rounded-xl text-sm font-bold text-slate-900 bg-gradient-to-r from-emerald-400 to-teal-300 hover:from-emerald-300 hover:to-teal-200 transition-all duration-200 shadow-lg shadow-emerald-500/20 active:scale-95 cursor-pointer"
           >
-            <svg className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+            <svg className="h-4.5 w-4.5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
             </svg>
-            Add Stock Ticker
+            Add Stock
           </button>
         </div>
       </div>
@@ -255,7 +255,7 @@ export default function StocksCatalog() {
           </span>
           <input
             type="text"
-            placeholder="Search by ticker symbol or stock name..."
+            placeholder="Search by stock code or name..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-xl pl-11 pr-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all"
@@ -294,15 +294,15 @@ export default function StocksCatalog() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
             </svg>
           </div>
-          <h3 className="text-xl font-bold text-white">No Tickers Match Filters</h3>
+          <h3 className="text-xl font-bold text-white">No Stocks Match Filters</h3>
           <p className="text-slate-400 text-sm mt-2 max-w-sm">
-            We couldn't find any stock counters matching "{searchQuery}" or sector "{selectedCategory}". Add a new stock counter to get started!
+            We couldn't find any stocks matching "{searchQuery}" or sector "{selectedCategory}". Add a new stock to get started!
           </p>
           <button
             onClick={openAddModal}
             className="mt-6 inline-flex items-center px-4 py-2 rounded-xl text-sm font-bold text-slate-900 bg-indigo-400 hover:bg-indigo-300 transition-all cursor-pointer"
           >
-            Add New Ticker
+            Add New Stock
           </button>
         </div>
       ) : (
@@ -343,7 +343,7 @@ export default function StocksCatalog() {
                               ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-300 shadow-[0_0_10px_rgba(34,211,238,0.1)]'
                               : 'bg-amber-500/10 border-amber-500/20 text-amber-300'
                           }`}>
-                            {stock.summary.source === 'live' ? 'Live Feed' : 'Manual'}
+                            {stock.summary.source === 'live' ? 'Live Network Price' : 'Added by You'}
                           </span>
                           {stock.summary.lastUpdated && (
                             <span className="text-[9px] text-slate-500 font-mono">
@@ -363,7 +363,7 @@ export default function StocksCatalog() {
                     <button
                       onClick={() => openEditModal(stock)}
                       className="p-2 text-slate-400 hover:text-indigo-400 hover:bg-slate-800/60 rounded-lg transition-all"
-                      title="Edit Stock Ticker"
+                      title="Edit Stock"
                     >
                       <svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -420,7 +420,7 @@ export default function StocksCatalog() {
                     </div>
                   ) : (
                     <div className="py-4 text-center bg-slate-950/20 border border-slate-850 rounded-xl">
-                      <p className="text-xs text-slate-500 font-semibold">No daily price metrics recorded yet</p>
+                      <p className="text-xs text-slate-500 font-semibold">No price records saved yet</p>
                     </div>
                   )}
                 </div>
@@ -437,8 +437,8 @@ export default function StocksCatalog() {
 
           <div className="relative bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-6">
             <div>
-              <h3 className="text-xl font-bold text-white">Register Stock Ticker</h3>
-              <p className="text-xs text-slate-400 mt-1">Configure user-scoped capital market symbols.</p>
+              <h3 className="text-xl font-bold text-white">Register Stock</h3>
+              <p className="text-xs text-slate-400 mt-1">Add a new stock to your portfolio catalog.</p>
             </div>
 
             <form onSubmit={handleAddStock} className="space-y-4">
@@ -450,19 +450,19 @@ export default function StocksCatalog() {
                   placeholder="e.g. Apple Inc."
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none transition-all"
+                  className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-650 focus:outline-none transition-all"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase mb-2">Ticker Symbol</label>
+                <label className="block text-xs font-semibold text-slate-300 uppercase mb-2">Stock Code (Ticker)</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. AAPL"
                   value={formSymbol}
                   onChange={(e) => setFormSymbol(e.target.value.toUpperCase())}
-                  className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none transition-all uppercase"
+                  className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-650 focus:outline-none transition-all uppercase"
                 />
                 {getFieldError('symbol') && (
                   <p className="text-rose-400 text-xs mt-1.5 font-medium">{getFieldError('symbol')}</p>
@@ -507,7 +507,7 @@ export default function StocksCatalog() {
                   type="submit"
                   className="px-4 py-2 rounded-xl text-xs font-bold text-slate-900 bg-gradient-to-r from-emerald-400 to-teal-300 hover:from-emerald-300 hover:to-teal-200 transition-all cursor-pointer"
                 >
-                  Register Ticker
+                  Register Stock
                 </button>
               </div>
             </form>
@@ -522,8 +522,8 @@ export default function StocksCatalog() {
 
           <div className="relative bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-6">
             <div>
-              <h3 className="text-xl font-bold text-white">Edit Stock Ticker</h3>
-              <p className="text-xs text-slate-400 mt-1">Modify details for registered symbol.</p>
+              <h3 className="text-xl font-bold text-white">Edit Stock</h3>
+              <p className="text-xs text-slate-400 mt-1">Modify stock profile details.</p>
             </div>
 
             <form onSubmit={handleEditStock} className="space-y-4">
@@ -540,7 +540,7 @@ export default function StocksCatalog() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase mb-2">Ticker Symbol</label>
+                <label className="block text-xs font-semibold text-slate-300 uppercase mb-2">Stock Code (Ticker)</label>
                 <input
                   type="text"
                   required
@@ -613,10 +613,10 @@ export default function StocksCatalog() {
             </div>
 
             <div className="text-center space-y-2">
-              <h3 className="text-lg font-bold text-white">Delete Stock Counter?</h3>
+              <h3 className="text-lg font-bold text-white">Delete Stock?</h3>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Are you absolutely sure you want to delete <span className="font-semibold text-indigo-300">{formName} ({formSymbol})</span>?
-                This operation is irreversible and will cascadingly purge all associated historical daily prices immediately.
+                Are you sure you want to delete <span className="font-semibold text-indigo-300">{formName} ({formSymbol})</span>?
+                This will also delete all price records linked to it.
               </p>
             </div>
 
@@ -632,7 +632,7 @@ export default function StocksCatalog() {
                 onClick={handleDeleteStock}
                 className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-550 transition-all cursor-pointer"
               >
-                Delete Cascadingly
+                Delete Stock
               </button>
             </div>
           </div>

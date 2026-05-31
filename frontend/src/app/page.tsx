@@ -186,7 +186,7 @@ export default function Dashboard() {
                       {isPositive ? '▲' : '▼'} {Math.abs(item.changePercent).toFixed(2)}%
                     </span>
                     <span className="text-[9px] text-slate-500 font-medium">
-                      ({item.source === 'live' ? 'Live Feed' : 'Fallback'} @ {new Date(item.lastUpdated).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })})
+                      ({item.source === 'live' ? 'Live Network Price' : 'Added by You'} @ {new Date(item.lastUpdated).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })})
                     </span>
                   </div>
                 );
@@ -203,13 +203,13 @@ export default function Dashboard() {
         <div className="absolute right-0 bottom-0 top-0 w-1/2 bg-gradient-to-l from-emerald-500/10 to-transparent pointer-events-none" />
         <div className="relative z-10 space-y-3 max-w-2xl">
           <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-            📊 Capital Market System — Phase 3 Active
+            📊 System Online
           </span>
           <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
             Welcome back, <span className="bg-gradient-to-r from-emerald-300 to-teal-200 bg-clip-text text-transparent">{user ? user.email.split('@')[0] : 'Developer'}</span>!
           </h1>
           <p className="text-slate-300 text-sm leading-relaxed">
-            Monitor overall portfolio health using the <strong className="font-semibold text-slate-100">Valuation Engine (Average Cost Basis)</strong>. Review real-time asset costs, realized sales earnings, paper gains, and commit audit transactions seamlessly.
+            Monitor overall portfolio health using the Valuation Engine. Review real-time asset costs, locked-in profits, active value changes, and log transactions.
           </p>
         </div>
         <div className="relative z-20 flex-shrink-0">
@@ -250,7 +250,7 @@ export default function Dashboard() {
           <div className="bg-slate-900/40 backdrop-blur-xl border border-slate-800/80 rounded-2xl p-6 shadow-lg group hover:border-slate-700 transition-all duration-300 relative overflow-hidden">
             <div className="absolute top-0 left-0 right-0 h-1 bg-slate-600" />
             <div>
-              <p className="text-xs font-semibold tracking-wider text-slate-400 uppercase">Total Invested Capital</p>
+              <p className="text-xs font-semibold tracking-wider text-slate-400 uppercase">Total Money Put In</p>
               <h3 className="text-2xl font-black text-white mt-2 group-hover:scale-105 transition-transform duration-200 origin-left">
                 {loading ? (
                   <span className="inline-block w-24 h-8 rounded bg-slate-800 animate-pulse" />
@@ -258,7 +258,7 @@ export default function Dashboard() {
                   `$${(portfolio?.totalInvestedCapital ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                 )}
               </h3>
-              <p className="text-[11px] font-medium text-slate-400 mt-2">Remaining shares net cost basis</p>
+              <p className="text-[11px] font-medium text-slate-400 mt-2">Money put into your active shares</p>
             </div>
           </div>
 
@@ -274,7 +274,7 @@ export default function Dashboard() {
               loading ? 'bg-slate-800' : (portfolio?.realizedPL ?? 0) >= 0 ? 'bg-emerald-500' : 'bg-rose-500'
             }`} />
             <div>
-              <p className="text-xs font-semibold tracking-wider text-slate-400 uppercase">Realized P&L</p>
+              <p className="text-xs font-semibold tracking-wider text-slate-400 uppercase">Locked-in Profit</p>
               <h3 className={`text-2xl font-black mt-2 group-hover:scale-105 transition-transform duration-200 origin-left ${
                 loading ? 'text-white' : (portfolio?.realizedPL ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
               }`}>
@@ -284,7 +284,7 @@ export default function Dashboard() {
                   `${(portfolio?.realizedPL ?? 0) >= 0 ? '+' : ''}$${(portfolio?.realizedPL ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                 )}
               </h3>
-              <p className="text-[11px] font-medium text-slate-400 mt-2">Locked gains from sales history</p>
+              <p className="text-[11px] font-medium text-slate-400 mt-2">Profit from sold shares</p>
             </div>
           </div>
 
@@ -300,7 +300,7 @@ export default function Dashboard() {
               loading ? 'bg-slate-800' : (portfolio?.unrealizedPL ?? 0) >= 0 ? 'bg-emerald-500' : 'bg-rose-500'
             }`} />
             <div>
-              <p className="text-xs font-semibold tracking-wider text-slate-400 uppercase">Unrealized P&L</p>
+              <p className="text-xs font-semibold tracking-wider text-slate-400 uppercase">Current Paper Value Change</p>
               <h3 className={`text-2xl font-black mt-2 group-hover:scale-105 transition-transform duration-200 origin-left ${
                 loading ? 'text-white' : (portfolio?.unrealizedPL ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
               }`}>
@@ -310,7 +310,7 @@ export default function Dashboard() {
                   `${(portfolio?.unrealizedPL ?? 0) >= 0 ? '+' : ''}$${(portfolio?.unrealizedPL ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                 )}
               </h3>
-              <p className="text-[11px] font-medium text-slate-400 mt-2">Paper profit based on current price</p>
+              <p className="text-[11px] font-medium text-slate-400 mt-2">Active investment value change</p>
             </div>
           </div>
         </div>
@@ -380,14 +380,14 @@ export default function Dashboard() {
         <div className="lg:col-span-2 bg-slate-900/20 backdrop-blur-md border border-slate-800/80 rounded-2xl p-6 shadow-xl space-y-6">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-xl font-bold text-white">Recent Activity</h2>
-              <p className="text-xs text-slate-400 mt-1">Audit log of your five most recent transactions</p>
+              <h2 className="text-xl font-bold text-white">Recent Trades</h2>
+              <p className="text-xs text-slate-400 mt-1">Your five most recent buy or sell records</p>
             </div>
             <Link
               href="/transactions"
               className="text-xs font-semibold text-indigo-400 hover:text-indigo-300 bg-indigo-500/5 hover:bg-indigo-500/10 border border-indigo-500/20 px-3 py-1.5 rounded-lg transition-all"
             >
-              Full Ledger &rarr;
+              Full Trade History &rarr;
             </Link>
           </div>
 
@@ -411,8 +411,8 @@ export default function Dashboard() {
                 <thead>
                   <tr className="bg-slate-950/70 text-slate-400 text-[10px] font-bold uppercase tracking-wider border-b border-slate-800/80">
                     <th className="px-4 py-3">Type</th>
-                    <th className="px-4 py-3">Ticker</th>
-                    <th className="px-4 py-3 text-right">Shares</th>
+                    <th className="px-4 py-3">Stock Code</th>
+                    <th className="px-4 py-3 text-right">Quantity</th>
                     <th className="px-4 py-3 text-right">Price</th>
                     <th className="px-4 py-3 text-right">Date</th>
                   </tr>
@@ -446,11 +446,11 @@ export default function Dashboard() {
           <div className="pt-2 border-t border-slate-800">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-sm font-bold text-white">Tracked Stock Tickers</h3>
-                <p className="text-[10px] text-slate-400">Overview of registered counters</p>
+                <h3 className="text-sm font-bold text-white">Tracked Stocks</h3>
+                <p className="text-[10px] text-slate-400">Overview of registered stocks</p>
               </div>
               <Link href="/stocks" className="text-[10px] font-semibold text-indigo-400 hover:text-indigo-300">
-                Manage counters &rarr;
+                Manage stocks &rarr;
               </Link>
             </div>
 
@@ -503,8 +503,8 @@ export default function Dashboard() {
         {/* Right Side: Quick Action Links & System Status */}
         <div className="bg-slate-900/20 backdrop-blur-md border border-slate-800/80 rounded-2xl p-6 shadow-xl space-y-6">
           <div>
-            <h2 className="text-xl font-bold text-white">Manual CRUD Shortcuts</h2>
-            <p className="text-xs text-slate-400 mt-1">Quick pathways to perform management operations</p>
+            <h2 className="text-xl font-bold text-white">Quick Actions</h2>
+            <p className="text-xs text-slate-400 mt-1">Quick pathways to manage your portfolio</p>
           </div>
 
           <div className="space-y-4">
@@ -518,8 +518,8 @@ export default function Dashboard() {
                 </svg>
               </div>
               <div className="flex-1">
-                <h4 className="font-semibold text-slate-200 group-hover:text-indigo-300 transition-colors">Register Stock Tickers</h4>
-                <p className="text-xs text-slate-400 mt-0.5">Add, Edit or Delete ticker names and categories</p>
+                <h4 className="font-semibold text-slate-200 group-hover:text-indigo-300 transition-colors">Register Stocks</h4>
+                <p className="text-xs text-slate-400 mt-0.5">Add, edit, or delete stocks and categories</p>
               </div>
             </Link>
 
@@ -533,8 +533,8 @@ export default function Dashboard() {
                 </svg>
               </div>
               <div className="flex-1">
-                <h4 className="font-semibold text-slate-200 group-hover:text-emerald-300 transition-colors">Record Daily Price</h4>
-                <p className="text-xs text-slate-400 mt-0.5">Manually input price models and volumes per date</p>
+                <h4 className="font-semibold text-slate-200 group-hover:text-emerald-300 transition-colors">Record Stock Price</h4>
+                <p className="text-xs text-slate-400 mt-0.5">Manually input stock prices and volumes</p>
               </div>
             </Link>
 
@@ -548,16 +548,16 @@ export default function Dashboard() {
                 </svg>
               </div>
               <div className="flex-1">
-                <h4 className="font-semibold text-slate-200 group-hover:text-indigo-300 transition-colors">Record Trade Transactions</h4>
-                <p className="text-xs text-slate-400 mt-0.5">Log Purchases or Sales with cost validations</p>
+                <h4 className="font-semibold text-slate-200 group-hover:text-indigo-300 transition-colors">Record Trades</h4>
+                <p className="text-xs text-slate-400 mt-0.5">Log buys or sells with cost validations</p>
               </div>
             </Link>
           </div>
 
           <div className="p-4 bg-slate-900/60 rounded-xl border border-slate-800/80 space-y-2">
-            <h5 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Multi-Tenancy Check</h5>
+            <h5 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Secure Portfolio</h5>
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              Every ledger trade and aggregated valuation is stamp-isolated under active user identity <code className="bg-slate-800 px-1 py-0.5 rounded text-indigo-300 font-mono text-[10px]">{user ? user.email : 'mock-user-123'}</code>. Cross-portfolio leakage is structurally prevented at the relation filter boundaries.
+              Your investment details are private and safely isolated under your account: <code className="bg-slate-800 px-1 py-0.5 rounded text-indigo-300 font-mono text-[10px]">{user ? user.email : 'mock-user-123'}</code>.
             </p>
           </div>
         </div>
