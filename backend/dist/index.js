@@ -13,6 +13,7 @@ const transactions_1 = __importDefault(require("./routes/transactions"));
 const portfolio_1 = __importDefault(require("./routes/portfolio"));
 const analytics_1 = __importDefault(require("./routes/analytics"));
 const settings_1 = __importDefault(require("./routes/settings"));
+const exports_1 = __importDefault(require("./routes/exports"));
 const priceFeedService_1 = require("./services/priceFeedService");
 // Load environment variables
 dotenv_1.default.config();
@@ -33,6 +34,7 @@ app.use('/api/transactions', transactions_1.default);
 app.use('/api/portfolio', portfolio_1.default);
 app.use('/api/analytics', analytics_1.default);
 app.use('/api/settings', settings_1.default);
+app.use('/api/exports', exports_1.default);
 // Health Check
 app.get('/health', (req, res) => {
     res.status(200).json({ status: 'OK', message: 'Stocked backend is running.' });

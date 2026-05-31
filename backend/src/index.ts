@@ -8,6 +8,7 @@ import transactionRouter from './routes/transactions';
 import portfolioRouter from './routes/portfolio';
 import analyticsRouter from './routes/analytics';
 import settingsRouter from './routes/settings';
+import exportRouter from './routes/exports';
 import { initializeAllPollers } from './services/priceFeedService';
 
 // Load environment variables
@@ -35,6 +36,7 @@ app.use('/api/transactions', transactionRouter);
 app.use('/api/portfolio', portfolioRouter);
 app.use('/api/analytics', analyticsRouter);
 app.use('/api/settings', settingsRouter);
+app.use('/api/exports', exportRouter);
 
 // Health Check
 app.get('/health', (req, res) => {

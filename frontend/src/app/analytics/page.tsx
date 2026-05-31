@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
+import ExportActionsDropdown from '../../components/ExportActionsDropdown';
 import {
   LineChart,
   Line,
@@ -313,6 +314,20 @@ export default function AnalyticsPage() {
           {error}
         </div>
       )}
+
+      {/* Metrics Header with Export Actions */}
+      <div className="flex items-center justify-between bg-slate-900/10 backdrop-blur-md border border-slate-800/40 rounded-2xl p-4 shadow-md">
+        <div>
+          <h2 className="text-xs font-black uppercase tracking-wider text-indigo-400">Quantitative Metrics View</h2>
+          <p className="text-[9px] text-slate-500 font-medium">Filtered returns, daily volatilities, and allocation values</p>
+        </div>
+        <ExportActionsDropdown 
+          reportType="analytics" 
+          stockId={selectedStockId === 'portfolio' ? undefined : selectedStockId} 
+          startDate={startDate} 
+          endDate={endDate} 
+        />
+      </div>
 
       {/* Advanced Quantitative Metrics Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

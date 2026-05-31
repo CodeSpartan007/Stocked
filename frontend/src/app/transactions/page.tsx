@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import ExportActionsDropdown from '../../components/ExportActionsDropdown';
 
 interface StockOption {
   id: string;
@@ -387,7 +388,7 @@ export default function TransactionsPage() {
               </div>
 
               {/* Date Filters with live-refresh controls */}
-              <div className="flex items-center space-x-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <input
                   type="date"
                   value={startDate}
@@ -414,6 +415,12 @@ export default function TransactionsPage() {
                     Clear
                   </button>
                 )}
+                
+                <ExportActionsDropdown 
+                  reportType="transactions" 
+                  startDate={startDate} 
+                  endDate={endDate} 
+                />
               </div>
             </div>
 

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import ExportActionsDropdown from '../components/ExportActionsDropdown';
 
 interface StockSummary {
   id: string;
@@ -175,7 +176,7 @@ export default function Dashboard() {
         </div>
       )}
       {/* Welcome Banner */}
-      <div className="relative rounded-3xl overflow-hidden bg-gradient-to-r from-indigo-600 via-indigo-900 to-emerald-950 p-8 sm:p-10 shadow-2xl border border-indigo-500/20">
+      <div className="relative rounded-3xl overflow-hidden bg-gradient-to-r from-indigo-600 via-indigo-900 to-emerald-950 p-8 sm:p-10 shadow-2xl border border-indigo-500/20 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
         <div className="absolute right-0 bottom-0 top-0 w-1/2 bg-gradient-to-l from-emerald-500/10 to-transparent pointer-events-none" />
         <div className="relative z-10 space-y-3 max-w-2xl">
           <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
@@ -187,6 +188,9 @@ export default function Dashboard() {
           <p className="text-slate-300 text-sm leading-relaxed">
             Monitor overall portfolio health using the <strong className="font-semibold text-slate-100">Valuation Engine (Average Cost Basis)</strong>. Review real-time asset costs, realized sales earnings, paper gains, and commit audit transactions seamlessly.
           </p>
+        </div>
+        <div className="relative z-20 flex-shrink-0">
+          <ExportActionsDropdown reportType="summary" />
         </div>
       </div>
 

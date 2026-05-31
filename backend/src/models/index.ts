@@ -6,6 +6,7 @@ import { Purchase } from './Purchase';
 import { Sales } from './Sales';
 import { PerformanceTarget } from './PerformanceTarget';
 import { UserSetting } from './UserSetting';
+import { ExportLogs } from './ExportLogs';
 
 // Set up associations
 User.hasMany(Stock, { foreignKey: 'userId', onDelete: 'CASCADE', as: 'Stocks' });
@@ -26,7 +27,10 @@ PerformanceTarget.belongsTo(User, { foreignKey: 'userId', as: 'User' });
 User.hasOne(UserSetting, { foreignKey: 'userId', onDelete: 'CASCADE', as: 'UserSetting' });
 UserSetting.belongsTo(User, { foreignKey: 'userId', as: 'User' });
 
-export { sequelize, User, Stock, DailyPrice, Purchase, Sales, PerformanceTarget, UserSetting };
+User.hasMany(ExportLogs, { foreignKey: 'userId', onDelete: 'CASCADE', as: 'ExportLogs' });
+ExportLogs.belongsTo(User, { foreignKey: 'userId', as: 'User' });
+
+export { sequelize, User, Stock, DailyPrice, Purchase, Sales, PerformanceTarget, UserSetting, ExportLogs };
 
 export async function initDb() {
   // Sync the database
