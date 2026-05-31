@@ -54,7 +54,32 @@ async function initDb() {
     await database_1.sequelize.sync();
     console.log('Database synced successfully.');
     // Seed default user if not exists
-    const mockUser = await User_1.User.findByPk(SEEDED_USER_UUID);
+    let mockUser = await User_1.User.findByPk(SEEDED_USER_UUID);
+    const existingUserWithEmail = await User_1.User.findOne({ where: { email: 'user@stocked.com' } });
+    if (existingUserWithEmail && existingUserWithEmail.id !== SEEDED_USER_UUID) {
+        if (process.env.NODE_ENV !== 'production') {
+            // Non-destructively rename the conflicting email to free the seed address
+            existingUserWithEmail.email = `${existingUserWithEmail.email}.seed-conflict`;
+            await existingUserWithEmail.save();
+            mockUser = null;
+        }
+        else {
+            mockUser = existingUserWithEmail;
+        }
+    }
+    let mockAdmin = await User_1.User.findByPk(SEEDED_ADMIN_UUID);
+    const existingAdminWithEmail = await User_1.User.findOne({ where: { email: 'admin@stocked.com' } });
+    if (existingAdminWithEmail && existingAdminWithEmail.id !== SEEDED_ADMIN_UUID) {
+        if (process.env.NODE_ENV !== 'production') {
+            // Non-destructively rename the conflicting email to free the seed address
+            existingAdminWithEmail.email = `${existingAdminWithEmail.email}.seed-conflict`;
+            await existingAdminWithEmail.save();
+            mockAdmin = null;
+        }
+        else {
+            mockAdmin = existingAdminWithEmail;
+        }
+    }
     if (!mockUser) {
         // Generate secure cryptographically hashed passwords for seeding
         const userPasswordHash = await bcrypt_1.default.hash('UserPassword123!', 12);
@@ -68,13 +93,15 @@ async function initDb() {
         });
         console.log(`Default mock user (${SEEDED_USER_UUID}) seeded.`);
         // Create administrator
-        await User_1.User.create({
-            id: SEEDED_ADMIN_UUID,
-            email: 'admin@stocked.com',
-            passwordHash: adminPasswordHash,
-            role: 'admin',
-        });
-        console.log(`Default administrator user (${SEEDED_ADMIN_UUID}) seeded.`);
+        if (!mockAdmin) {
+            await User_1.User.create({
+                id: SEEDED_ADMIN_UUID,
+                email: 'admin@stocked.com',
+                passwordHash: adminPasswordHash,
+                role: 'admin',
+            });
+            console.log(`Default administrator user (${SEEDED_ADMIN_UUID}) seeded.`);
+        }
         // Seed some initial stocks so there's rich data out of the box
         const apple = await Stock_1.Stock.create({
             id: 'a9f24300-d85f-4029-9e8c-8c0827284ea4',

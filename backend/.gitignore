@@ -1,0 +1,11 @@
+# Ignore environment variable configuration files
+.env
+
+# Ignore runtime sqlite databases
+database.sqlite
+
+# Ignore compiled javascript output
+dist/
+
+# Ignore dependency directories
+node_modules/

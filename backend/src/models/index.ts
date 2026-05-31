@@ -57,16 +57,28 @@ export async function initDb() {
   const existingUserWithEmail = await User.findOne({ where: { email: 'user@stocked.com' } });
 
   if (existingUserWithEmail && existingUserWithEmail.id !== SEEDED_USER_UUID) {
-    await existingUserWithEmail.destroy();
-    mockUser = null;
+    if (process.env.NODE_ENV !== 'production') {
+      // Non-destructively rename the conflicting email to free the seed address
+      existingUserWithEmail.email = `${existingUserWithEmail.email}.seed-conflict`;
+      await existingUserWithEmail.save();
+      mockUser = null;
+    } else {
+      mockUser = existingUserWithEmail;
+    }
   }
 
   let mockAdmin = await User.findByPk(SEEDED_ADMIN_UUID);
   const existingAdminWithEmail = await User.findOne({ where: { email: 'admin@stocked.com' } });
 
   if (existingAdminWithEmail && existingAdminWithEmail.id !== SEEDED_ADMIN_UUID) {
-    await existingAdminWithEmail.destroy();
-    mockAdmin = null;
+    if (process.env.NODE_ENV !== 'production') {
+      // Non-destructively rename the conflicting email to free the seed address
+      existingAdminWithEmail.email = `${existingAdminWithEmail.email}.seed-conflict`;
+      await existingAdminWithEmail.save();
+      mockAdmin = null;
+    } else {
+      mockAdmin = existingAdminWithEmail;
+    }
   }
 
   if (!mockUser) {

@@ -87,12 +87,31 @@ export default function Dashboard() {
     async function fetchDashboardData() {
       try {
         setLoading(true);
+
+        // Dynamically compute the first and last day of the current month (YYYY-MM-DD)
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = today.getMonth();
+        
+        const firstDay = new Date(year, month, 1);
+        const lastDay = new Date(year, month + 1, 0);
+
+        const formatDate = (date: Date) => {
+          const y = date.getFullYear();
+          const m = String(date.getMonth() + 1).padStart(2, '0');
+          const d = String(date.getDate()).padStart(2, '0');
+          return `${y}-${m}-${d}`;
+        };
+
+        const currentMonthStart = formatDate(firstDay);
+        const currentMonthEnd = formatDate(lastDay);
+
         // Fetch all registered stocks, portfolio summary, recent transactions, benchmarking, and tickers in parallel
         const [stocksRes, portfolioRes, txRes, benchmarkRes, tickerRes] = await Promise.all([
           fetch('http://localhost:5001/api/stocks', { credentials: 'include' }),
           fetch('http://localhost:5001/api/portfolio/summary', { credentials: 'include' }),
           fetch('http://localhost:5001/api/transactions/history', { credentials: 'include' }),
-          fetch('http://localhost:5001/api/analytics/benchmark?startDate=2026-05-01&endDate=2026-05-31', { credentials: 'include' }),
+          fetch(`http://localhost:5001/api/analytics/benchmark?startDate=${currentMonthStart}&endDate=${currentMonthEnd}`, { credentials: 'include' }),
           fetch('http://localhost:5001/api/stocks/live-prices', { credentials: 'include' })
         ]);
 
