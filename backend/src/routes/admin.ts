@@ -12,8 +12,18 @@ router.use(requireAuth, requireRole(['admin']));
 // GET /api/admin/users -> List all system accounts with metadata metric summaries
 router.get('/', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
+    let page = parseInt(req.query.page as string, 10);
+    if (isNaN(page) || page < 1) {
+      page = 1;
+    }
+
+    let limit = parseInt(req.query.limit as string, 10);
+    if (isNaN(limit) || limit < 1) {
+      limit = 10;
+    } else if (limit > 100) {
+      limit = 100;
+    }
+
     const offset = (page - 1) * limit;
 
     const { count, rows: users } = await User.findAndCountAll({
@@ -100,7 +110,7 @@ router.put(
       targetUser.role = role as 'admin' | 'user';
       await targetUser.save();
 
-      console.log(`[Admin Panel] User ${targetUser.email} role updated to ${role} by administrator ${req.user!.email}`);
+      console.log(`[Admin Panel] User ID ${targetUser.id} role updated to ${role} by administrator ID ${req.user!.id}`);
 
       return res.status(200).json({
         success: true,
@@ -151,7 +161,7 @@ router.delete(
       // Stocks, PerformanceTargets, UserSettings, ExportLogs, Purchases, Sales, and DailyPrices.
       await targetUser.destroy();
 
-      console.log(`[Admin Panel] Cascaded deletion triggered for user ${targetUser.email} by admin ${req.user!.email}`);
+      console.log(`[Admin Panel] Cascaded deletion triggered for user ID ${targetUser.id} by admin ID ${req.user!.id}`);
 
       return res.status(200).json({
         success: true,

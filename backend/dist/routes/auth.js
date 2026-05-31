@@ -11,7 +11,15 @@ const models_1 = require("../models");
 const auth_1 = require("../middleware/auth");
 const validate_1 = require("../middleware/validate");
 const router = (0, express_1.Router)();
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback-super-secret-key-for-stocked-dev';
+const JWT_SECRET = (() => {
+    if (!process.env.JWT_SECRET) {
+        if (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test') {
+            return 'dev-only-predictable-secret-key-fallback';
+        }
+        throw new Error('FATAL SECURITY ERROR: JWT_SECRET environment variable is missing or empty. Server cannot start securely in production.');
+    }
+    return process.env.JWT_SECRET;
+})();
 // POST /api/auth/register -> Standard user signup endpoint
 router.post('/register', [
     (0, express_validator_1.body)('email')
@@ -43,19 +51,27 @@ router.post('/register', [
         }
         // Hash password using bcrypt with 12 rounds
         const passwordHash = await bcrypt_1.default.hash(password, 12);
-        // Create new standard user
-        const newUser = await models_1.User.create({
-            email,
-            passwordHash,
-            role: 'user',
-        });
-        // Automatically seed default pricing configurations for standard users
-        await models_1.UserSetting.create({
-            userId: newUser.id,
-            provider: 'manual',
-            apiKey: null,
-            refreshInterval: 60,
-        });
+        // Create new standard user and their default setting configurations atomically inside a transaction
+        const tx = await models_1.sequelize.transaction();
+        let newUser;
+        try {
+            newUser = await models_1.User.create({
+                email,
+                passwordHash,
+                role: 'user',
+            }, { transaction: tx });
+            await models_1.UserSetting.create({
+                userId: newUser.id,
+                provider: 'manual',
+                apiKey: null,
+                refreshInterval: 60,
+            }, { transaction: tx });
+            await tx.commit();
+        }
+        catch (err) {
+            await tx.rollback();
+            throw err;
+        }
         // Sign JWT
         const token = jsonwebtoken_1.default.sign({ id: newUser.id, email: newUser.email, role: newUser.role }, JWT_SECRET, { expiresIn: '24h' });
         // Set cookie containing the token
@@ -68,7 +84,6 @@ router.post('/register', [
         return res.status(201).json({
             success: true,
             message: 'Account registered successfully.',
-            token,
             user: {
                 id: newUser.id,
                 email: newUser.email,
@@ -123,7 +138,6 @@ router.post('/login', [
         return res.status(200).json({
             success: true,
             message: 'Logged in successfully.',
-            token,
             user: {
                 id: user.id,
                 email: user.email,

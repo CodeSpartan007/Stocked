@@ -5,7 +5,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.requireRole = exports.requireAuth = void 0;
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback-super-secret-key-for-stocked-dev';
+if (!process.env.JWT_SECRET) {
+    throw new Error('FATAL SECURITY ERROR: JWT_SECRET environment variable is missing or empty. Server cannot start securely.');
+}
+const JWT_SECRET = process.env.JWT_SECRET;
 const requireAuth = (req, res, next) => {
     let token;
     // 1. Try to extract from Bearer authorization header

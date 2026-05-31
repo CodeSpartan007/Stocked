@@ -9,10 +9,10 @@ const validate_1 = require("../middleware/validate");
 const router = (0, express_1.Router)();
 // Helper to compute holdings and average cost basis chronologically
 async function computeStockHoldings(stockId, userId, tx) {
-    const queryWhere = { stockId };
-    if (userId) {
-        queryWhere.userId = userId;
+    if (!userId) {
+        throw new Error('computeStockHoldings requires a valid non-empty userId for secure scoping.');
     }
+    const queryWhere = { stockId, userId };
     const purchases = await models_1.Purchase.findAll({
         where: queryWhere,
         order: [['purchaseDate', 'ASC'], ['createdAt', 'ASC']],

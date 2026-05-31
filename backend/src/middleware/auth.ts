@@ -10,7 +10,11 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback-super-secret-key-for-stocked-dev';
+if (!process.env.JWT_SECRET) {
+  throw new Error('FATAL SECURITY ERROR: JWT_SECRET environment variable is missing or empty. Server cannot start securely.');
+}
+
+const JWT_SECRET = process.env.JWT_SECRET;
 
 export const requireAuth = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   let token: string | undefined;

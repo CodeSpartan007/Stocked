@@ -21,6 +21,9 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Dynamically read environment variable with fallback for local workspace environments
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5001';
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -34,7 +37,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     async function checkAuth() {
       try {
-        const response = await fetch('http://localhost:5001/api/auth/me', {
+        const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
@@ -59,23 +62,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     checkAuth();
   }, []);
 
-  // Intercept unauthenticated page transitions client-side
+  // Intercept unauthenticated page transitions client-side securely with path assertions to prevent loop flashes
   useEffect(() => {
     if (!loading) {
       const isAuthPage = pathname?.startsWith('/auth');
-      if (!user && !isAuthPage) {
-        // Not logged in -> instantly push to login page
-        router.push('/auth/login');
-      } else if (user && isAuthPage) {
-        // Already logged in trying to view auth pages -> send back to dashboard
-        router.push('/');
+      if (!user) {
+        if (!isAuthPage && pathname !== '/auth/login') {
+          router.replace('/auth/login');
+        }
+      } else {
+        if (isAuthPage && pathname !== '/') {
+          router.replace('/');
+        }
       }
     }
   }, [user, loading, pathname, router]);
 
   const login = async (email: string, password: string) => {
     try {
-      const response = await fetch('http://localhost:5001/api/auth/login', {
+      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -85,7 +90,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const json = await response.json();
       if (response.ok && json.success) {
         setUser(json.user);
-        router.push('/');
+        if (pathname !== '/') {
+          router.replace('/');
+        }
         return { success: true };
       } else {
         return { success: false, message: json.message || 'Login failed.' };
@@ -98,7 +105,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const register = async (email: string, password: string) => {
     try {
-      const response = await fetch('http://localhost:5001/api/auth/register', {
+      const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -108,7 +115,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const json = await response.json();
       if (response.ok && json.success) {
         setUser(json.user);
-        router.push('/');
+        if (pathname !== '/') {
+          router.replace('/');
+        }
         return { success: true };
       } else {
         return { 
@@ -125,7 +134,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     try {
-      await fetch('http://localhost:5001/api/auth/logout', {
+      await fetch(`${API_BASE_URL}/api/auth/logout`, {
         method: 'POST',
         credentials: 'include',
       });
@@ -133,7 +142,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error('Logout request error:', error);
     } finally {
       setUser(null);
-      router.push('/auth/login');
+      if (pathname !== '/auth/login') {
+        router.replace('/auth/login');
+      }
     }
   };
 

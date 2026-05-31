@@ -8,11 +8,12 @@ import { handleValidationErrors } from '../middleware/validate';
 const router = Router();
 
 // Helper to compute holdings and average cost basis chronologically
-export async function computeStockHoldings(stockId: string, userId?: string, tx?: Transaction) {
-  const queryWhere: any = { stockId };
-  if (userId) {
-    queryWhere.userId = userId;
+export async function computeStockHoldings(stockId: string, userId: string, tx?: Transaction) {
+  if (!userId) {
+    throw new Error('computeStockHoldings requires a valid non-empty userId for secure scoping.');
   }
+
+  const queryWhere: any = { stockId, userId };
 
   const purchases = await Purchase.findAll({
     where: queryWhere,

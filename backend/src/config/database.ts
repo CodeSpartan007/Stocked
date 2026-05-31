@@ -10,4 +10,9 @@ export const sequelize = new Sequelize({
   define: {
     timestamps: true,
   },
+  hooks: {
+    afterConnect: (connection: any, callback: any) => {
+      connection.run('PRAGMA foreign_keys = ON;', callback);
+    },
+  },
 });

@@ -11,8 +11,17 @@ router.use(auth_1.requireAuth, (0, auth_1.requireRole)(['admin']));
 // GET /api/admin/users -> List all system accounts with metadata metric summaries
 router.get('/', async (req, res) => {
     try {
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 10;
+        let page = parseInt(req.query.page, 10);
+        if (isNaN(page) || page < 1) {
+            page = 1;
+        }
+        let limit = parseInt(req.query.limit, 10);
+        if (isNaN(limit) || limit < 1) {
+            limit = 10;
+        }
+        else if (limit > 100) {
+            limit = 100;
+        }
         const offset = (page - 1) * limit;
         const { count, rows: users } = await models_1.User.findAndCountAll({
             attributes: ['id', 'email', 'role', 'createdAt'],
@@ -84,7 +93,7 @@ router.put('/users/:id/role', [
         }
         targetUser.role = role;
         await targetUser.save();
-        console.log(`[Admin Panel] User ${targetUser.email} role updated to ${role} by administrator ${req.user.email}`);
+        console.log(`[Admin Panel] User ID ${targetUser.id} role updated to ${role} by administrator ID ${req.user.id}`);
         return res.status(200).json({
             success: true,
             message: `Account role updated to ${role} successfully.`,
@@ -125,7 +134,7 @@ router.delete('/users/:id', [(0, express_validator_1.param)('id').isUUID().withM
         // the synchronous deletion of all rows linking back to this User.id across all tables:
         // Stocks, PerformanceTargets, UserSettings, ExportLogs, Purchases, Sales, and DailyPrices.
         await targetUser.destroy();
-        console.log(`[Admin Panel] Cascaded deletion triggered for user ${targetUser.email} by admin ${req.user.email}`);
+        console.log(`[Admin Panel] Cascaded deletion triggered for user ID ${targetUser.id} by admin ID ${req.user.id}`);
         return res.status(200).json({
             success: true,
             message: `User account (${targetUser.email}) and all scoped data columns deleted successfully.`,

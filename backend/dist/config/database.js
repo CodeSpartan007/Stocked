@@ -14,4 +14,9 @@ exports.sequelize = new sequelize_1.Sequelize({
     define: {
         timestamps: true,
     },
+    hooks: {
+        afterConnect: (connection, callback) => {
+            connection.run('PRAGMA foreign_keys = ON;', callback);
+        },
+    },
 });

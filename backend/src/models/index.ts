@@ -9,6 +9,10 @@ import { UserSetting } from './UserSetting';
 import { ExportLogs } from './ExportLogs';
 import bcrypt from 'bcrypt';
 
+// Stable, valid UUIDv4 constants for seeded accounts
+const SEEDED_USER_UUID = '12345678-abcd-4000-8000-123456789abc';
+const SEEDED_ADMIN_UUID = '87654321-abcd-4000-8000-abcdefabcdef';
+
 // Set up associations
 User.hasMany(Stock, { foreignKey: 'userId', onDelete: 'CASCADE', as: 'Stocks' });
 Stock.belongsTo(User, { foreignKey: 'userId', as: 'User' });
@@ -44,16 +48,12 @@ DailyPrice.belongsTo(User, { foreignKey: 'userId', as: 'User' });
 export { sequelize, User, Stock, DailyPrice, Purchase, Sales, PerformanceTarget, UserSetting, ExportLogs };
 
 export async function initDb() {
-  // Enable foreign key support in SQLite before syncing
-  await sequelize.query('PRAGMA foreign_keys = ON;');
-  console.log('SQLite Foreign Keys constraint strictly enabled.');
-
   // Sync the database
   await sequelize.sync();
   console.log('Database synced successfully.');
 
   // Seed default user if not exists
-  const mockUser = await User.findByPk('mock-user-123');
+  const mockUser = await User.findByPk(SEEDED_USER_UUID);
   if (!mockUser) {
     // Generate secure cryptographically hashed passwords for seeding
     const userPasswordHash = await bcrypt.hash('UserPassword123!', 12);
@@ -61,26 +61,26 @@ export async function initDb() {
 
     // Create user
     await User.create({
-      id: 'mock-user-123',
+      id: SEEDED_USER_UUID,
       email: 'user@stocked.com',
       passwordHash: userPasswordHash,
       role: 'user',
     });
-    console.log('Default mock user (mock-user-123) seeded.');
+    console.log(`Default mock user (${SEEDED_USER_UUID}) seeded.`);
 
     // Create administrator
     await User.create({
-      id: 'admin-user-456',
+      id: SEEDED_ADMIN_UUID,
       email: 'admin@stocked.com',
       passwordHash: adminPasswordHash,
       role: 'admin',
     });
-    console.log('Default administrator user (admin-user-456) seeded.');
+    console.log(`Default administrator user (${SEEDED_ADMIN_UUID}) seeded.`);
 
     // Seed some initial stocks so there's rich data out of the box
     const apple = await Stock.create({
       id: 'a9f24300-d85f-4029-9e8c-8c0827284ea4',
-      userId: 'mock-user-123',
+      userId: SEEDED_USER_UUID,
       name: 'Apple Inc.',
       symbol: 'AAPL',
       description: 'Consumer electronics and software giant.',
@@ -89,7 +89,7 @@ export async function initDb() {
 
     const tesla = await Stock.create({
       id: 'b6e82c5f-cfde-4786-bb34-8c8872b22f03',
-      userId: 'mock-user-123',
+      userId: SEEDED_USER_UUID,
       name: 'Tesla Inc.',
       symbol: 'TSLA',
       description: 'Electric vehicles, energy storage, and solar power.',
@@ -108,19 +108,19 @@ export async function initDb() {
 
     // AAPL Price History
     await DailyPrice.bulkCreate([
-      { id: '1a111111-1111-1111-1111-111111111111', stockId: apple.id, userId: 'mock-user-123', date: formatDate(5), price: 175.50, volume: 52000000, source: 'manual' },
-      { id: '1a111111-1111-1111-1111-222222222222', stockId: apple.id, userId: 'mock-user-123', date: formatDate(4), price: 177.20, volume: 48000000, source: 'manual' },
-      { id: '1a111111-1111-1111-1111-333333333333', stockId: apple.id, userId: 'mock-user-123', date: formatDate(3), price: 176.80, volume: 43000000, source: 'api' },
-      { id: '1a111111-1111-1111-1111-444444444444', stockId: apple.id, userId: 'mock-user-123', date: formatDate(2), price: 178.45, volume: 55000000, source: 'api' },
-      { id: '1a111111-1111-1111-1111-555555555555', stockId: apple.id, userId: 'mock-user-123', date: formatDate(1), price: 180.10, volume: 60000000, source: 'manual' },
+      { id: '1a111111-1111-1111-1111-111111111111', stockId: apple.id, userId: SEEDED_USER_UUID, date: formatDate(5), price: 175.50, volume: 52000000, source: 'manual' },
+      { id: '1a111111-1111-1111-1111-222222222222', stockId: apple.id, userId: SEEDED_USER_UUID, date: formatDate(4), price: 177.20, volume: 48000000, source: 'manual' },
+      { id: '1a111111-1111-1111-1111-333333333333', stockId: apple.id, userId: SEEDED_USER_UUID, date: formatDate(3), price: 176.80, volume: 43000000, source: 'api' },
+      { id: '1a111111-1111-1111-1111-444444444444', stockId: apple.id, userId: SEEDED_USER_UUID, date: formatDate(2), price: 178.45, volume: 55000000, source: 'api' },
+      { id: '1a111111-1111-1111-1111-555555555555', stockId: apple.id, userId: SEEDED_USER_UUID, date: formatDate(1), price: 180.10, volume: 60000000, source: 'manual' },
     ]);
 
     // TSLA Price History
     await DailyPrice.bulkCreate([
-      { id: '2b222222-2222-2222-2222-111111111111', stockId: tesla.id, userId: 'mock-user-123', date: formatDate(4), price: 185.00, volume: 85000000, source: 'manual' },
-      { id: '2b222222-2222-2222-2222-222222222222', stockId: tesla.id, userId: 'mock-user-123', date: formatDate(3), price: 182.30, volume: 92000000, source: 'manual' },
-      { id: '2b222222-2222-2222-2222-333333333333', stockId: tesla.id, userId: 'mock-user-123', date: formatDate(2), price: 187.60, volume: 105000000, source: 'api' },
-      { id: '2b222222-2222-2222-2222-444444444444', stockId: tesla.id, userId: 'mock-user-123', date: formatDate(1), price: 191.00, volume: 99000000, source: 'manual' },
+      { id: '2b222222-2222-2222-2222-111111111111', stockId: tesla.id, userId: SEEDED_USER_UUID, date: formatDate(4), price: 185.00, volume: 85000000, source: 'manual' },
+      { id: '2b222222-2222-2222-2222-222222222222', stockId: tesla.id, userId: SEEDED_USER_UUID, date: formatDate(3), price: 182.30, volume: 92000000, source: 'manual' },
+      { id: '2b222222-2222-2222-2222-333333333333', stockId: tesla.id, userId: SEEDED_USER_UUID, date: formatDate(2), price: 187.60, volume: 105000000, source: 'api' },
+      { id: '2b222222-2222-2222-2222-444444444444', stockId: tesla.id, userId: SEEDED_USER_UUID, date: formatDate(1), price: 191.00, volume: 99000000, source: 'manual' },
     ]);
 
     console.log('Initial price records seeded.');
