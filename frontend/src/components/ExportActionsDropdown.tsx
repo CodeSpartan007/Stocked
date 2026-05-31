@@ -40,6 +40,7 @@ export default function ExportActionsDropdown({
 
       const response = await fetch('http://localhost:5001/api/exports/generate', {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -133,7 +134,7 @@ export default function ExportActionsDropdown({
       </div>
 
       {isOpen && (
-        <div className="absolute right-0 z-55 mt-2 w-56 origin-top-right rounded-xl border border-slate-800/80 bg-slate-950/95 backdrop-blur-2xl shadow-2xl ring-1 ring-slate-950 focus:outline-none animate-slide-in p-1">
+        <div className="absolute right-0 z-50 mt-2 w-56 origin-top-right rounded-xl border border-slate-800/80 bg-slate-950/95 backdrop-blur-2xl shadow-2xl ring-1 ring-slate-950 focus:outline-none animate-slide-in p-1">
           <div className="py-0.5 space-y-1">
             <button
               onClick={() => handleDownload('PDF')}

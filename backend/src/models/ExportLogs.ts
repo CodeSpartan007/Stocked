@@ -5,7 +5,9 @@ import { User } from './User';
 export class ExportLogs extends Model {
   declare id: string;
   declare userId: string;
+  declare reportType: string;
   declare exportType: string;
+  declare status: string;
   declare generatedAt: Date;
   declare filename: string;
 
@@ -30,9 +32,18 @@ ExportLogs.init(
       },
       onDelete: 'CASCADE',
     },
+    reportType: {
+      type: DataTypes.STRING,
+      allowNull: false,
+    },
     exportType: {
       type: DataTypes.STRING,
       allowNull: false,
+    },
+    status: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      defaultValue: 'pending',
     },
     generatedAt: {
       type: DataTypes.DATE,

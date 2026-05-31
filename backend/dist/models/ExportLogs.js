@@ -23,9 +23,18 @@ ExportLogs.init({
         },
         onDelete: 'CASCADE',
     },
+    reportType: {
+        type: sequelize_1.DataTypes.STRING,
+        allowNull: false,
+    },
     exportType: {
         type: sequelize_1.DataTypes.STRING,
         allowNull: false,
+    },
+    status: {
+        type: sequelize_1.DataTypes.STRING,
+        allowNull: false,
+        defaultValue: 'pending',
     },
     generatedAt: {
         type: sequelize_1.DataTypes.DATE,

@@ -78,6 +78,7 @@ function getHoldingStateAt(timeline, targetDate) {
 }
 // POST /api/exports/generate -> Generate and Stream Reports [FR10]
 router.post('/generate', auth_1.requireAuth, async (req, res) => {
+    let auditLog = null;
     try {
         const userId = req.user.id;
         const { reportType, format, stockId, startDate, endDate } = req.body;
@@ -87,6 +88,17 @@ router.post('/generate', auth_1.requireAuth, async (req, res) => {
         }
         if (!['PDF', 'XLSX'].includes(format)) {
             return res.status(400).json({ success: false, message: 'Invalid format. Options: PDF, XLSX.' });
+        }
+        // Coerce empty strings to undefined to skip filters cleanly
+        const parsedStartDate = startDate === '' || !startDate ? undefined : startDate;
+        const parsedEndDate = endDate === '' || !endDate ? undefined : endDate;
+        // Strict date formatting validations (YYYY-MM-DD pattern regex)
+        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+        if (parsedStartDate && !dateRegex.test(parsedStartDate)) {
+            return res.status(400).json({ success: false, message: 'Invalid startDate format. Must be YYYY-MM-DD.' });
+        }
+        if (parsedEndDate && !dateRegex.test(parsedEndDate)) {
+            return res.status(400).json({ success: false, message: 'Invalid endDate format. Must be YYYY-MM-DD.' });
         }
         // 1. Resolve stockCounter token for naming and filtering
         let stockCounter = 'PORTFOLIO';
@@ -196,11 +208,11 @@ router.post('/generate', auth_1.requireAuth, async (req, res) => {
                     createdAt: s.createdAt,
                 })),
             ];
-            if (startDate) {
-                combined = combined.filter((tx) => tx.date >= startDate);
+            if (parsedStartDate) {
+                combined = combined.filter((tx) => tx.date >= parsedStartDate);
             }
-            if (endDate) {
-                combined = combined.filter((tx) => tx.date <= endDate);
+            if (parsedEndDate) {
+                combined = combined.filter((tx) => tx.date <= parsedEndDate);
             }
             combined.sort((a, b) => {
                 if (a.date < b.date)
@@ -278,7 +290,13 @@ router.post('/generate', auth_1.requireAuth, async (req, res) => {
                     const diffTime = Math.abs(today.getTime() - purchaseDate.getTime());
                     const daysHeld = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
                     const totalReturnDecimal = totalReturnPercent / 100;
-                    annualizedReturnPercent = (Math.pow(1 + totalReturnDecimal, 365 / daysHeld) - 1) * 100;
+                    // NAN protection guard before exponential Math.pow calculation [FR8]
+                    if (totalReturnDecimal <= -1) {
+                        annualizedReturnPercent = -100; // Floor return rate limit to prevent imaginary root errors
+                    }
+                    else {
+                        annualizedReturnPercent = (Math.pow(1 + totalReturnDecimal, 365 / daysHeld) - 1) * 100;
+                    }
                 }
                 // Volatility
                 const allDailyPrices = await models_1.DailyPrice.findAll({
@@ -314,10 +332,10 @@ router.post('/generate', auth_1.requireAuth, async (req, res) => {
                 const uniquePriceDatesSet = new Set();
                 allDailyPrices.forEach((dp) => uniquePriceDatesSet.add(dp.date));
                 let uniquePriceDates = Array.from(uniquePriceDatesSet).sort();
-                if (startDate)
-                    uniquePriceDates = uniquePriceDates.filter((d) => d >= startDate);
-                if (endDate)
-                    uniquePriceDates = uniquePriceDates.filter((d) => d <= endDate);
+                if (parsedStartDate)
+                    uniquePriceDates = uniquePriceDates.filter((d) => d >= parsedStartDate);
+                if (parsedEndDate)
+                    uniquePriceDates = uniquePriceDates.filter((d) => d <= parsedEndDate);
                 const dailyPortfolioValues = [];
                 uniquePriceDates.forEach((dStr) => {
                     let dayVal = 0;
@@ -348,9 +366,9 @@ router.post('/generate', auth_1.requireAuth, async (req, res) => {
                 }
                 // Benchmarking returns
                 const benchmarks = [];
-                if (startDate && endDate) {
-                    const parsedStart = new Date(startDate);
-                    const parsedEnd = new Date(endDate);
+                if (parsedStartDate && parsedEndDate) {
+                    const parsedStart = new Date(parsedStartDate);
+                    const parsedEnd = new Date(parsedEndDate);
                     for (const stock of stocksToProcess) {
                         const startPriceRecord = await models_1.DailyPrice.findOne({
                             where: { stockId: stock.id, date: { [sequelize_1.Op.gte]: parsedStart } },
@@ -406,26 +424,41 @@ router.post('/generate', auth_1.requireAuth, async (req, res) => {
             }
         }
         // 3. Apply the Strict File Naming Convention
-        const startStr = startDate ? startDate : 'ALL_TIME';
-        const endStr = endDate ? endDate : new Date().toISOString().split('T')[0];
+        const startStr = parsedStartDate ? parsedStartDate : 'ALL_TIME';
+        const endStr = parsedEndDate ? parsedEndDate : new Date().toISOString().split('T')[0];
         const dateRangeStr = `${startStr}_to_${endStr}`;
         const baseFilename = `${stockCounter}_${reportType.toUpperCase()}_${dateRangeStr}`;
         const ext = format === 'PDF' ? 'pdf' : 'xlsx';
         const filename = `${baseFilename}.${ext}`;
+        // Strict filename header-injection validation filter
+        const sanitizedFilename = filename.replace(/[^A-Za-z0-9._-]/g, '_');
+        // Create provisional DB log early with "pending" status to ensure failures are tracked
+        try {
+            auditLog = await models_1.ExportLogs.create({
+                userId,
+                reportType,
+                exportType: format,
+                status: 'pending',
+                filename: sanitizedFilename,
+            });
+        }
+        catch (dbErr) {
+            console.error('Provisional audit log creation failed:', dbErr);
+        }
         // 4. Generate report streams and write audit log
         if (format === 'PDF') {
             const doc = new pdfkit_1.default({ bufferPages: true, margins: { top: 60, bottom: 65, left: 50, right: 50 } });
-            // Set response headers for stream attachment
+            // Set response headers for stream attachment using sanitized filename
             res.setHeader('Content-Type', 'application/pdf');
-            res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+            res.setHeader('Content-Disposition', `attachment; filename="${sanitizedFilename}"`);
             doc.pipe(res);
             // Header Branding [FR10.4]
             doc.fontSize(20).font('Helvetica-Bold').fillColor('#1e1b4b').text('STOCKED', { continued: true });
             doc.fontSize(12).font('Helvetica').fillColor('#64748b').text(' - Capital Market Management', 50, 67);
             doc.moveDown(1.5);
-            // Metadata row
+            // Metadata row - REDACT raw userId for PII privacy protection
             doc.fontSize(9).fillColor('#64748b');
-            doc.text(`Generated By User Token: ${userId}`);
+            doc.text(`Generated By User Token: REDACTED`);
             doc.text(`Timestamp: ${new Date().toUTCString()}`);
             doc.text(`Query Range: ${startStr} to ${endStr}`);
             doc.moveDown(1.5);
@@ -636,6 +669,18 @@ router.post('/generate', auth_1.requireAuth, async (req, res) => {
                 doc.fontSize(7).fillColor('#94a3b8').text('CONFIDENTIAL - SYSTEM INTERNAL AUDIT COMPLIANCE REPORT', 50, 749);
                 doc.text(`Page ${i + 1} of ${range.count}`, 50, 749, { align: 'right' });
             }
+            // Hook up response finish callback to update the provisional db log to success
+            res.on('finish', async () => {
+                if (auditLog) {
+                    try {
+                        auditLog.status = 'success';
+                        await auditLog.save();
+                    }
+                    catch (saveErr) {
+                        console.error('Audit status success update failed:', saveErr);
+                    }
+                }
+            });
             doc.end();
         }
         else if (format === 'XLSX') {
@@ -649,9 +694,9 @@ router.post('/generate', auth_1.requireAuth, async (req, res) => {
                 alignment: { horizontal: 'left', vertical: 'middle' },
             };
             if (reportType === 'summary' && summaryData) {
-                // Define Columns
+                // Define Columns - Fix 'Ticker Ticker' typo to 'Ticker Symbol' (Issue 3)
                 worksheet.columns = [
-                    { header: 'Ticker Ticker', key: 'symbol', width: 12 },
+                    { header: 'Ticker Symbol', key: 'symbol', width: 12 },
                     { header: 'Security Name', key: 'name', width: 25 },
                     { header: 'Category Name', key: 'category', width: 15 },
                     { header: 'Remaining Quantity', key: 'shares', width: 20 },
@@ -756,21 +801,38 @@ router.post('/generate', auth_1.requireAuth, async (req, res) => {
                     }
                 });
             }
+            // Set response headers for stream attachment using sanitized filename
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-            res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+            res.setHeader('Content-Disposition', `attachment; filename="${sanitizedFilename}"`);
+            // Setup finish listener to update state to success
+            res.on('finish', async () => {
+                if (auditLog) {
+                    try {
+                        auditLog.status = 'success';
+                        await auditLog.save();
+                    }
+                    catch (saveErr) {
+                        console.error('Audit status success update failed:', saveErr);
+                    }
+                }
+            });
             await workbook.xlsx.write(res);
             res.end();
         }
-        // 5. Success audit logging [FR10]
-        await models_1.ExportLogs.create({
-            userId,
-            exportType: format,
-            filename,
-        });
-        console.log(`[AUDIT LOG] ${new Date().toISOString()}: Report "${filename}" generated successfully for userId: ${userId}`);
+        console.log(`[AUDIT LOG] ${new Date().toISOString()}: Report "${sanitizedFilename}" generated successfully for audit entry.`);
     }
     catch (error) {
         console.error('Error generating reporting export stream:', error);
+        // Mark provisional audit status to failed upon throw/catch triggers
+        if (auditLog) {
+            try {
+                auditLog.status = 'failed';
+                await auditLog.save();
+            }
+            catch (saveErr) {
+                console.error('Audit status failed update failed:', saveErr);
+            }
+        }
         if (!res.headersSent) {
             return res.status(500).json({
                 success: false,
