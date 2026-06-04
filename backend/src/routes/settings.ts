@@ -83,15 +83,20 @@ router.post(
       const existing = await UserSetting.scope('withApiKey').findByPk(userId);
       let updatedApiKey = apiKey;
 
-      // If key is masked (e.g. dots or stars) and we have an existing setting, do not overwrite the real key
-      if (apiKey && (apiKey.includes('•') || apiKey.includes('★') || apiKey.includes('*'))) {
+      // Handle cases where the key is masked or omitted entirely in the request payload
+      const isMasked = apiKey && (apiKey.includes('•') || apiKey.includes('★') || apiKey.includes('*'));
+      const isOmitted = apiKey === undefined;
+
+      if (isMasked || isOmitted) {
         updatedApiKey = existing ? existing.apiKey : null;
+      } else if (apiKey === '') {
+        updatedApiKey = null;
       }
 
       const [settings] = await UserSetting.upsert({
         userId,
         provider,
-        apiKey: updatedApiKey || null,
+        apiKey: updatedApiKey,
         refreshInterval,
       });
 
