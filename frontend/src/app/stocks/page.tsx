@@ -22,6 +22,28 @@ interface StockSummary {
   };
 }
 
+const POPULAR_STOCKS = [
+  { symbol: 'AAPL', name: 'Apple Inc.', category: 'Technology', description: 'Consumer electronics, software, and services company.' },
+  { symbol: 'MSFT', name: 'Microsoft Corporation', category: 'Technology', description: 'Software, services, devices, and cloud computing company.' },
+  { symbol: 'TSLA', name: 'Tesla, Inc.', category: 'Automotive', description: 'Electric vehicles, clean energy, and battery storage company.' },
+  { symbol: 'NVDA', name: 'NVIDIA Corporation', category: 'Technology', description: 'Graphics processing units (GPUs) and artificial intelligence technologies.' },
+  { symbol: 'AMZN', name: 'Amazon.com, Inc.', category: 'Retail', description: 'E-commerce, cloud computing, online advertising, and digital streaming.' },
+  { symbol: 'GOOGL', name: 'Alphabet Inc.', category: 'Technology', description: 'Search engine, online advertising, cloud computing, and hardware.' },
+  { symbol: 'META', name: 'Meta Platforms, Inc.', category: 'Technology', description: 'Social media, online advertising, and virtual reality company.' },
+  { symbol: 'NFLX', name: 'Netflix, Inc.', category: 'Other', description: 'Subscription-based streaming service and production company.' },
+  { symbol: 'AMD', name: 'Advanced Micro Devices, Inc.', category: 'Technology', description: 'Semiconductor company that designs computer processors and technologies.' },
+  { symbol: 'INTC', name: 'Intel Corporation', category: 'Technology', description: 'Semiconductor design and manufacturing company.' },
+  { symbol: 'BABA', name: 'Alibaba Group Holding Limited', category: 'Retail', description: 'E-commerce, retail, internet, and technology company.' },
+  { symbol: 'DIS', name: 'The Walt Disney Company', category: 'Other', description: 'Diversified mass media and entertainment conglomerate.' },
+  { symbol: 'PYPL', name: 'PayPal Holdings, Inc.', category: 'Financials', description: 'Online payments system operator.' },
+  { symbol: 'COIN', name: 'Coinbase Global, Inc.', category: 'Financials', description: 'Cryptocurrency exchange platform.' },
+  { symbol: 'JPM', name: 'JPMorgan Chase & Co.', category: 'Financials', description: 'Multinational banking and financial services.' },
+  { symbol: 'V', name: 'Visa Inc.', category: 'Financials', description: 'Multinational financial services corporation.' },
+  { symbol: 'XOM', name: 'Exxon Mobil Corporation', category: 'Energy', description: 'Multinational oil and gas corporation.' },
+  { symbol: 'JNJ', name: 'Johnson & Johnson', category: 'Health', description: 'Multinational corporation developing medical devices and pharmaceuticals.' },
+  { symbol: 'WMT', name: 'Walmart Inc.', category: 'Retail', description: 'Multinational retail corporation operating hypermarkets.' },
+];
+
 export default function StocksCatalog() {
   const [stocks, setStocks] = useState<StockSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,6 +65,43 @@ export default function StocksCatalog() {
   const [formDescription, setFormDescription] = useState('');
   const [activeStockId, setActiveStockId] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<{ field: string; message: string }[]>([]);
+
+  // Searchable Dropdown and Live Price States
+  const [useCustomTicker, setUseCustomTicker] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [livePrice, setLivePrice] = useState<{ price: number; provider: string; change?: number; changePercent?: number } | null>(null);
+  const [livePriceError, setLivePriceError] = useState<string | null>(null);
+  const [livePriceLoading, setLivePriceLoading] = useState(false);
+
+  const fetchLivePrice = async (symbol: string) => {
+    if (!symbol || symbol.trim() === '') return;
+    setLivePriceLoading(true);
+    setLivePriceError(null);
+    setLivePrice(null);
+
+    try {
+      const response = await fetch(`http://localhost:5001/api/stocks/search-price?symbol=${encodeURIComponent(symbol.trim())}`, {
+        credentials: 'include',
+      });
+      const json = await response.json();
+      if (response.ok && json.success) {
+        setLivePrice({
+          price: json.data.price,
+          provider: json.data.provider,
+          change: json.data.change,
+          changePercent: json.data.changePercent,
+        });
+      } else {
+        setLivePriceError(json.message || 'Could not fetch live price.');
+      }
+    } catch (err: any) {
+      console.error(err);
+      setLivePriceError('Network error checking live price.');
+    } finally {
+      setLivePriceLoading(false);
+    }
+  };
 
   // Fetch all stocks
   const fetchStocks = async () => {
@@ -76,12 +135,22 @@ export default function StocksCatalog() {
   }, []);
 
   const openAddModal = () => {
-    setFormName('');
-    setFormSymbol('');
-    setFormCategory('Technology');
-    setFormDescription('');
+    const firstStock = POPULAR_STOCKS[0];
+    setFormName(firstStock.name);
+    setFormSymbol(firstStock.symbol);
+    setFormCategory(firstStock.category);
+    setFormDescription(firstStock.description);
     setValidationErrors([]);
+
+    setUseCustomTicker(false);
+    setSearchTerm(`${firstStock.symbol} - ${firstStock.name}`);
+    setDropdownOpen(false);
+    setLivePrice(null);
+    setLivePriceError(null);
+    setLivePriceLoading(false);
+
     setAddModalOpen(true);
+    fetchLivePrice(firstStock.symbol);
   };
 
   const openEditModal = (stock: StockSummary) => {
@@ -438,62 +507,255 @@ export default function StocksCatalog() {
           <div className="relative bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-6">
             <div>
               <h3 className="text-xl font-bold text-white">Register Stock</h3>
-              <p className="text-xs text-slate-400 mt-1">Add a new stock to your portfolio catalog.</p>
+            </div>
+            {/* Segment Toggle */}
+            <div className="grid grid-cols-2 gap-2 bg-slate-950/50 p-1 rounded-xl border border-slate-850">
+              <button
+                type="button"
+                onClick={() => {
+                  setUseCustomTicker(false);
+                  const firstStock = POPULAR_STOCKS[0];
+                  setFormName(firstStock.name);
+                  setFormSymbol(firstStock.symbol);
+                  setFormCategory(firstStock.category);
+                  setFormDescription(firstStock.description);
+                  setSearchTerm(`${firstStock.symbol} - ${firstStock.name}`);
+                  fetchLivePrice(firstStock.symbol);
+                }}
+                className={`py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                  !useCustomTicker
+                    ? 'bg-indigo-500/10 text-indigo-300 border border-indigo-500/20'
+                    : 'text-slate-400 hover:text-slate-200 border border-transparent'
+                }`}
+              >
+                🔌 Predefined Asset
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setUseCustomTicker(true);
+                  setFormName('');
+                  setFormSymbol('');
+                  setFormCategory('Technology');
+                  setFormDescription('');
+                  setSearchTerm('');
+                  setLivePrice(null);
+                  setLivePriceError(null);
+                }}
+                className={`py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                  useCustomTicker
+                    ? 'bg-indigo-500/10 text-indigo-300 border border-indigo-500/20'
+                    : 'text-slate-400 hover:text-slate-200 border border-transparent'
+                }`}
+              >
+                ✍️ Custom Ticker
+              </button>
             </div>
 
             <form onSubmit={handleAddStock} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase mb-2">Stock Name</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Apple Inc."
-                  value={formName}
-                  onChange={(e) => setFormName(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-650 focus:outline-none transition-all"
-                />
-              </div>
+              {!useCustomTicker ? (
+                /* Predefined Asset Selection UI */
+                <div className="space-y-4">
+                  <div className="relative">
+                    <label className="block text-xs font-semibold text-slate-350 uppercase mb-2">Select Popular Stock</label>
+                    <div className="relative">
+                      <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                        <svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                      </span>
+                      <input
+                        type="text"
+                        placeholder="Search popular stocks (e.g. AAPL, TSLA)..."
+                        value={searchTerm}
+                        onFocus={() => setDropdownOpen(true)}
+                        onChange={(e) => {
+                          setSearchTerm(e.target.value);
+                          setDropdownOpen(true);
+                        }}
+                        className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 rounded-xl pl-11 pr-10 py-2.5 text-sm text-slate-100 placeholder-slate-650 focus:outline-none transition-all"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setDropdownOpen(!dropdownOpen)}
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-200 cursor-pointer"
+                      >
+                        <svg className={`h-4.5 w-4.5 transform transition-transform duration-200 ${dropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                    </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase mb-2">Stock Code (Ticker)</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. AAPL"
-                  value={formSymbol}
-                  onChange={(e) => setFormSymbol(e.target.value.toUpperCase())}
-                  className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-650 focus:outline-none transition-all uppercase"
-                />
-                {getFieldError('symbol') && (
-                  <p className="text-rose-400 text-xs mt-1.5 font-medium">{getFieldError('symbol')}</p>
-                )}
-              </div>
+                    {/* Dropdown list */}
+                    {dropdownOpen && (
+                      <>
+                        <div className="fixed inset-0 z-10" onClick={() => setDropdownOpen(false)} />
+                        <div className="absolute left-0 right-0 mt-2 max-h-52 overflow-y-auto bg-slate-950 border border-slate-850 rounded-xl shadow-2xl z-20 divide-y divide-slate-900/60 scrollbar-thin scrollbar-thumb-slate-800">
+                          {POPULAR_STOCKS.filter(stock => 
+                            stock.symbol.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                            stock.name.toLowerCase().includes(searchTerm.toLowerCase())
+                          ).length === 0 ? (
+                            <div className="p-3 text-xs text-slate-500 text-center">
+                              No matching popular stocks. Try "Custom Ticker"!
+                            </div>
+                          ) : (
+                            POPULAR_STOCKS.filter(stock => 
+                              stock.symbol.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                              stock.name.toLowerCase().includes(searchTerm.toLowerCase())
+                            ).map((stock) => (
+                              <div
+                                key={stock.symbol}
+                                onClick={() => {
+                                  setFormName(stock.name);
+                                  setFormSymbol(stock.symbol);
+                                  setFormCategory(stock.category);
+                                  setFormDescription(stock.description || '');
+                                  setSearchTerm(`${stock.symbol} - ${stock.name}`);
+                                  setDropdownOpen(false);
+                                  fetchLivePrice(stock.symbol);
+                                }}
+                                className="p-3 text-left hover:bg-indigo-950/40 cursor-pointer transition-colors flex items-center justify-between"
+                              >
+                                <div>
+                                  <span className="text-xs font-black text-indigo-300 tracking-wider bg-indigo-500/10 px-2 py-0.5 rounded mr-2">
+                                    {stock.symbol}
+                                  </span>
+                                  <span className="text-xs font-bold text-slate-200">{stock.name}</span>
+                                </div>
+                                <span className="text-[10px] text-slate-500 font-semibold">{stock.category}</span>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase mb-2">Sector / Category</label>
-                <select
-                  value={formCategory}
-                  onChange={(e) => setFormCategory(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 rounded-xl px-4 py-2.5 text-sm text-slate-100 focus:outline-none transition-all cursor-pointer"
-                >
-                  {categoriesList.filter((cat) => cat !== 'All').map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                  {/* Preselected stock dashboard */}
+                  {formSymbol && (
+                    <div className="space-y-3 bg-slate-950/30 border border-slate-850/60 p-4 rounded-2xl relative overflow-hidden">
+                      <div>
+                        <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Stock Profile</span>
+                        <span className="block text-sm font-bold text-slate-100 mt-1">{formName} ({formSymbol})</span>
+                      </div>
+                      <div className="flex gap-4">
+                        <div>
+                          <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Sector</span>
+                          <span className="inline-flex px-2 py-0.5 text-[9px] font-bold bg-slate-800 text-slate-400 rounded mt-1">{formCategory}</span>
+                        </div>
+                      </div>
+                      {formDescription && (
+                        <div>
+                          <span className="block text-[10px] font-bold text-slate-550 uppercase tracking-wider">Profile Overview</span>
+                          <p className="text-xs text-slate-450 mt-1 leading-relaxed">{formDescription}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* Custom Ticker Form Inputs */
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-350 uppercase mb-2">Stock Code (Ticker)</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. AAPL"
+                        value={formSymbol}
+                        onChange={(e) => setFormSymbol(e.target.value.toUpperCase())}
+                        className="flex-1 bg-slate-950 border border-slate-850 focus:border-indigo-500 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-650 focus:outline-none transition-all uppercase"
+                      />
+                      <button
+                        type="button"
+                        disabled={!formSymbol || livePriceLoading}
+                        onClick={() => fetchLivePrice(formSymbol)}
+                        className="px-4 py-2 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 hover:border-indigo-500/40 text-indigo-300 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                      >
+                        Check Price
+                      </button>
+                    </div>
+                    {getFieldError('symbol') && (
+                      <p className="text-rose-400 text-xs mt-1.5 font-medium">{getFieldError('symbol')}</p>
+                    )}
+                  </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase mb-2">Description (Optional)</label>
-                <textarea
-                  placeholder="Details about company profile or metrics..."
-                  value={formDescription}
-                  onChange={(e) => setFormDescription(e.target.value)}
-                  rows={3}
-                  className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none transition-all resize-none"
-                />
-              </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-355 uppercase mb-2">Stock Name</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Apple Inc."
+                      value={formName}
+                      onChange={(e) => setFormName(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-650 focus:outline-none transition-all"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-355 uppercase mb-2">Sector / Category</label>
+                    <select
+                      value={formCategory}
+                      onChange={(e) => setFormCategory(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 rounded-xl px-4 py-2.5 text-sm text-slate-100 focus:outline-none transition-all cursor-pointer"
+                    >
+                      {categoriesList.filter((cat) => cat !== 'All').map((cat) => (
+                        <option key={cat} value={cat}>
+                          {cat}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-355 uppercase mb-2">Description (Optional)</label>
+                    <textarea
+                      placeholder="Details about company profile or metrics..."
+                      value={formDescription}
+                      onChange={(e) => setFormDescription(e.target.value)}
+                      rows={3}
+                      className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none transition-all resize-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Live Price Fetching Status Card */}
+              {(livePriceLoading || livePrice || livePriceError) && (
+                <div className="p-4 rounded-2xl border border-slate-855 bg-slate-950/40 backdrop-blur-md transition-all duration-300">
+                  {livePriceLoading && (
+                    <div className="flex items-center justify-center gap-2 py-2 text-xs font-semibold text-indigo-400 animate-pulse">
+                      <svg className="animate-spin h-4 w-4 text-indigo-400" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Querying live pricing details...
+                    </div>
+                  )}
+                  {livePriceError && (
+                    <div className="text-xs text-rose-450 font-semibold py-1 leading-relaxed">
+                      ⚠️ {livePriceError}
+                    </div>
+                  )}
+                  {livePrice && (
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-500 uppercase block tracking-wider">Current Market Price</span>
+                        <span className="text-lg font-black text-slate-100">${livePrice.price.toFixed(2)}</span>
+                      </div>
+                      {livePrice.change !== undefined && livePrice.changePercent !== undefined && (
+                        <div className="text-right">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase block tracking-wider">Today's Shift</span>
+                          <span className={`text-xs font-black ${livePrice.change >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {livePrice.change >= 0 ? '▲' : '▼'} ${Math.abs(livePrice.change).toFixed(2)} ({livePrice.changePercent.toFixed(2)}%)
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="flex justify-end space-x-3 pt-4">
                 <button

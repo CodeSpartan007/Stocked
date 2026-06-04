@@ -35,6 +35,7 @@ export default function FeedSettings() {
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'failed'>('idle');
   const [connectionMessage, setConnectionMessage] = useState('');
   const [toast, setToast] = useState<ToastState>({ show: false, message: '', type: 'success' });
+  const [loadedConfig, setLoadedConfig] = useState<{ provider: 'alphavantage' | 'polygon' | 'manual'; apiKey: string } | null>(null);
 
   // System User Administration State
   const [adminUsers, setAdminUsers] = useState<UserItem[]>([]);
@@ -62,6 +63,16 @@ export default function FeedSettings() {
           setApiKey(json.data.apiKey || '');
           setApiKeyDirty(false);
           setRefreshInterval(json.data.refreshInterval);
+          setLoadedConfig({
+            provider: json.data.provider,
+            apiKey: json.data.apiKey || '',
+          });
+
+          // Hydrate key status on mount if a key exists
+          if (json.data.provider !== 'manual' && json.data.apiKey === '••••••••••••••••') {
+            setConnectionStatus('success');
+            setConnectionMessage(`API Key is active and successfully connected to ${json.data.provider === 'alphavantage' ? 'Alpha Vantage' : 'Polygon.io'}.`);
+          }
         }
       } catch (err: any) {
         console.error(err);
@@ -76,9 +87,12 @@ export default function FeedSettings() {
 
   // Reset connection status when provider or key changes
   useEffect(() => {
-    setConnectionStatus('idle');
-    setConnectionMessage('');
-  }, [provider, apiKey]);
+    if (!loadedConfig) return;
+    if (provider !== loadedConfig.provider || apiKey !== loadedConfig.apiKey) {
+      setConnectionStatus('idle');
+      setConnectionMessage('');
+    }
+  }, [provider, apiKey, loadedConfig]);
 
   const handleTestConnection = async () => {
     if (!apiKey) {
@@ -190,6 +204,17 @@ export default function FeedSettings() {
         if (json.data) {
           setApiKey(json.data.apiKey || '');
           setApiKeyDirty(false);
+          setLoadedConfig({
+            provider: json.data.provider,
+            apiKey: json.data.apiKey || '',
+          });
+          if (json.data.provider !== 'manual') {
+            setConnectionStatus('success');
+            setConnectionMessage(`API Key is active and successfully connected to ${json.data.provider === 'alphavantage' ? 'Alpha Vantage' : 'Polygon.io'}.`);
+          } else {
+            setConnectionStatus('idle');
+            setConnectionMessage('');
+          }
         }
       } else {
         const errorMsg = json.errors && json.errors.length > 0 ? json.errors[0].message : json.message;
@@ -268,7 +293,7 @@ export default function FeedSettings() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 animate-fade-in relative text-slate-100 pb-12">
+    <>
       {/* Toast Notification Banner */}
       {toast.show && (
         <div
@@ -296,6 +321,8 @@ export default function FeedSettings() {
           <span className="text-sm font-semibold">{toast.message}</span>
         </div>
       )}
+
+      <div className="max-w-4xl mx-auto space-y-8 animate-fade-in relative text-slate-100 pb-12">
 
       {/* Header section */}
       <div>
@@ -758,5 +785,6 @@ export default function FeedSettings() {
         )
       )}
     </div>
+    </>
   );
 }
