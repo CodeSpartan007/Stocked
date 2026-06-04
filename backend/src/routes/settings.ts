@@ -83,13 +83,12 @@ router.post(
       const existing = await UserSetting.scope('withApiKey').findByPk(userId);
       let updatedApiKey = apiKey;
 
-      // Handle cases where the key is masked or omitted entirely in the request payload
-      const isMasked = apiKey && (apiKey.includes('•') || apiKey.includes('★') || apiKey.includes('*'));
+      const isMasked = apiKey === '••••••••••••••••';
       const isOmitted = apiKey === undefined;
 
       if (isMasked || isOmitted) {
         updatedApiKey = existing ? existing.apiKey : null;
-      } else if (apiKey === '') {
+      } else if (apiKey === '' || apiKey === null) {
         updatedApiKey = null;
       }
 

@@ -50,6 +50,15 @@
   40%, 80% { transform: translateX(6px); }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in,
+  .animate-slide-in,
+  .animate-slide-down,
+  .animate-shake {
+    animation: none !important;
+  }
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
