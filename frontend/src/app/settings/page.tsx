@@ -32,6 +32,8 @@ export default function FeedSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showKey, setShowKey] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'failed'>('idle');
+  const [connectionMessage, setConnectionMessage] = useState('');
   const [toast, setToast] = useState<ToastState>({ show: false, message: '', type: 'success' });
 
   // System User Administration State
@@ -71,6 +73,47 @@ export default function FeedSettings() {
 
     fetchSettings();
   }, []);
+
+  // Reset connection status when provider or key changes
+  useEffect(() => {
+    setConnectionStatus('idle');
+    setConnectionMessage('');
+  }, [provider, apiKey]);
+
+  const handleTestConnection = async () => {
+    if (!apiKey) {
+      triggerToast('API Key is required to test connection.', 'error');
+      return;
+    }
+    setConnectionStatus('testing');
+    setConnectionMessage('');
+    try {
+      const response = await fetch('http://localhost:5001/api/settings/test-connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider,
+          apiKey,
+        }),
+        credentials: 'include',
+      });
+      const json = await response.json();
+      if (response.ok && json.success) {
+        setConnectionStatus('success');
+        setConnectionMessage(json.message);
+        triggerToast(json.message, 'success');
+      } else {
+        setConnectionStatus('failed');
+        setConnectionMessage(json.message || 'Connection failed.');
+        triggerToast(json.message || 'Connection failed.', 'error');
+      }
+    } catch (err: any) {
+      console.error(err);
+      setConnectionStatus('failed');
+      setConnectionMessage(err.message || 'Network error testing API connection.');
+      triggerToast(err.message || 'Network error testing API connection.', 'error');
+    }
+  };
 
   // Fetch registered users (Admins only)
   const fetchAdminUsers = async (page: number = 1) => {
@@ -455,6 +498,42 @@ export default function FeedSettings() {
                           <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                         </svg>
                       )}
+                    </button>
+                  </div>
+
+                  {/* API Key Status and Test Button */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2.5 border-t border-slate-800/40 mt-3">
+                    <div className="flex-1">
+                      {connectionStatus === 'idle' && (
+                        <span className="text-[11px] text-slate-400 font-medium">Status: Not tested yet</span>
+                      )}
+                      {connectionStatus === 'testing' && (
+                        <span className="text-[11px] text-indigo-400 font-semibold flex items-center gap-1.5">
+                          <svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                          </svg>
+                          Verifying API key connection status...
+                        </span>
+                      )}
+                      {connectionStatus === 'success' && (
+                        <span className="text-[11px] text-emerald-450 font-bold flex items-center gap-1">
+                          ✓ {connectionMessage}
+                        </span>
+                      )}
+                      {connectionStatus === 'failed' && (
+                        <span className="text-[11px] text-rose-450 font-semibold block leading-relaxed max-w-md">
+                          ✗ Connection Failed: {connectionMessage}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={connectionStatus === 'testing' || !apiKey}
+                      onClick={handleTestConnection}
+                      className="px-3.5 py-1.5 text-xs font-bold text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 hover:bg-indigo-500/25 hover:border-indigo-500/40 rounded-xl transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                    >
+                      Test API Connection
                     </button>
                   </div>
                 </div>

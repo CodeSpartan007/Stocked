@@ -3,7 +3,7 @@ import { body } from 'express-validator';
 import { UserSetting } from '../models';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
 import { handleValidationErrors } from '../middleware/validate';
-import { startPriceSyncPoller } from '../services/priceFeedService';
+import { startPriceSyncPoller, fetchFromAlphaVantage, fetchFromPolygon } from '../services/priceFeedService';
 
 const router = Router();
 
@@ -92,6 +92,28 @@ router.post(
         updatedApiKey = null;
       }
 
+      // Test connection before saving if a live provider is selected
+      if (provider !== 'manual' && updatedApiKey) {
+        try {
+          if (provider === 'alphavantage') {
+            await fetchFromAlphaVantage('AAPL', updatedApiKey);
+          } else if (provider === 'polygon') {
+            await fetchFromPolygon('AAPL', updatedApiKey);
+          }
+        } catch (testErr: any) {
+          console.warn(`[SettingsRouter] Proactive connection test failed: ${testErr.message}`);
+          return res.status(400).json({
+            success: false,
+            errors: [
+              {
+                field: 'apiKey',
+                message: `API Connection verification failed: ${testErr.message}`,
+              },
+            ],
+          });
+        }
+      }
+
       const [settings] = await UserSetting.upsert({
         userId,
         provider,
@@ -120,6 +142,63 @@ router.post(
       return res.status(500).json({
         success: false,
         message: 'Failed to update settings configuration.',
+      });
+    }
+  }
+);
+
+// POST /api/settings/test-connection -> Verify API key connection before saving
+router.post(
+  '/test-connection',
+  requireAuth,
+  [
+    body('provider')
+      .trim()
+      .isIn(['alphavantage', 'polygon'])
+      .withMessage('Provider must be alphavantage or polygon.'),
+    body('apiKey')
+      .trim()
+      .notEmpty()
+      .withMessage('API Key is required to test connection.'),
+  ],
+  handleValidationErrors,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const { provider, apiKey } = req.body;
+
+      let keyToTest = apiKey;
+      if (apiKey === '••••••••••••••••') {
+        const existing = await UserSetting.scope('withApiKey').findByPk(userId);
+        if (!existing || !existing.apiKey) {
+          return res.status(400).json({
+            success: false,
+            message: 'No existing API key found to test.',
+          });
+        }
+        keyToTest = existing.apiKey;
+      }
+
+      console.log(`[SettingsRouter] Testing connection for user ${userId} using ${provider}...`);
+      
+      // Test with a standard symbol AAPL
+      if (provider === 'alphavantage') {
+        await fetchFromAlphaVantage('AAPL', keyToTest);
+      } else if (provider === 'polygon') {
+        await fetchFromPolygon('AAPL', keyToTest);
+      } else {
+        throw new Error('Unsupported provider for testing.');
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: `API Key is active and successfully connected to ${provider === 'alphavantage' ? 'Alpha Vantage' : 'Polygon.io'}.`,
+      });
+    } catch (error: any) {
+      console.warn('API Connection test failed:', error.message);
+      return res.status(400).json({
+        success: false,
+        message: error.message || 'API connection test failed.',
       });
     }
   }
