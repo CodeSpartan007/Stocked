@@ -152,6 +152,7 @@ export async function getLivePriceForStock(
     }
 
     const [dailyPrice] = await DailyPrice.upsert({
+      userId,
       stockId: stock.id,
       date: todayStr,
       price: tickerData.price,
@@ -162,7 +163,7 @@ export async function getLivePriceForStock(
     console.log(`[PriceFeedService] Live price cached for ${stock.symbol}: $${tickerData.price} (Source: ${provider})`);
 
     const fetchedPrice = await DailyPrice.findOne({
-      where: { stockId: stock.id, date: todayStr }
+      where: { stockId: stock.id, date: todayStr, userId }
     });
 
     return {
