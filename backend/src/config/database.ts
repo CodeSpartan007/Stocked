@@ -5,8 +5,17 @@ const isProduction = process.env.NODE_ENV === 'production';
 
 // In development: use local SQLite file.
 // In production: use Neon Postgres via DATABASE_URL env var.
-export const sequelize = isProduction
-  ? new Sequelize(process.env.DATABASE_URL!, {
+function createSequelize(): Sequelize {
+  if (isProduction) {
+    const dbUrl = process.env.DATABASE_URL;
+    if (!dbUrl) {
+      console.error(
+        '[FATAL] DATABASE_URL is not set. In production, a Postgres connection string is required.\n' +
+        'Set DATABASE_URL in your Railway environment variables and redeploy.'
+      );
+      process.exit(1);
+    }
+    return new Sequelize(dbUrl, {
       dialect: 'postgres',
       dialectOptions: {
         ssl: {
@@ -18,17 +27,22 @@ export const sequelize = isProduction
       define: {
         timestamps: true,
       },
-    })
-  : new Sequelize({
-      dialect: 'sqlite',
-      storage: path.resolve(__dirname, '../../database.sqlite'),
-      logging: false,
-      define: {
-        timestamps: true,
-      },
-      hooks: {
-        afterConnect: (connection: any, callback: any) => {
-          connection.run('PRAGMA foreign_keys = ON;', callback);
-        },
-      },
     });
+  }
+
+  return new Sequelize({
+    dialect: 'sqlite',
+    storage: path.resolve(__dirname, '../../database.sqlite'),
+    logging: false,
+    define: {
+      timestamps: true,
+    },
+    hooks: {
+      afterConnect: (connection: any, callback: any) => {
+        connection.run('PRAGMA foreign_keys = ON;', callback);
+      },
+    },
+  });
+}
+
+export const sequelize = createSequelize();
