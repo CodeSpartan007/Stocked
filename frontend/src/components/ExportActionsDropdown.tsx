@@ -1,5 +1,7 @@
 'use client';
 
+import { API_BASE } from '../lib/api';
+
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDown, FileText, Grid, Download } from 'lucide-react';
 
@@ -38,7 +40,8 @@ export default function ExportActionsDropdown({
       setDownloading(true);
       setIsOpen(false);
 
-      const response = await fetch('http://localhost:5001/api/exports/generate', {
+      const response = await fetch(`${API_BASE}/api/exports/generate`,
+{
         method: 'POST',
         credentials: 'include',
         headers: {

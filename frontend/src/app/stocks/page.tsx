@@ -1,5 +1,7 @@
 'use client';
 
+import { API_BASE } from '../../lib/api';
+
 import React, { useEffect, useState } from 'react';
 
 interface StockSummary {
@@ -81,7 +83,7 @@ export default function StocksCatalog() {
     setLivePrice(null);
 
     try {
-      const response = await fetch(`http://localhost:5001/api/stocks/search-price?symbol=${encodeURIComponent(symbol.trim())}`, {
+      const response = await fetch(`${API_BASE}/api/stocks/search-price?symbol=${encodeURIComponent(symbol.trim())}`, {
         credentials: 'include',
       });
       const json = await response.json();
@@ -107,7 +109,8 @@ export default function StocksCatalog() {
   const fetchStocks = async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:5001/api/stocks', {
+      const response = await fetch(`${API_BASE}/api/stocks`,
+{
         credentials: 'include'
       });
       if (!response.ok) {
@@ -176,7 +179,8 @@ export default function StocksCatalog() {
     setValidationErrors([]);
 
     try {
-      const response = await fetch('http://localhost:5001/api/stocks', {
+      const response = await fetch(`${API_BASE}/api/stocks`,
+{
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -213,7 +217,7 @@ export default function StocksCatalog() {
     if (!activeStockId) return;
 
     try {
-      const response = await fetch(`http://localhost:5001/api/stocks/${activeStockId}`, {
+      const response = await fetch(`${API_BASE}/api/stocks/${activeStockId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -247,7 +251,7 @@ export default function StocksCatalog() {
     if (!activeStockId) return;
 
     try {
-      const response = await fetch(`http://localhost:5001/api/stocks/${activeStockId}`, {
+      const response = await fetch(`${API_BASE}/api/stocks/${activeStockId}`, {
         method: 'DELETE',
         credentials: 'include',
       });

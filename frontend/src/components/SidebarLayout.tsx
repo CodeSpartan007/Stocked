@@ -1,5 +1,7 @@
 'use client';
 
+import { API_BASE } from '../lib/api';
+
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -21,7 +23,8 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
     if (!user) return;
     async function fetchApiStatus() {
       try {
-        const res = await fetch('http://localhost:5001/api/settings/status', {
+        const res = await fetch(`${API_BASE}/api/settings/status`,
+{
           credentials: 'include',
         });
         if (res.ok) {

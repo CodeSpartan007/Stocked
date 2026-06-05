@@ -1,18 +1,34 @@
 import { Sequelize } from 'sequelize';
 import path from 'path';
 
-const dbPath = path.resolve(__dirname, '../../database.sqlite');
+const isProduction = process.env.NODE_ENV === 'production';
 
-export const sequelize = new Sequelize({
-  dialect: 'sqlite',
-  storage: dbPath,
-  logging: false, // Set to console.log to see SQL queries in development
-  define: {
-    timestamps: true,
-  },
-  hooks: {
-    afterConnect: (connection: any, callback: any) => {
-      connection.run('PRAGMA foreign_keys = ON;', callback);
-    },
-  },
-});
+// In development: use local SQLite file.
+// In production: use Neon Postgres via DATABASE_URL env var.
+export const sequelize = isProduction
+  ? new Sequelize(process.env.DATABASE_URL!, {
+      dialect: 'postgres',
+      dialectOptions: {
+        ssl: {
+          require: true,
+          rejectUnauthorized: false, // Required for Neon's managed SSL
+        },
+      },
+      logging: false,
+      define: {
+        timestamps: true,
+      },
+    })
+  : new Sequelize({
+      dialect: 'sqlite',
+      storage: path.resolve(__dirname, '../../database.sqlite'),
+      logging: false,
+      define: {
+        timestamps: true,
+      },
+      hooks: {
+        afterConnect: (connection: any, callback: any) => {
+          connection.run('PRAGMA foreign_keys = ON;', callback);
+        },
+      },
+    });

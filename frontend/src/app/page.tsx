@@ -1,5 +1,7 @@
 'use client';
 
+import { API_BASE } from '../lib/api';
+
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import ExportActionsDropdown from '../components/ExportActionsDropdown';
@@ -69,7 +71,8 @@ export default function Dashboard() {
 
   const fetchTickerPrices = async () => {
     try {
-      const res = await fetch('http://localhost:5001/api/stocks/live-prices', {
+      const res = await fetch(`${API_BASE}/api/stocks/live-prices`,
+{
         credentials: 'include'
       });
       if (res.ok) {
@@ -108,11 +111,15 @@ export default function Dashboard() {
 
         // Fetch all registered stocks, portfolio summary, recent transactions, benchmarking, and tickers in parallel
         const [stocksRes, portfolioRes, txRes, benchmarkRes, tickerRes] = await Promise.all([
-          fetch('http://localhost:5001/api/stocks', { credentials: 'include' }),
-          fetch('http://localhost:5001/api/portfolio/summary', { credentials: 'include' }),
-          fetch('http://localhost:5001/api/transactions/history', { credentials: 'include' }),
-          fetch(`http://localhost:5001/api/analytics/benchmark?startDate=${currentMonthStart}&endDate=${currentMonthEnd}`, { credentials: 'include' }),
-          fetch('http://localhost:5001/api/stocks/live-prices', { credentials: 'include' })
+          fetch(`${API_BASE}/api/stocks`,
+{ credentials: 'include' }),
+          fetch(`${API_BASE}/api/portfolio/summary`,
+{ credentials: 'include' }),
+          fetch(`${API_BASE}/api/transactions/history`,
+{ credentials: 'include' }),
+          fetch(`${API_BASE}/api/analytics/benchmark?startDate=${currentMonthStart}&endDate=${currentMonthEnd}`, { credentials: 'include' }),
+          fetch(`${API_BASE}/api/stocks/live-prices`,
+{ credentials: 'include' })
         ]);
 
         if (!stocksRes.ok || !portfolioRes.ok || !txRes.ok) {

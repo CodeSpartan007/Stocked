@@ -48,8 +48,9 @@ DailyPrice.belongsTo(User, { foreignKey: 'userId', as: 'User' });
 export { sequelize, User, Stock, DailyPrice, Purchase, Sales, PerformanceTarget, UserSetting, ExportLogs };
 
 export async function initDb() {
-  // Sync the database
-  await sequelize.sync();
+  // In development, `alter: true` applies schema changes automatically.
+  // In production, never alter/drop tables — only create if not exists.
+  await sequelize.sync({ alter: process.env.NODE_ENV !== 'production' });
   console.log('Database synced successfully.');
 
   // Seed default user if not exists

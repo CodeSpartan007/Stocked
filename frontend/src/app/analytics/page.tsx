@@ -1,5 +1,7 @@
 'use client';
 
+import { API_BASE } from '../../lib/api';
+
 import React, { useEffect, useState, useRef } from 'react';
 import ExportActionsDropdown from '../../components/ExportActionsDropdown';
 import {
@@ -144,7 +146,8 @@ export default function AnalyticsPage() {
   useEffect(() => {
     async function fetchStocks() {
       try {
-        const res = await fetch('http://localhost:5001/api/stocks', {
+        const res = await fetch(`${API_BASE}/api/stocks`,
+{
           credentials: 'include'
         });
         if (!res.ok) throw new Error();
@@ -179,10 +182,10 @@ export default function AnalyticsPage() {
         const queryParams = `startDate=${startDate}&endDate=${endDate}`;
 
         const [chartsRes, metricsRes, benchmarkRes, targetsRes] = await Promise.all([
-          fetch(`http://localhost:5001/api/analytics/charts/${selectedStockId}?${queryParams}`, { signal, credentials: 'include' }),
-          fetch(`http://localhost:5001/api/analytics/advanced?${queryParams}`, { signal, credentials: 'include' }),
-          fetch(`http://localhost:5001/api/analytics/benchmark?${queryParams}`, { signal, credentials: 'include' }),
-          fetch(`http://localhost:5001/api/analytics/targets`, { signal, credentials: 'include' })
+          fetch(`${API_BASE}/api/analytics/charts/${selectedStockId}?${queryParams}`, { signal, credentials: 'include' }),
+          fetch(`${API_BASE}/api/analytics/advanced?${queryParams}`, { signal, credentials: 'include' }),
+          fetch(`${API_BASE}/api/analytics/benchmark?${queryParams}`, { signal, credentials: 'include' }),
+          fetch(`${API_BASE}/api/analytics/targets`, { signal, credentials: 'include' })
         ]);
 
         if (!chartsRes.ok || !metricsRes.ok || !benchmarkRes.ok || !targetsRes.ok) {
@@ -236,7 +239,8 @@ export default function AnalyticsPage() {
     setFormError(null);
 
     try {
-      const res = await fetch('http://localhost:5001/api/analytics/targets', {
+      const res = await fetch(`${API_BASE}/api/analytics/targets`,
+{
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -254,7 +258,8 @@ export default function AnalyticsPage() {
         setNewTargetName('');
         setNewTargetValue('');
         // Refresh targets checklist
-        const updatedTargetsRes = await fetch('http://localhost:5001/api/analytics/targets', {
+        const updatedTargetsRes = await fetch(`${API_BASE}/api/analytics/targets`,
+{
           credentials: 'include'
         });
         const updatedJson = await updatedTargetsRes.json();

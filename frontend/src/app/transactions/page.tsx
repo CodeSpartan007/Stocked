@@ -1,5 +1,7 @@
 'use client';
 
+import { API_BASE } from '../../lib/api';
+
 import React, { useState, useEffect, useCallback } from 'react';
 import ExportActionsDropdown from '../../components/ExportActionsDropdown';
 
@@ -57,7 +59,8 @@ export default function TransactionsPage() {
   useEffect(() => {
     async function loadStocks() {
       try {
-        const res = await fetch('http://localhost:5001/api/stocks', {
+        const res = await fetch(`${API_BASE}/api/stocks`,
+{
           credentials: 'include'
         });
         const json = await res.json();
@@ -80,7 +83,7 @@ export default function TransactionsPage() {
     setLoadingLedger(true);
     setErrorMessage(null); // Clear preceding error on reload attempts
     try {
-      let url = 'http://localhost:5001/api/transactions/history';
+      let url = `${API_BASE}/api/transactions/history`;
       const params = new URLSearchParams();
       if (startDate) params.append('startDate', startDate);
       if (endDate) params.append('endDate', endDate);
@@ -148,8 +151,8 @@ export default function TransactionsPage() {
     try {
       const endpoint =
         activeTab === 'BUY'
-          ? 'http://localhost:5001/api/transactions/purchases'
-          : 'http://localhost:5001/api/transactions/sales';
+          ? `${API_BASE}/api/transactions/purchases`
+          : `${API_BASE}/api/transactions/sales`;
 
       const bodyData = {
         stockId: selectedStockId,

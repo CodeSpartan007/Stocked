@@ -1,5 +1,7 @@
 'use client';
 
+import { API_BASE } from '../../lib/api';
+
 import React, { useEffect, useState } from 'react';
 
 interface StockOption {
@@ -58,7 +60,8 @@ export default function DailyPricesRecording() {
   const fetchStocksList = async () => {
     try {
       setLoadingStocks(true);
-      const response = await fetch('http://localhost:5001/api/stocks', {
+      const response = await fetch(`${API_BASE}/api/stocks`,
+{
         credentials: 'include'
       });
       if (!response.ok) {
@@ -85,7 +88,7 @@ export default function DailyPricesRecording() {
 
     try {
       setLoadingHistory(true);
-      const response = await fetch(`http://localhost:5001/api/prices/${stockId}?page=${pageNum}&limit=5`, {
+      const response = await fetch(`${API_BASE}/api/prices/${stockId}?page=${pageNum}&limit=5`, {
         credentials: 'include'
       });
       if (!response.ok) {
@@ -126,7 +129,8 @@ export default function DailyPricesRecording() {
     }
 
     try {
-      const response = await fetch('http://localhost:5001/api/prices', {
+      const response = await fetch(`${API_BASE}/api/prices`,
+{
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -177,7 +181,7 @@ export default function DailyPricesRecording() {
     setEditErrors([]);
 
     try {
-      const response = await fetch(`http://localhost:5001/api/prices/${recordId}`, {
+      const response = await fetch(`${API_BASE}/api/prices/${recordId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -210,7 +214,7 @@ export default function DailyPricesRecording() {
     if (!confirm('Are you sure you want to delete this price record?')) return;
 
     try {
-      const response = await fetch(`http://localhost:5001/api/prices/${recordId}`, {
+      const response = await fetch(`${API_BASE}/api/prices/${recordId}`, {
         method: 'DELETE',
         credentials: 'include',
       });

@@ -1,5 +1,7 @@
 'use client';
 
+import { API_BASE } from '../../lib/api';
+
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/app/context/AuthContext';
 
@@ -50,7 +52,8 @@ export default function FeedSettings() {
     async function fetchSettings() {
       try {
         setLoading(true);
-        const response = await fetch('http://localhost:5001/api/settings/feed', {
+        const response = await fetch(`${API_BASE}/api/settings/feed`,
+{
           method: 'GET',
           credentials: 'include',
         });
@@ -102,7 +105,8 @@ export default function FeedSettings() {
     setConnectionStatus('testing');
     setConnectionMessage('');
     try {
-      const response = await fetch('http://localhost:5001/api/settings/test-connection', {
+      const response = await fetch(`${API_BASE}/api/settings/test-connection`,
+{
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -135,7 +139,7 @@ export default function FeedSettings() {
 
     try {
       setAdminLoading(true);
-      const response = await fetch(`http://localhost:5001/api/admin?page=${page}&limit=8`, {
+      const response = await fetch(`${API_BASE}/api/admin?page=${page}&limit=8`, {
         method: 'GET',
         credentials: 'include',
       });
@@ -191,7 +195,8 @@ export default function FeedSettings() {
         payload.apiKey = '';
       }
 
-      const response = await fetch('http://localhost:5001/api/settings/feed', {
+      const response = await fetch(`${API_BASE}/api/settings/feed`,
+{
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -235,7 +240,7 @@ export default function FeedSettings() {
     const nextRole = currentRole === 'admin' ? 'user' : 'admin';
 
     try {
-      const response = await fetch(`http://localhost:5001/api/admin/users/${userId}/role`, {
+      const response = await fetch(`${API_BASE}/api/admin/users/${userId}/role`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ role: nextRole }),
@@ -271,7 +276,7 @@ export default function FeedSettings() {
     setUserDeletingId(userId);
 
     try {
-      const response = await fetch(`http://localhost:5001/api/admin/users/${userId}`, {
+      const response = await fetch(`${API_BASE}/api/admin/users/${userId}`, {
         method: 'DELETE',
         credentials: 'include',
       });
