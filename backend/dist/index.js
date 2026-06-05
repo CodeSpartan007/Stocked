@@ -41,6 +41,14 @@ app.use('/api/portfolio', portfolio_1.default);
 app.use('/api/analytics', analytics_1.default);
 app.use('/api/settings', settings_1.default);
 app.use('/api/exports', exports_1.default);
+// Root Route
+app.get('/', (req, res) => {
+    res.status(200).json({
+        success: true,
+        message: 'Welcome to the Stocked API. The backend service is running successfully.',
+        healthCheck: '/health'
+    });
+});
 // Health Check
 app.get('/health', (req, res) => {
     res.status(200).json({ status: 'OK', message: 'Stocked backend is running.' });
