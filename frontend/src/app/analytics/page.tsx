@@ -340,7 +340,7 @@ export default function AnalyticsPage() {
       )}
 
       {/* Metrics Header with Export Actions */}
-      <div className="flex items-center justify-between bg-slate-900/10 backdrop-blur-md border border-slate-800/40 rounded-2xl p-4 shadow-md">
+      <div className="relative z-30 flex items-center justify-between bg-slate-900/10 backdrop-blur-md border border-slate-800/40 rounded-2xl p-4 shadow-md">
         <div>
           <h2 className="text-xs font-black uppercase tracking-wider text-indigo-400">Key Metrics View</h2>
           <p className="text-[9px] text-slate-500 font-medium">Returns, growth, and total market value</p>

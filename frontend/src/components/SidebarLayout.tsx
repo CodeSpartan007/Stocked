@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/app/context/AuthContext';
@@ -9,6 +9,35 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, loading, logout } = useAuth();
+  const [apiStatus, setApiStatus] = useState<{
+    provider: 'alphavantage' | 'polygon' | 'manual';
+    connected: boolean;
+    statusText: string;
+    message: string;
+    callsRemainingText: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    async function fetchApiStatus() {
+      try {
+        const res = await fetch('http://localhost:5001/api/settings/status', {
+          credentials: 'include',
+        });
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success) {
+            setApiStatus(json.data);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch API status:', err);
+      }
+    }
+    fetchApiStatus();
+    const interval = setInterval(fetchApiStatus, 30000);
+    return () => clearInterval(interval);
+  }, [user]);
 
   if (loading) {
     return (
@@ -20,7 +49,7 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
             <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H12" />
           </svg>
         </div>
-        <p className="text-xs text-slate-500 font-bold tracking-widest uppercase">Hydrating Session Context...</p>
+        <p className="text-xs text-slate-500 font-bold tracking-widest uppercase">Stocked</p>
       </div>
     );
   }
@@ -320,7 +349,43 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
           <div className="absolute top-0 right-1/4 w-[500px] h-[500px] bg-indigo-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
           <div className="absolute bottom-0 left-1/4 w-[400px] h-[400px] bg-emerald-500/5 rounded-full blur-[100px] pointer-events-none -z-10" />
 
-          <div className="max-w-7xl mx-auto h-full">{children}</div>
+          <div className="max-w-7xl mx-auto h-full">
+            {apiStatus && apiStatus.provider !== 'manual' && (
+              <div className={`mb-6 p-4 rounded-2xl border backdrop-blur-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs font-semibold shadow-lg transition-all duration-300 ${
+                apiStatus.statusText === 'Rate Limited'
+                  ? 'bg-amber-500/10 border-amber-500/20 text-amber-300'
+                  : !apiStatus.connected
+                  ? 'bg-rose-500/10 border-rose-500/20 text-rose-300'
+                  : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
+              }`}>
+                <div className="flex items-center gap-2.5">
+                  <span className={`h-2.5 w-2.5 rounded-full ${
+                    apiStatus.statusText === 'Rate Limited'
+                      ? 'bg-amber-400 animate-pulse'
+                      : !apiStatus.connected
+                      ? 'bg-rose-500'
+                      : 'bg-emerald-400'
+                  }`} />
+                  <span>
+                    <span className="font-extrabold uppercase tracking-wider mr-1">
+                      {apiStatus.provider === 'alphavantage' ? 'Alpha Vantage' : 'Polygon.io'} Feed:
+                    </span>{' '}
+                    {apiStatus.statusText === 'Rate Limited'
+                      ? 'Request limit reached. Data updates are temporarily paused.'
+                      : !apiStatus.connected
+                      ? 'Connection offline. Please check your API credentials.'
+                      : 'Live pricing active.'}
+                  </span>
+                </div>
+                {apiStatus.callsRemainingText && (
+                  <span className="text-[10px] font-bold uppercase tracking-wider opacity-90 bg-slate-900/60 px-3 py-1 rounded-xl border border-slate-800/80">
+                    {apiStatus.callsRemainingText}
+                  </span>
+                )}
+              </div>
+            )}
+            {children}
+          </div>
         </main>
       </div>
     </div>

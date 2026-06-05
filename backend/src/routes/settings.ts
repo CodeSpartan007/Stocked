@@ -3,7 +3,7 @@ import { body } from 'express-validator';
 import { UserSetting } from '../models';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
 import { handleValidationErrors } from '../middleware/validate';
-import { startPriceSyncPoller, fetchFromAlphaVantage, fetchFromPolygon } from '../services/priceFeedService';
+import { startPriceSyncPoller, fetchFromAlphaVantage, fetchFromPolygon, getOrUpdateApiStatus } from '../services/priceFeedService';
 
 const router = Router();
 
@@ -217,5 +217,23 @@ router.post(
     }
   }
 );
+
+// GET /api/settings/status -> Retrieve the current connection/rate-limit status of the API feed
+router.get('/status', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const status = await getOrUpdateApiStatus(userId);
+    return res.status(200).json({
+      success: true,
+      data: status,
+    });
+  } catch (error: any) {
+    console.error('Error fetching API status:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve API status.',
+    });
+  }
+});
 
 export default router;

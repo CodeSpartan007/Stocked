@@ -326,9 +326,9 @@ export default function FeedSettings() {
 
       {/* Header section */}
       <div>
-        <h1 className="text-3xl font-black tracking-tight text-white">System Administration & Configurations</h1>
+        <h1 className="text-3xl font-black tracking-tight text-white">API Integration</h1>
         <p className="text-sm text-slate-400 mt-1">
-          Configure real-time price feed schedulers, manage credentials, and monitor system-wide multi-tenant accounts.
+          Configure real-time price feed schedulers and manage credentials.
         </p>
       </div>
 
