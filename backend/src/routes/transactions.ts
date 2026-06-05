@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { body } from 'express-validator';
-import { Transaction } from 'sequelize';
+import { Op, Transaction } from 'sequelize';
 import { sequelize, Stock, Purchase, Sales } from '../models';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
 import { handleValidationErrors } from '../middleware/validate';
@@ -209,7 +209,43 @@ router.post(
         });
       }
 
-      // Calculate total available holdings (Purchased - Sold) inside transaction context
+      // Constraint 1: Sale date must not predate the earliest purchase for this stock.
+      // This prevents orphaned sales that corrupt the analytics P&L timeline.
+      const earliestPurchase = await Purchase.findOne({
+        where: { stockId, userId },
+        order: [['purchaseDate', 'ASC'], ['createdAt', 'ASC']],
+        transaction,
+      });
+
+      if (!earliestPurchase) {
+        await transaction.rollback();
+        return res.status(400).json({
+          success: false,
+          errors: [
+            {
+              field: 'stockId',
+              message: 'You cannot record a sale because you have no purchase history for this stock. Please add a buy transaction first.',
+            },
+          ],
+        });
+      }
+
+      if (saleDate < earliestPurchase.purchaseDate) {
+        await transaction.rollback();
+        return res.status(400).json({
+          success: false,
+          errors: [
+            {
+              field: 'saleDate',
+              message: `Sale date (${saleDate}) cannot be earlier than your first recorded purchase of this stock (${earliestPurchase.purchaseDate}). You can only sell shares you have previously bought.`,
+            },
+          ],
+        });
+      }
+
+      // Constraint 2: Calculate holdings as of the sale date and check for sufficient shares.
+      // We compute holdings only from purchases on or before the saleDate to get accurate
+      // shares-in-hand at the time of the sale.
       const holdings = await computeStockHoldings(stockId, userId, transaction);
 
       // Short-Selling check
@@ -220,7 +256,7 @@ router.post(
           errors: [
             {
               field: 'quantity',
-              message: `Holdings validation failed. Requested sale quantity (${saleQty}) exceeds currently available holdings (${holdings.remainingShares} shares).`,
+              message: `Not enough shares to sell. You are trying to sell ${saleQty} shares, but you only hold ${holdings.remainingShares} shares of this stock.`,
             },
           ],
         });
