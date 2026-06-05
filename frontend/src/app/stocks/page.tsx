@@ -17,7 +17,7 @@ interface StockSummary {
     lowestPrice: number;
     priceChange: number;
     priceChangePercent: number;
-    source?: 'live' | 'manual fallback';
+    source?: 'live' | 'cache' | 'manual fallback';
     lastUpdated?: string | null;
   };
 }

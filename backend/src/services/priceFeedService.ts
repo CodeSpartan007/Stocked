@@ -239,7 +239,7 @@ export async function getLivePriceForStock(
   price: number;
   change: number;
   changePercent: number;
-  source: 'live' | 'manual fallback';
+  source: 'live' | 'manual fallback' | 'cache';
   lastUpdated: string;
 }> {
   let provider = process.env.PRICE_FEED_PROVIDER || 'manual';
@@ -325,7 +325,7 @@ export async function getLivePriceForStock(
       lastChecked: new Date(),
     });
 
-    return fetchLocalFallback(stock, 'manual fallback');
+    return fetchLocalFallback(stock, 'cache');
   }
 }
 
@@ -334,13 +334,13 @@ export async function getLivePriceForStock(
  */
 async function fetchLocalFallback(
   stock: Stock,
-  fallbackLabel: 'live' | 'manual fallback'
+  fallbackLabel: 'live' | 'manual fallback' | 'cache'
 ): Promise<{
   symbol: string;
   price: number;
   change: number;
   changePercent: number;
-  source: 'live' | 'manual fallback';
+  source: 'live' | 'manual fallback' | 'cache';
   lastUpdated: string;
 }> {
   const latestPrices = await DailyPrice.findAll({
@@ -391,7 +391,7 @@ export async function getLocalCachedPriceForStock(
   price: number;
   change: number;
   changePercent: number;
-  source: 'live' | 'manual fallback';
+  source: 'live' | 'manual fallback' | 'cache';
   lastUpdated: string;
 }> {
   let provider = 'manual';
@@ -404,7 +404,7 @@ export async function getLocalCachedPriceForStock(
     console.error(`[PriceFeedService] Failed to load provider settings for user ${userId}:`, err);
   }
 
-  const label = provider === 'manual' ? 'manual fallback' : 'live';
+  const label = provider === 'manual' ? 'manual fallback' : 'cache';
   return fetchLocalFallback(stock, label);
 }
 

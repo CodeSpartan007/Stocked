@@ -15,7 +15,7 @@ interface StockSummary {
     latestPrice: number;
     priceChange: number;
     priceChangePercent: number;
-    source?: 'live' | 'manual fallback';
+    source?: 'live' | 'manual fallback' | 'cache';
     lastUpdated?: string | null;
   };
 }
@@ -44,7 +44,7 @@ interface LiveTickerItem {
   price: number;
   change: number;
   changePercent: number;
-  source: 'live' | 'manual fallback';
+  source: 'live' | 'manual fallback' | 'cache';
   lastUpdated: string;
 }
 
