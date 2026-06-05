@@ -151,8 +151,8 @@ Make sure you have [Node.js (v18+)](https://nodejs.org/) and `npm` installed.
 - **Valuation**: Current portfolio values and unrealized P&L calculations are computed using the **Average Purchase Cost** method:
   $$\text{Average Cost} = \frac{\text{Total Invested Capital}}{\text{Total Shares Purchased}}$$
 - **Short-Sell Prevention**: The sales transaction form checks the user's available holdings. Any attempt to record a sale with quantity $Q_{\text{sale}} > Q_{\text{available}}$ will be rejected with a user-friendly error.
-- **Realized P&L**: Determined at the moment of sale and stored in the database:
-  $$\text{Realized P&L} = (\text{Selling Price} - \text{Average Cost at sale time}) \times Q_{\text{sale}}$$
+- **Realized Profit and Loss**: Determined at the moment of sale and stored in the database:
+  $$\text{Realized Profit and Loss} = (\text{Selling Price} - \text{Average Cost at sale time}) \times Q_{\text{sale}}$$
 
 ---
 
