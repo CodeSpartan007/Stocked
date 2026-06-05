@@ -381,6 +381,34 @@ async function fetchLocalFallback(
 }
 
 /**
+ * Retrieve the locally cached price, change, and update timestamps for a stock.
+ */
+export async function getLocalCachedPriceForStock(
+  stock: Stock,
+  userId: string
+): Promise<{
+  symbol: string;
+  price: number;
+  change: number;
+  changePercent: number;
+  source: 'live' | 'manual fallback';
+  lastUpdated: string;
+}> {
+  let provider = 'manual';
+  try {
+    const settings = await UserSetting.findByPk(userId);
+    if (settings) {
+      provider = settings.provider;
+    }
+  } catch (err) {
+    console.error(`[PriceFeedService] Failed to load provider settings for user ${userId}:`, err);
+  }
+
+  const label = provider === 'manual' ? 'manual fallback' : 'live';
+  return fetchLocalFallback(stock, label);
+}
+
+/**
  * Fetch live prices using exponential backoff retry.
  */
 export async function getLivePriceWithRetry(

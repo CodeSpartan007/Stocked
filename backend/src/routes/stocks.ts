@@ -4,7 +4,7 @@ import { Op } from 'sequelize';
 import { Stock, DailyPrice, UserSetting } from '../models';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
 import { handleValidationErrors } from '../middleware/validate';
-import { getLivePriceForStock, fetchFromAlphaVantage, fetchFromPolygon } from '../services/priceFeedService';
+import { getLivePriceForStock, fetchFromAlphaVantage, fetchFromPolygon, getLocalCachedPriceForStock } from '../services/priceFeedService';
 
 /**
  * Zero-dependency concurrency-limiting runner that executes items using Promise.allSettled
@@ -35,7 +35,7 @@ async function limitConcurrency<T, R>(
 
 const router = Router();
 
-// GET /api/stocks/live-prices -> View live price metadata for active tickers (with concurrency limit)
+// GET /api/stocks/live-prices -> View live price metadata for active tickers (from local cache)
 router.get('/live-prices', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!.id;
@@ -46,31 +46,20 @@ router.get('/live-prices', requireAuth, async (req: AuthenticatedRequest, res: R
       order: [['symbol', 'ASC']],
     });
 
-    // Bound external API requests to a max concurrency of 3, utilizing allSettled to prevent partial failures from rejecting the whole response
-    const settledResults = await limitConcurrency(stocks, 3, (stock) =>
-      getLivePriceForStock(stock, userId)
+    // Resolve current cached prices in parallel from local DB logs
+    const livePrices = await Promise.all(
+      stocks.map((stock) => getLocalCachedPriceForStock(stock, userId))
     );
-
-    const livePrices = settledResults
-      .map((result, idx) => {
-        if (result.status === 'fulfilled') {
-          return result.value;
-        } else {
-          console.error(`[StocksRouter Alert] Live price fetch failed for stock ${stocks[idx].symbol}:`, result.reason);
-          return null;
-        }
-      })
-      .filter((price): price is NonNullable<typeof price> => price !== null);
 
     return res.status(200).json({
       success: true,
       data: livePrices,
     });
   } catch (error: any) {
-    console.error('Error fetching live stock prices:', error);
+    console.error('Error fetching cached stock prices:', error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to retrieve live prices.',
+      message: 'Failed to retrieve prices.',
     });
   }
 });
