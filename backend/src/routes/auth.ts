@@ -89,7 +89,7 @@ router.post(
       res.cookie('token', token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
         maxAge: 24 * 60 * 60 * 1000, // 24 hours
       });
 
@@ -157,7 +157,7 @@ router.post(
       res.cookie('token', token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
         maxAge: 24 * 60 * 60 * 1000, // 24 hours
       });
 
@@ -185,7 +185,7 @@ router.post('/logout', (req: AuthenticatedRequest, res: Response) => {
   res.clearCookie('token', {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
   });
 
   return res.status(200).json({
