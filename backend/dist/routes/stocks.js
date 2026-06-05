@@ -64,6 +64,67 @@ router.get('/live-prices', auth_1.requireAuth, async (req, res) => {
         });
     }
 });
+// GET /api/stocks/search-price?symbol=AAPL -> Query live price for an arbitrary symbol using the user's active API settings
+router.get('/search-price', auth_1.requireAuth, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const symbol = req.query.symbol;
+        if (!symbol || symbol.trim() === '') {
+            return res.status(400).json({
+                success: false,
+                message: 'Symbol query parameter is required.',
+            });
+        }
+        const upperSymbol = symbol.trim().toUpperCase();
+        // Retrieve user settings to get active provider and API key
+        let provider = process.env.PRICE_FEED_PROVIDER || 'manual';
+        let apiKey = process.env.MARKET_API_KEY || '';
+        const settings = await models_1.UserSetting.scope('withApiKey').findByPk(userId);
+        if (settings) {
+            provider = settings.provider;
+            if (settings.apiKey) {
+                apiKey = settings.apiKey;
+            }
+        }
+        if (provider === 'manual' || !apiKey) {
+            return res.status(400).json({
+                success: false,
+                message: 'Real-time API key not configured or set to manual mode. Configure Alpha Vantage or Polygon in Settings first.',
+            });
+        }
+        let tickerData;
+        if (provider === 'alphavantage') {
+            tickerData = await (0, priceFeedService_1.fetchFromAlphaVantage)(upperSymbol, apiKey);
+        }
+        else if (provider === 'polygon') {
+            tickerData = await (0, priceFeedService_1.fetchFromPolygon)(upperSymbol, apiKey);
+        }
+        else {
+            return res.status(400).json({
+                success: false,
+                message: `Unsupported provider: ${provider}`,
+            });
+        }
+        return res.status(200).json({
+            success: true,
+            data: {
+                symbol: upperSymbol,
+                price: tickerData.price,
+                change: tickerData.change,
+                changePercent: tickerData.changePercent,
+                volume: tickerData.volume,
+                provider,
+            },
+        });
+    }
+    catch (error) {
+        console.error(`Error searching ticker price:`, error);
+        return res.status(400).json({
+            success: false,
+            message: error.message || 'Failed to fetch live price for ticker.',
+        });
+    }
+});
 // GET /api/stocks -> View all registered stocks with aggregated summary data
 router.get('/', auth_1.requireAuth, async (req, res) => {
     try {
@@ -177,6 +238,13 @@ router.post('/', auth_1.requireAuth, [
             description: description || null,
             category: category || 'Other',
         });
+        // Fetch and record the initial live price immediately so the stock has price data immediately
+        try {
+            await (0, priceFeedService_1.getLivePriceForStock)(newStock, userId);
+        }
+        catch (err) {
+            console.warn(`[StocksRouter] Failed to fetch initial price for registered stock ${symbol}: ${err.message}`);
+        }
         return res.status(201).json({
             success: true,
             message: 'Stock counter registered successfully.',

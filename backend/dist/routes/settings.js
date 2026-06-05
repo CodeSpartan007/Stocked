@@ -73,14 +73,54 @@ router.post('/feed', auth_1.requireAuth, [
         }
         const existing = await models_1.UserSetting.scope('withApiKey').findByPk(userId);
         let updatedApiKey = apiKey;
-        // If key is masked (e.g. dots or stars) and we have an existing setting, do not overwrite the real key
-        if (apiKey && (apiKey.includes('•') || apiKey.includes('★') || apiKey.includes('*'))) {
+        const isMasked = apiKey === '••••••••••••••••';
+        const isOmitted = apiKey === undefined;
+        if (isMasked || isOmitted) {
             updatedApiKey = existing ? existing.apiKey : null;
+        }
+        else if (apiKey === '' || apiKey === null) {
+            updatedApiKey = null;
+        }
+        // Test connection before saving if a live provider is selected
+        let saveWarning = undefined;
+        if (provider !== 'manual' && updatedApiKey) {
+            try {
+                if (provider === 'alphavantage') {
+                    await (0, priceFeedService_1.fetchFromAlphaVantage)('AAPL', updatedApiKey);
+                }
+                else if (provider === 'polygon') {
+                    await (0, priceFeedService_1.fetchFromPolygon)('AAPL', updatedApiKey);
+                }
+            }
+            catch (testErr) {
+                const errMsgLower = testErr.message.toLowerCase();
+                const isRateLimit = errMsgLower.includes('rate limit') ||
+                    errMsgLower.includes('thank you for visiting alpha vantage') ||
+                    errMsgLower.includes('429') ||
+                    errMsgLower.includes('standard api rate limit') ||
+                    errMsgLower.includes('call frequency');
+                if (isRateLimit) {
+                    saveWarning = `Settings saved successfully, but the provider is currently rate limited: ${testErr.message}`;
+                    console.warn(`[SettingsRouter] Saved configuration despite rate limit warning: ${testErr.message}`);
+                }
+                else {
+                    console.warn(`[SettingsRouter] Proactive connection test failed: ${testErr.message}`);
+                    return res.status(400).json({
+                        success: false,
+                        errors: [
+                            {
+                                field: 'apiKey',
+                                message: `API Connection verification failed: ${testErr.message}`,
+                            },
+                        ],
+                    });
+                }
+            }
         }
         const [settings] = await models_1.UserSetting.upsert({
             userId,
             provider,
-            apiKey: updatedApiKey || null,
+            apiKey: updatedApiKey,
             refreshInterval,
         });
         console.log(`[SettingsRouter] Saved configurations for ${userId}. Provider: ${provider}, Interval: ${refreshInterval}s`);
@@ -90,7 +130,7 @@ router.post('/feed', auth_1.requireAuth, [
         }
         return res.status(200).json({
             success: true,
-            message: 'Settings updated successfully.',
+            message: saveWarning || 'Settings updated successfully.',
             data: {
                 provider: settings.provider,
                 apiKey: updatedApiKey ? '••••••••••••••••' : '',
@@ -103,6 +143,55 @@ router.post('/feed', auth_1.requireAuth, [
         return res.status(500).json({
             success: false,
             message: 'Failed to update settings configuration.',
+        });
+    }
+});
+// POST /api/settings/test-connection -> Verify API key connection before saving
+router.post('/test-connection', auth_1.requireAuth, [
+    (0, express_validator_1.body)('provider')
+        .trim()
+        .isIn(['alphavantage', 'polygon'])
+        .withMessage('Provider must be alphavantage or polygon.'),
+    (0, express_validator_1.body)('apiKey')
+        .trim()
+        .notEmpty()
+        .withMessage('API Key is required to test connection.'),
+], validate_1.handleValidationErrors, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { provider, apiKey } = req.body;
+        let keyToTest = apiKey;
+        if (apiKey === '••••••••••••••••') {
+            const existing = await models_1.UserSetting.scope('withApiKey').findByPk(userId);
+            if (!existing || !existing.apiKey) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'No existing API key found to test.',
+                });
+            }
+            keyToTest = existing.apiKey;
+        }
+        console.log(`[SettingsRouter] Testing connection for user ${userId} using ${provider}...`);
+        // Test with a standard symbol AAPL
+        if (provider === 'alphavantage') {
+            await (0, priceFeedService_1.fetchFromAlphaVantage)('AAPL', keyToTest);
+        }
+        else if (provider === 'polygon') {
+            await (0, priceFeedService_1.fetchFromPolygon)('AAPL', keyToTest);
+        }
+        else {
+            throw new Error('Unsupported provider for testing.');
+        }
+        return res.status(200).json({
+            success: true,
+            message: `API Key is active and successfully connected to ${provider === 'alphavantage' ? 'Alpha Vantage' : 'Polygon.io'}.`,
+        });
+    }
+    catch (error) {
+        console.warn('API Connection test failed:', error.message);
+        return res.status(400).json({
+            success: false,
+            message: error.message || 'API connection test failed.',
         });
     }
 });

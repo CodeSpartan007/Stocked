@@ -131,11 +131,13 @@ router.get(
       const { stockId } = req.params;
       const { startDate, endDate } = req.query;
 
-      let parsedStart: Date | null = null;
-      let parsedEnd: Date | null = null;
       try {
-        parsedStart = parseOptionalDate(startDate);
-        parsedEnd = parseOptionalDate(endDate);
+        if (startDate && (typeof startDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(startDate))) {
+          throw new Error('Invalid startDate format. Must be YYYY-MM-DD.');
+        }
+        if (endDate && (typeof endDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(endDate))) {
+          throw new Error('Invalid endDate format. Must be YYYY-MM-DD.');
+        }
       } catch (err: any) {
         return res.status(400).json({ success: false, message: err.message });
       }
@@ -164,10 +166,10 @@ router.get(
 
       // Date range filtering
       const priceWhereClause: any = { stockId: targetStockIds };
-      if (parsedStart || parsedEnd) {
+      if (startDate || endDate) {
         priceWhereClause.date = {};
-        if (parsedStart) priceWhereClause.date[Op.gte] = parsedStart;
-        if (parsedEnd) priceWhereClause.date[Op.lte] = parsedEnd;
+        if (startDate) priceWhereClause.date[Op.gte] = startDate;
+        if (endDate) priceWhereClause.date[Op.lte] = endDate;
       }
 
       // 2. Extract historical closing prices & volume
@@ -268,11 +270,11 @@ router.get(
       let allUniqueDates = Array.from(allUniqueDatesSet).sort();
 
       // Apply range filters if provided
-      if (parsedStart) {
-        allUniqueDates = allUniqueDates.filter((d) => new Date(d) >= parsedStart!);
+      if (startDate) {
+        allUniqueDates = allUniqueDates.filter((d) => d >= (startDate as string));
       }
-      if (parsedEnd) {
-        allUniqueDates = allUniqueDates.filter((d) => new Date(d) <= parsedEnd!);
+      if (endDate) {
+        allUniqueDates = allUniqueDates.filter((d) => d <= (endDate as string));
       }
 
       // Build the cumulative points
@@ -336,11 +338,13 @@ router.get(
       const userId = req.user!.id;
       const { startDate, endDate } = req.query;
 
-      let parsedStart: Date | null = null;
-      let parsedEnd: Date | null = null;
       try {
-        parsedStart = parseOptionalDate(startDate);
-        parsedEnd = parseOptionalDate(endDate);
+        if (startDate && (typeof startDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(startDate))) {
+          throw new Error('Invalid startDate format. Must be YYYY-MM-DD.');
+        }
+        if (endDate && (typeof endDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(endDate))) {
+          throw new Error('Invalid endDate format. Must be YYYY-MM-DD.');
+        }
       } catch (err: any) {
         return res.status(400).json({ success: false, message: err.message });
       }
@@ -489,8 +493,8 @@ router.get(
       let uniquePriceDates = Array.from(uniquePriceDatesSet).sort();
 
       // Filter by date range if provided
-      if (parsedStart) uniquePriceDates = uniquePriceDates.filter((d) => new Date(d) >= parsedStart!);
-      if (parsedEnd) uniquePriceDates = uniquePriceDates.filter((d) => new Date(d) <= parsedEnd!);
+      if (startDate) uniquePriceDates = uniquePriceDates.filter((d) => d >= (startDate as string));
+      if (endDate) uniquePriceDates = uniquePriceDates.filter((d) => d <= (endDate as string));
 
       const dailyPortfolioValues: number[] = [];
       uniquePriceDates.forEach((dStr) => {
@@ -556,16 +560,15 @@ router.get(
       const userId = req.user!.id;
       const { startDate, endDate } = req.query;
 
-      let parsedStart: Date;
-      let parsedEnd: Date;
+      if (!startDate || !endDate) {
+        return res.status(400).json({ success: false, message: 'Both startDate and endDate query parameters are required for benchmarking.' });
+      }
+
       try {
-        const start = parseOptionalDate(startDate);
-        const end = parseOptionalDate(endDate);
-        if (!start || !end) {
-          throw new Error('Both startDate and endDate query parameters are required for benchmarking.');
+        if (typeof startDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(startDate) ||
+            typeof endDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+          throw new Error('Invalid date format. Must be YYYY-MM-DD.');
         }
-        parsedStart = start;
-        parsedEnd = end;
       } catch (err: any) {
         return res.status(400).json({ success: false, message: err.message });
       }
@@ -574,21 +577,27 @@ router.get(
       const benchmarks: any[] = [];
 
       for (const stock of userStocks) {
-        // Find price at or earliest after startDate
+        // Find price at or earliest after startDate and on or before endDate
         const startPriceRecord = await DailyPrice.findOne({
           where: {
             stockId: stock.id,
-            date: { [Op.gte]: parsedStart },
+            date: {
+              [Op.gte]: startDate,
+              [Op.lte]: endDate,
+            },
             userId,
           },
           order: [['date', 'ASC']],
         });
 
-        // Find price at or latest before endDate
+        // Find price at or latest before endDate and on or after startDate
         const endPriceRecord = await DailyPrice.findOne({
           where: {
             stockId: stock.id,
-            date: { [Op.lte]: parsedEnd },
+            date: {
+              [Op.gte]: startDate,
+              [Op.lte]: endDate,
+            },
             userId,
           },
           order: [['date', 'DESC']],

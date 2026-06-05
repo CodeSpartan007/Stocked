@@ -30,7 +30,7 @@ async function fetchFromAlphaVantage(symbol, apiKey) {
         const data = (await response.json());
         const quote = data['Global Quote'];
         if (!quote || Object.keys(quote).length === 0) {
-            const errorMsg = data['Note'] || data['Error Message'] || 'Invalid response from Alpha Vantage';
+            const errorMsg = data['Note'] || data['Information'] || data['Error Message'] || 'Invalid response from Alpha Vantage';
             throw new Error(errorMsg);
         }
         const price = parseFloat(quote['05. price']);
@@ -125,6 +125,7 @@ async function getLivePriceForStock(stock, userId) {
             throw new Error(`Unsupported price feed provider: ${provider}`);
         }
         const [dailyPrice] = await models_1.DailyPrice.upsert({
+            userId,
             stockId: stock.id,
             date: todayStr,
             price: tickerData.price,
@@ -133,7 +134,7 @@ async function getLivePriceForStock(stock, userId) {
         });
         console.log(`[PriceFeedService] Live price cached for ${stock.symbol}: $${tickerData.price} (Source: ${provider})`);
         const fetchedPrice = await models_1.DailyPrice.findOne({
-            where: { stockId: stock.id, date: todayStr }
+            where: { stockId: stock.id, date: todayStr, userId }
         });
         return {
             symbol: stock.symbol,

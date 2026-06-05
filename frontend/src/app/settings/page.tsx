@@ -200,7 +200,7 @@ export default function FeedSettings() {
 
       const json = await response.json();
       if (response.ok && json.success) {
-        triggerToast('Pricing configurations and credentials updated successfully.', 'success');
+        triggerToast(json.message || 'Pricing configurations and credentials updated successfully.', 'success');
         if (json.data) {
           setApiKey(json.data.apiKey || '');
           setApiKeyDirty(false);

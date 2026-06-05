@@ -93,6 +93,7 @@ router.post(
       }
 
       // Test connection before saving if a live provider is selected
+      let saveWarning: string | undefined = undefined;
       if (provider !== 'manual' && updatedApiKey) {
         try {
           if (provider === 'alphavantage') {
@@ -101,16 +102,29 @@ router.post(
             await fetchFromPolygon('AAPL', updatedApiKey);
           }
         } catch (testErr: any) {
-          console.warn(`[SettingsRouter] Proactive connection test failed: ${testErr.message}`);
-          return res.status(400).json({
-            success: false,
-            errors: [
-              {
-                field: 'apiKey',
-                message: `API Connection verification failed: ${testErr.message}`,
-              },
-            ],
-          });
+          const errMsgLower = testErr.message.toLowerCase();
+          const isRateLimit = 
+            errMsgLower.includes('rate limit') || 
+            errMsgLower.includes('thank you for visiting alpha vantage') || 
+            errMsgLower.includes('429') ||
+            errMsgLower.includes('standard api rate limit') ||
+            errMsgLower.includes('call frequency');
+
+          if (isRateLimit) {
+            saveWarning = `Settings saved successfully, but the provider is currently rate limited: ${testErr.message}`;
+            console.warn(`[SettingsRouter] Saved configuration despite rate limit warning: ${testErr.message}`);
+          } else {
+            console.warn(`[SettingsRouter] Proactive connection test failed: ${testErr.message}`);
+            return res.status(400).json({
+              success: false,
+              errors: [
+                {
+                  field: 'apiKey',
+                  message: `API Connection verification failed: ${testErr.message}`,
+                },
+              ],
+            });
+          }
         }
       }
 
@@ -130,7 +144,7 @@ router.post(
 
       return res.status(200).json({
         success: true,
-        message: 'Settings updated successfully.',
+        message: saveWarning || 'Settings updated successfully.',
         data: {
           provider: settings.provider,
           apiKey: updatedApiKey ? '••••••••••••••••' : '',

@@ -83,9 +83,33 @@ interface BenchmarkItem {
 }
 
 export default function AnalyticsPage() {
+  // Dynamically compute the first and last day of the current month (YYYY-MM-DD)
+  const getInitialDates = () => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = today.getMonth();
+    
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+
+    const format = (date: Date) => {
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    };
+
+    return {
+      start: format(firstDay),
+      end: format(lastDay),
+    };
+  };
+
+  const initialDates = getInitialDates();
+
   // Date states
-  const [startDate, setStartDate] = useState('2026-05-01');
-  const [endDate, setEndDate] = useState('2026-05-31');
+  const [startDate, setStartDate] = useState(initialDates.start);
+  const [endDate, setEndDate] = useState(initialDates.end);
 
   // Selected Stock ID for chart filtering ('portfolio' or specific stock ID)
   const [selectedStockId, setSelectedStockId] = useState('portfolio');

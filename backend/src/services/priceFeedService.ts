@@ -35,7 +35,7 @@ export async function fetchFromAlphaVantage(symbol: string, apiKey: string): Pro
     const data = (await response.json()) as any;
     const quote = data['Global Quote'];
     if (!quote || Object.keys(quote).length === 0) {
-      const errorMsg = data['Note'] || data['Error Message'] || 'Invalid response from Alpha Vantage';
+      const errorMsg = data['Note'] || data['Information'] || data['Error Message'] || 'Invalid response from Alpha Vantage';
       throw new Error(errorMsg);
     }
 

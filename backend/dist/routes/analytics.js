@@ -104,11 +104,13 @@ router.get('/charts/:stockId', auth_1.requireAuth, async (req, res) => {
         const userId = req.user.id;
         const { stockId } = req.params;
         const { startDate, endDate } = req.query;
-        let parsedStart = null;
-        let parsedEnd = null;
         try {
-            parsedStart = parseOptionalDate(startDate);
-            parsedEnd = parseOptionalDate(endDate);
+            if (startDate && (typeof startDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(startDate))) {
+                throw new Error('Invalid startDate format. Must be YYYY-MM-DD.');
+            }
+            if (endDate && (typeof endDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(endDate))) {
+                throw new Error('Invalid endDate format. Must be YYYY-MM-DD.');
+            }
         }
         catch (err) {
             return res.status(400).json({ success: false, message: err.message });
@@ -133,12 +135,12 @@ router.get('/charts/:stockId', auth_1.requireAuth, async (req, res) => {
         const targetStockIds = targetStocks.map((s) => s.id);
         // Date range filtering
         const priceWhereClause = { stockId: targetStockIds };
-        if (parsedStart || parsedEnd) {
+        if (startDate || endDate) {
             priceWhereClause.date = {};
-            if (parsedStart)
-                priceWhereClause.date[sequelize_1.Op.gte] = parsedStart;
-            if (parsedEnd)
-                priceWhereClause.date[sequelize_1.Op.lte] = parsedEnd;
+            if (startDate)
+                priceWhereClause.date[sequelize_1.Op.gte] = startDate;
+            if (endDate)
+                priceWhereClause.date[sequelize_1.Op.lte] = endDate;
         }
         // 2. Extract historical closing prices & volume
         const dailyPrices = await models_1.DailyPrice.findAll({
@@ -227,11 +229,11 @@ router.get('/charts/:stockId', auth_1.requireAuth, async (req, res) => {
         sales.forEach((s) => allUniqueDatesSet.add(s.saleDate));
         let allUniqueDates = Array.from(allUniqueDatesSet).sort();
         // Apply range filters if provided
-        if (parsedStart) {
-            allUniqueDates = allUniqueDates.filter((d) => new Date(d) >= parsedStart);
+        if (startDate) {
+            allUniqueDates = allUniqueDates.filter((d) => d >= startDate);
         }
-        if (parsedEnd) {
-            allUniqueDates = allUniqueDates.filter((d) => new Date(d) <= parsedEnd);
+        if (endDate) {
+            allUniqueDates = allUniqueDates.filter((d) => d <= endDate);
         }
         // Build the cumulative points
         const cumulativePerformance = allUniqueDates.map((dStr) => {
@@ -282,11 +284,13 @@ router.get('/advanced', auth_1.requireAuth, async (req, res) => {
     try {
         const userId = req.user.id;
         const { startDate, endDate } = req.query;
-        let parsedStart = null;
-        let parsedEnd = null;
         try {
-            parsedStart = parseOptionalDate(startDate);
-            parsedEnd = parseOptionalDate(endDate);
+            if (startDate && (typeof startDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(startDate))) {
+                throw new Error('Invalid startDate format. Must be YYYY-MM-DD.');
+            }
+            if (endDate && (typeof endDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(endDate))) {
+                throw new Error('Invalid endDate format. Must be YYYY-MM-DD.');
+            }
         }
         catch (err) {
             return res.status(400).json({ success: false, message: err.message });
@@ -416,10 +420,10 @@ router.get('/advanced', auth_1.requireAuth, async (req, res) => {
         allDailyPrices.forEach((dp) => uniquePriceDatesSet.add(dp.date));
         let uniquePriceDates = Array.from(uniquePriceDatesSet).sort();
         // Filter by date range if provided
-        if (parsedStart)
-            uniquePriceDates = uniquePriceDates.filter((d) => new Date(d) >= parsedStart);
-        if (parsedEnd)
-            uniquePriceDates = uniquePriceDates.filter((d) => new Date(d) <= parsedEnd);
+        if (startDate)
+            uniquePriceDates = uniquePriceDates.filter((d) => d >= startDate);
+        if (endDate)
+            uniquePriceDates = uniquePriceDates.filter((d) => d <= endDate);
         const dailyPortfolioValues = [];
         uniquePriceDates.forEach((dStr) => {
             let dayVal = 0;
@@ -476,16 +480,14 @@ router.get('/benchmark', auth_1.requireAuth, async (req, res) => {
     try {
         const userId = req.user.id;
         const { startDate, endDate } = req.query;
-        let parsedStart;
-        let parsedEnd;
+        if (!startDate || !endDate) {
+            return res.status(400).json({ success: false, message: 'Both startDate and endDate query parameters are required for benchmarking.' });
+        }
         try {
-            const start = parseOptionalDate(startDate);
-            const end = parseOptionalDate(endDate);
-            if (!start || !end) {
-                throw new Error('Both startDate and endDate query parameters are required for benchmarking.');
+            if (typeof startDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(startDate) ||
+                typeof endDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+                throw new Error('Invalid date format. Must be YYYY-MM-DD.');
             }
-            parsedStart = start;
-            parsedEnd = end;
         }
         catch (err) {
             return res.status(400).json({ success: false, message: err.message });
@@ -493,20 +495,26 @@ router.get('/benchmark', auth_1.requireAuth, async (req, res) => {
         const userStocks = await models_1.Stock.findAll({ where: { userId } });
         const benchmarks = [];
         for (const stock of userStocks) {
-            // Find price at or earliest after startDate
+            // Find price at or earliest after startDate and on or before endDate
             const startPriceRecord = await models_1.DailyPrice.findOne({
                 where: {
                     stockId: stock.id,
-                    date: { [sequelize_1.Op.gte]: parsedStart },
+                    date: {
+                        [sequelize_1.Op.gte]: startDate,
+                        [sequelize_1.Op.lte]: endDate,
+                    },
                     userId,
                 },
                 order: [['date', 'ASC']],
             });
-            // Find price at or latest before endDate
+            // Find price at or latest before endDate and on or after startDate
             const endPriceRecord = await models_1.DailyPrice.findOne({
                 where: {
                     stockId: stock.id,
-                    date: { [sequelize_1.Op.lte]: parsedEnd },
+                    date: {
+                        [sequelize_1.Op.gte]: startDate,
+                        [sequelize_1.Op.lte]: endDate,
+                    },
                     userId,
                 },
                 order: [['date', 'DESC']],
