@@ -1,0 +1,13 @@
+# Development specification and context files
+dev_context.md
+srs.txt
+Stocked_SRS.pdf
+
+# Agent and IDE configurations
+frontend/AGENTS.md
+frontend/CLAUDE.md
+frontend/README.md
+
+# OS/System files
+.DS_Store
+Thumbs.db
