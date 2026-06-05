@@ -1,8 +1,10 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.getOrUpdateApiStatus = getOrUpdateApiStatus;
 exports.fetchFromAlphaVantage = fetchFromAlphaVantage;
 exports.fetchFromPolygon = fetchFromPolygon;
 exports.getLivePriceForStock = getLivePriceForStock;
+exports.getLocalCachedPriceForStock = getLocalCachedPriceForStock;
 exports.getLivePriceWithRetry = getLivePriceWithRetry;
 exports.startPriceSyncPoller = startPriceSyncPoller;
 exports.stopPriceSyncPoller = stopPriceSyncPoller;
@@ -12,6 +14,87 @@ const models_1 = require("../models");
 const timersByUser = new Map();
 const intervalByUser = new Map();
 const isSyncRunningByUser = new Map();
+const apiStatusByUser = new Map();
+async function getOrUpdateApiStatus(userId) {
+    const now = new Date();
+    const settings = await models_1.UserSetting.scope('withApiKey').findByPk(userId);
+    if (!settings || settings.provider === 'manual' || !settings.apiKey) {
+        return {
+            provider: settings ? settings.provider : 'manual',
+            connected: false,
+            statusText: 'Disconnected',
+            message: 'No live data provider configured.',
+            callsRemainingText: '',
+        };
+    }
+    const cached = apiStatusByUser.get(userId);
+    if (cached && (now.getTime() - cached.lastChecked.getTime() < 60000)) {
+        return {
+            provider: settings.provider,
+            connected: cached.connected,
+            statusText: cached.statusText,
+            message: cached.message,
+            callsRemainingText: cached.callsRemainingText,
+        };
+    }
+    let connected = false;
+    let statusText = 'Disconnected';
+    let message = '';
+    let callsRemainingText = '';
+    try {
+        if (settings.provider === 'alphavantage') {
+            await fetchFromAlphaVantage('AAPL', settings.apiKey);
+            connected = true;
+            statusText = 'Connected';
+            message = 'Connected to Alpha Vantage successfully.';
+            callsRemainingText = 'Daily limit: 25 requests (Standard Free Tier)';
+        }
+        else if (settings.provider === 'polygon') {
+            await fetchFromPolygon('AAPL', settings.apiKey);
+            connected = true;
+            statusText = 'Connected';
+            message = 'Connected to Polygon.io successfully.';
+            callsRemainingText = 'Minute limit: 5 requests (Standard Free Tier)';
+        }
+    }
+    catch (err) {
+        const errMsgLower = err.message.toLowerCase();
+        const isRateLimit = errMsgLower.includes('rate limit') ||
+            errMsgLower.includes('thank you for visiting alpha vantage') ||
+            errMsgLower.includes('429') ||
+            errMsgLower.includes('standard api rate limit') ||
+            errMsgLower.includes('call frequency') ||
+            errMsgLower.includes('too many requests') ||
+            errMsgLower.includes('maximum number of requests');
+        if (isRateLimit) {
+            connected = true;
+            statusText = 'Rate Limited';
+            message = 'Request limit reached. Data updates are temporarily paused.';
+            callsRemainingText = '0 requests remaining (Please wait a minute)';
+        }
+        else {
+            connected = false;
+            statusText = 'Connection Error';
+            message = err.message;
+            callsRemainingText = 'Verification failed';
+        }
+    }
+    const newStatus = {
+        connected,
+        statusText,
+        message,
+        callsRemainingText,
+        lastChecked: now,
+    };
+    apiStatusByUser.set(userId, newStatus);
+    return {
+        provider: settings.provider,
+        connected,
+        statusText,
+        message,
+        callsRemainingText,
+    };
+}
 /**
  * Fetch from Alpha Vantage using the Global Quote API with AbortController and symbol encoding
  */
@@ -31,6 +114,16 @@ async function fetchFromAlphaVantage(symbol, apiKey) {
         const quote = data['Global Quote'];
         if (!quote || Object.keys(quote).length === 0) {
             const errorMsg = data['Note'] || data['Information'] || data['Error Message'] || 'Invalid response from Alpha Vantage';
+            const lowerMsg = errorMsg.toLowerCase();
+            if (lowerMsg.includes('rate limit') ||
+                lowerMsg.includes('thank you for visiting alpha vantage') ||
+                lowerMsg.includes('call frequency') ||
+                lowerMsg.includes('standard api rate limit')) {
+                throw new Error('We have requested data too many times in a short period. Please wait a moment before trying again.');
+            }
+            if (lowerMsg.includes('invalid api key') || lowerMsg.includes('apikey') || lowerMsg.includes('unauthorized')) {
+                throw new Error('The API key provided is incorrect or invalid.');
+            }
             throw new Error(errorMsg);
         }
         const price = parseFloat(quote['05. price']);
@@ -64,11 +157,21 @@ async function fetchFromPolygon(symbol, apiKey) {
         const response = await fetch(url, { signal: controller.signal });
         clearTimeout(timeoutId);
         if (!response.ok) {
+            if (response.status === 429) {
+                throw new Error('We have reached the maximum number of requests allowed by the provider per minute. Please try again in a few moments.');
+            }
+            if (response.status === 401 || response.status === 403) {
+                throw new Error('The API key provided is incorrect or unauthorized.');
+            }
             throw new Error(`Polygon.io HTTP error! Status: ${response.status}`);
         }
         const data = (await response.json());
         if (data.status !== 'OK' || !data.results || data.results.length === 0) {
             const errorMsg = data.error || 'Invalid response from Polygon.io or no ticker matches';
+            const lowerMsg = errorMsg.toLowerCase();
+            if (lowerMsg.includes('unauthorized') || lowerMsg.includes('invalid') || lowerMsg.includes('apikey')) {
+                throw new Error('The API key provided is incorrect or unauthorized.');
+            }
             throw new Error(errorMsg);
         }
         const res = data.results[0];
@@ -136,6 +239,13 @@ async function getLivePriceForStock(stock, userId) {
         const fetchedPrice = await models_1.DailyPrice.findOne({
             where: { stockId: stock.id, date: todayStr, userId }
         });
+        apiStatusByUser.set(userId, {
+            connected: true,
+            statusText: 'Connected',
+            message: `Last price updated successfully at ${new Date().toLocaleTimeString()}`,
+            callsRemainingText: provider === 'alphavantage' ? 'Daily limit: 25 requests (Standard Free Tier)' : 'Minute limit: 5 requests (Standard Free Tier)',
+            lastChecked: new Date(),
+        });
         return {
             symbol: stock.symbol,
             price: tickerData.price,
@@ -147,7 +257,22 @@ async function getLivePriceForStock(stock, userId) {
     }
     catch (error) {
         console.warn(`⚠️ [PriceFeedService ALERT] Failed fetching ${stock.symbol} from ${provider}. Error: ${error.message}. Falling back to cache.`);
-        return fetchLocalFallback(stock, 'manual fallback');
+        const errMsgLower = error.message.toLowerCase();
+        const isRateLimit = errMsgLower.includes('rate limit') ||
+            errMsgLower.includes('thank you for visiting alpha vantage') ||
+            errMsgLower.includes('429') ||
+            errMsgLower.includes('standard api rate limit') ||
+            errMsgLower.includes('call frequency') ||
+            errMsgLower.includes('too many requests') ||
+            errMsgLower.includes('maximum number of requests');
+        apiStatusByUser.set(userId, {
+            connected: isRateLimit ? true : false,
+            statusText: isRateLimit ? 'Rate Limited' : 'Connection Error',
+            message: isRateLimit ? 'Request limit reached. Data updates are temporarily paused.' : `Error: ${error.message}`,
+            callsRemainingText: isRateLimit ? '0 requests remaining (Please wait a minute)' : 'Checking connection...',
+            lastChecked: new Date(),
+        });
+        return fetchLocalFallback(stock, 'cache');
     }
 }
 /**
@@ -185,6 +310,23 @@ async function fetchLocalFallback(stock, fallbackLabel) {
         source: fallbackLabel,
         lastUpdated: latest.updatedAt.toISOString(),
     };
+}
+/**
+ * Retrieve the locally cached price, change, and update timestamps for a stock.
+ */
+async function getLocalCachedPriceForStock(stock, userId) {
+    let provider = 'manual';
+    try {
+        const settings = await models_1.UserSetting.findByPk(userId);
+        if (settings) {
+            provider = settings.provider;
+        }
+    }
+    catch (err) {
+        console.error(`[PriceFeedService] Failed to load provider settings for user ${userId}:`, err);
+    }
+    const label = provider === 'manual' ? 'manual fallback' : 'cache';
+    return fetchLocalFallback(stock, label);
 }
 /**
  * Fetch live prices using exponential backoff retry.

@@ -81,9 +81,11 @@ router.post('/feed', auth_1.requireAuth, [
         else if (apiKey === '' || apiKey === null) {
             updatedApiKey = null;
         }
-        // Test connection before saving if a live provider is selected
+        // Test connection before saving if a live provider is selected and credentials/provider changed
         let saveWarning = undefined;
-        if (provider !== 'manual' && updatedApiKey) {
+        const isProviderChanged = !existing || existing.provider !== provider;
+        const isKeyChanged = !isMasked && !isOmitted && (!existing || existing.apiKey !== updatedApiKey);
+        if (provider !== 'manual' && updatedApiKey && (isProviderChanged || isKeyChanged)) {
             try {
                 if (provider === 'alphavantage') {
                     await (0, priceFeedService_1.fetchFromAlphaVantage)('AAPL', updatedApiKey);
@@ -98,7 +100,10 @@ router.post('/feed', auth_1.requireAuth, [
                     errMsgLower.includes('thank you for visiting alpha vantage') ||
                     errMsgLower.includes('429') ||
                     errMsgLower.includes('standard api rate limit') ||
-                    errMsgLower.includes('call frequency');
+                    errMsgLower.includes('call frequency') ||
+                    errMsgLower.includes('too many requests') ||
+                    errMsgLower.includes('maximum number of requests') ||
+                    errMsgLower.includes('request limit reached');
                 if (isRateLimit) {
                     saveWarning = `Settings saved successfully, but the provider is currently rate limited: ${testErr.message}`;
                     console.warn(`[SettingsRouter] Saved configuration despite rate limit warning: ${testErr.message}`);
@@ -192,6 +197,24 @@ router.post('/test-connection', auth_1.requireAuth, [
         return res.status(400).json({
             success: false,
             message: error.message || 'API connection test failed.',
+        });
+    }
+});
+// GET /api/settings/status -> Retrieve the current connection/rate-limit status of the API feed
+router.get('/status', auth_1.requireAuth, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const status = await (0, priceFeedService_1.getOrUpdateApiStatus)(userId);
+        return res.status(200).json({
+            success: true,
+            data: status,
+        });
+    }
+    catch (error) {
+        console.error('Error fetching API status:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to retrieve API status.',
         });
     }
 });
