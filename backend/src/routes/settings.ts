@@ -92,9 +92,12 @@ router.post(
         updatedApiKey = null;
       }
 
-      // Test connection before saving if a live provider is selected
+      // Test connection before saving if a live provider is selected and credentials/provider changed
       let saveWarning: string | undefined = undefined;
-      if (provider !== 'manual' && updatedApiKey) {
+      const isProviderChanged = !existing || existing.provider !== provider;
+      const isKeyChanged = !isMasked && !isOmitted && (!existing || existing.apiKey !== updatedApiKey);
+
+      if (provider !== 'manual' && updatedApiKey && (isProviderChanged || isKeyChanged)) {
         try {
           if (provider === 'alphavantage') {
             await fetchFromAlphaVantage('AAPL', updatedApiKey);
@@ -108,7 +111,10 @@ router.post(
             errMsgLower.includes('thank you for visiting alpha vantage') || 
             errMsgLower.includes('429') ||
             errMsgLower.includes('standard api rate limit') ||
-            errMsgLower.includes('call frequency');
+            errMsgLower.includes('call frequency') ||
+            errMsgLower.includes('too many requests') ||
+            errMsgLower.includes('maximum number of requests') ||
+            errMsgLower.includes('request limit reached');
 
           if (isRateLimit) {
             saveWarning = `Settings saved successfully, but the provider is currently rate limited: ${testErr.message}`;
