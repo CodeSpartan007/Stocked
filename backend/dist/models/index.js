@@ -55,7 +55,20 @@ async function initDb() {
     // In SQLite/development: do not use `alter: true` as it causes duplicate unique constraint bugs.
     // In production, never alter/drop tables — only create if not exists.
     const isSqlite = database_1.sequelize.getDialect() === 'sqlite';
-    await database_1.sequelize.sync({ alter: process.env.NODE_ENV !== 'production' && !isSqlite });
+    // In development SQLite, we can alter the schema.
+    // We NEVER run automatic Sequelize sync alters on Postgres (even when running locally) to prevent data risks.
+    await database_1.sequelize.sync({ alter: isSqlite && process.env.NODE_ENV !== 'production' });
+    // Non-destructively add new columns if they are missing in production Postgres schema
+    if (!isSqlite) {
+        try {
+            await database_1.sequelize.query('ALTER TABLE "DailyPrices" ADD COLUMN IF NOT EXISTS "change" DECIMAL(12, 2) DEFAULT 0.00;');
+            await database_1.sequelize.query('ALTER TABLE "DailyPrices" ADD COLUMN IF NOT EXISTS "changePercent" DECIMAL(12, 2) DEFAULT 0.00;');
+            console.log('DailyPrices columns verified/added successfully for Postgres.');
+        }
+        catch (err) {
+            console.error('Failed to run schema migration for Postgres:', err);
+        }
+    }
     console.log('Database synced successfully.');
     // Seed default user if not exists
     let mockUser = await User_1.User.findByPk(SEEDED_USER_UUID);

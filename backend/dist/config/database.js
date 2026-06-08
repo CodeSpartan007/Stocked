@@ -10,13 +10,15 @@ const isProduction = process.env.NODE_ENV === 'production';
 // In development: use local SQLite file.
 // In production: use Neon Postgres via DATABASE_URL env var.
 function createSequelize() {
-    if (isProduction) {
-        const dbUrl = process.env.DATABASE_URL;
-        if (!dbUrl) {
-            console.error('[FATAL] DATABASE_URL is not set. In production, a Postgres connection string is required.\n' +
-                'Set DATABASE_URL in your Railway environment variables and redeploy.');
-            process.exit(1);
-        }
+    const dbUrl = process.env.DATABASE_URL;
+    if (isProduction && !dbUrl) {
+        console.error('[FATAL] DATABASE_URL is not set. In production, a Postgres connection string is required.\n' +
+            'Set DATABASE_URL in your Railway environment variables and redeploy.');
+        process.exit(1);
+    }
+    // If DATABASE_URL is provided (either in production or locally), use Postgres
+    if (dbUrl) {
+        console.log('[Database] Connecting to Postgres database...');
         return new sequelize_1.Sequelize(dbUrl, {
             dialect: 'postgres',
             dialectOptions: {
@@ -31,6 +33,7 @@ function createSequelize() {
             },
         });
     }
+    console.log('[Database] DATABASE_URL not set. Connecting to local SQLite...');
     return new sequelize_1.Sequelize({
         dialect: 'sqlite',
         storage: path_1.default.resolve(__dirname, '../../database.sqlite'),
