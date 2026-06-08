@@ -176,7 +176,7 @@ export default function Dashboard() {
                       {isPositive ? '▲' : '▼'} {Math.abs(item.changePercent).toFixed(2)}%
                     </span>
                     <span className="text-[9px] text-slate-500 font-medium">
-                      ({item.source === 'live' ? 'Live Network Price' : 'Added by You'} @ {new Date(item.lastUpdated).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })})
+                      ({new Date(item.lastUpdated).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })})
                     </span>
                   </div>
                 );
