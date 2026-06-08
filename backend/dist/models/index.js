@@ -51,8 +51,10 @@ User_1.User.hasMany(DailyPrice_1.DailyPrice, { foreignKey: 'userId', onDelete: '
 DailyPrice_1.DailyPrice.belongsTo(User_1.User, { foreignKey: 'userId', as: 'User' });
 async function initDb() {
     // In development, `alter: true` applies schema changes automatically.
+    // In SQLite/development: do not use `alter: true` as it causes duplicate unique constraint bugs.
     // In production, never alter/drop tables — only create if not exists.
-    await database_1.sequelize.sync({ alter: process.env.NODE_ENV !== 'production' });
+    const isSqlite = database_1.sequelize.getDialect() === 'sqlite';
+    await database_1.sequelize.sync({ alter: process.env.NODE_ENV !== 'production' && !isSqlite });
     console.log('Database synced successfully.');
     // Seed default user if not exists
     let mockUser = await User_1.User.findByPk(SEEDED_USER_UUID);

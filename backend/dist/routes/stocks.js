@@ -152,7 +152,7 @@ router.get('/', auth_1.requireAuth, async (req, res) => {
                     if (totalRecords > 1) {
                         const previousPrice = Number(prices[1].price);
                         priceChange = latestPrice - previousPrice;
-                        priceChangePercent = (priceChange / previousPrice) * 100;
+                        priceChangePercent = Number(previousPrice) !== 0 ? (priceChange / previousPrice) * 100 : 0;
                     }
                 }
             }
