@@ -1,15 +1,10 @@
-import { sequelize } from './models/index';
+import 'dotenv/config';
+import { sequelize, initDb } from './models/index';
 
 async function run() {
   try {
-    if (sequelize.getDialect() === 'sqlite') {
-      const [results] = await sequelize.query("SELECT sql FROM sqlite_master WHERE type='table' AND name='Stocks';");
-      console.log(results);
-      const [indexes] = await sequelize.query("SELECT * FROM sqlite_master WHERE type='index' AND tbl_name='Stocks';");
-      console.log(indexes);
-    } else {
-      console.log('Skipping sqlite_master schema checks on non-SQLite database dialect.');
-    }
+    const [prices] = await sequelize.query("SELECT * FROM \"DailyPrices\" WHERE \"userId\" = 'e57a4a7b-765c-4718-8086-b6388d7d02ad' ORDER BY \"date\" ASC;");
+    console.log(prices);
   } catch (error) {
     console.error(error);
   } finally {

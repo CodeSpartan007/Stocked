@@ -352,7 +352,6 @@ async function fetchLocalFallback(
   const latestPrices = await DailyPrice.findAll({
     where: { stockId: stock.id },
     order: [['date', 'DESC'], ['createdAt', 'DESC']],
-    limit: 2,
   });
 
   if (latestPrices.length === 0) {
@@ -367,16 +366,9 @@ async function fetchLocalFallback(
   }
 
   const latest = latestPrices[0];
-  let change = Number(latest.change) || 0;
-  let changePercent = Number(latest.changePercent) || 0;
-
-  if (latest.source === 'manual' || (change === 0 && changePercent === 0)) {
-    if (latestPrices.length > 1) {
-      const prev = latestPrices[1];
-      change = Number(latest.price) - Number(prev.price);
-      changePercent = Number(prev.price) !== 0 ? (change / Number(prev.price)) * 100 : 0;
-    }
-  }
+  const first = latestPrices[latestPrices.length - 1];
+  const change = Number(latest.price) - Number(first.price);
+  const changePercent = Number(first.price) !== 0 ? (change / Number(first.price)) * 100 : 0;
 
   return {
     symbol: stock.symbol,

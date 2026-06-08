@@ -177,4 +177,15 @@ export async function initDb() {
     await recalculateStockPriceHistory(tesla.id, SEEDED_USER_UUID);
     console.log('Initial seed price history changes calculated.');
   }
+
+  // Recalculate price history for all existing stocks to update change and changePercent
+  try {
+    const allStocks = await Stock.findAll();
+    for (const s of allStocks) {
+      await recalculateStockPriceHistory(s.id, s.userId);
+    }
+    console.log(`Recalculated price history for all ${allStocks.length} stocks on startup.`);
+  } catch (err) {
+    console.error('Failed to run startup history recalculation:', err);
+  }
 }
