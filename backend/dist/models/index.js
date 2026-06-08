@@ -24,6 +24,7 @@ Object.defineProperty(exports, "UserSetting", { enumerable: true, get: function 
 const ExportLogs_1 = require("./ExportLogs");
 Object.defineProperty(exports, "ExportLogs", { enumerable: true, get: function () { return ExportLogs_1.ExportLogs; } });
 const bcrypt_1 = __importDefault(require("bcrypt"));
+const recalculate_1 = require("../utils/recalculate");
 // Stable, valid UUIDv4 constants for seeded accounts
 const SEEDED_USER_UUID = '12345678-abcd-4000-8000-123456789abc';
 const SEEDED_ADMIN_UUID = '87654321-abcd-4000-8000-abcdefabcdef';
@@ -146,5 +147,9 @@ async function initDb() {
             { id: '2b222222-2222-2222-2222-444444444444', stockId: tesla.id, userId: SEEDED_USER_UUID, date: formatDate(1), price: 191.00, volume: 99000000, source: 'manual' },
         ]);
         console.log('Initial price records seeded.');
+        // Recalculate seed history to populate change and changePercent
+        await (0, recalculate_1.recalculateStockPriceHistory)(apple.id, SEEDED_USER_UUID);
+        await (0, recalculate_1.recalculateStockPriceHistory)(tesla.id, SEEDED_USER_UUID);
+        console.log('Initial seed price history changes calculated.');
     }
 }

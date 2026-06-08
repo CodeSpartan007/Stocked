@@ -1,5 +1,6 @@
 import { Stock, DailyPrice, UserSetting } from '../models';
 import { Op } from 'sequelize';
+import { recalculateStockPriceHistory } from '../utils/recalculate';
 
 // Multi-user scheduler maps
 const timersByUser = new Map<string, NodeJS.Timeout>();
@@ -284,6 +285,9 @@ export async function getLivePriceForStock(
       changePercent: tickerData.changePercent,
     });
 
+    // Recalculate stock price history to correct day-over-day price change columns
+    await recalculateStockPriceHistory(stock.id, userId);
+
     console.log(`[PriceFeedService] Live price cached for ${stock.symbol}: $${tickerData.price} (Source: ${provider})`);
 
     const fetchedPrice = await DailyPrice.findOne({
@@ -301,8 +305,8 @@ export async function getLivePriceForStock(
     return {
       symbol: stock.symbol,
       price: tickerData.price,
-      change: tickerData.change,
-      changePercent: tickerData.changePercent,
+      change: fetchedPrice ? Number(fetchedPrice.change) : 0,
+      changePercent: fetchedPrice ? Number(fetchedPrice.changePercent) : 0,
       source: 'live',
       lastUpdated: fetchedPrice ? fetchedPrice.updatedAt.toISOString() : new Date().toISOString(),
     };

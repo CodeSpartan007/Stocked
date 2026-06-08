@@ -10,6 +10,7 @@ exports.startPriceSyncPoller = startPriceSyncPoller;
 exports.stopPriceSyncPoller = stopPriceSyncPoller;
 exports.initializeAllPollers = initializeAllPollers;
 const models_1 = require("../models");
+const recalculate_1 = require("../utils/recalculate");
 // Multi-user scheduler maps
 const timersByUser = new Map();
 const intervalByUser = new Map();
@@ -237,6 +238,8 @@ async function getLivePriceForStock(stock, userId) {
             change: tickerData.change,
             changePercent: tickerData.changePercent,
         });
+        // Recalculate stock price history to correct day-over-day price change columns
+        await (0, recalculate_1.recalculateStockPriceHistory)(stock.id, userId);
         console.log(`[PriceFeedService] Live price cached for ${stock.symbol}: $${tickerData.price} (Source: ${provider})`);
         const fetchedPrice = await models_1.DailyPrice.findOne({
             where: { stockId: stock.id, date: todayStr, userId }
@@ -251,8 +254,8 @@ async function getLivePriceForStock(stock, userId) {
         return {
             symbol: stock.symbol,
             price: tickerData.price,
-            change: tickerData.change,
-            changePercent: tickerData.changePercent,
+            change: fetchedPrice ? Number(fetchedPrice.change) : 0,
+            changePercent: fetchedPrice ? Number(fetchedPrice.changePercent) : 0,
             source: 'live',
             lastUpdated: fetchedPrice ? fetchedPrice.updatedAt.toISOString() : new Date().toISOString(),
         };

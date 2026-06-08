@@ -6,6 +6,7 @@ const sequelize_1 = require("sequelize");
 const models_1 = require("../models");
 const auth_1 = require("../middleware/auth");
 const validate_1 = require("../middleware/validate");
+const recalculate_1 = require("../utils/recalculate");
 const router = (0, express_1.Router)();
 // GET /api/prices/:stockId -> Fetch historical prices for a stock with pagination
 router.get('/:stockId', auth_1.requireAuth, [
@@ -107,10 +108,12 @@ router.post('/', auth_1.requireAuth, [
             volume,
             source: 'manual',
         });
+        await (0, recalculate_1.recalculateStockPriceHistory)(stockId, userId);
+        const updatedPrice = await models_1.DailyPrice.findByPk(newPrice.id);
         return res.status(201).json({
             success: true,
             message: 'Price record logged successfully.',
-            data: newPrice,
+            data: updatedPrice || newPrice,
         });
     }
     catch (error) {
@@ -169,10 +172,12 @@ router.put('/:id', auth_1.requireAuth, [
         priceEntry.volume = volume;
         priceEntry.date = date;
         await priceEntry.save();
+        await (0, recalculate_1.recalculateStockPriceHistory)(priceEntry.stockId, userId);
+        const updatedPrice = await models_1.DailyPrice.findByPk(priceEntry.id);
         return res.status(200).json({
             success: true,
             message: 'Price record updated successfully.',
-            data: priceEntry,
+            data: updatedPrice || priceEntry,
         });
     }
     catch (error) {
@@ -198,6 +203,7 @@ router.delete('/:id', auth_1.requireAuth, [(0, express_validator_1.param)('id').
             });
         }
         await priceEntry.destroy();
+        await (0, recalculate_1.recalculateStockPriceHistory)(priceEntry.stockId, userId);
         return res.status(200).json({
             success: true,
             message: 'Price record deleted successfully.',

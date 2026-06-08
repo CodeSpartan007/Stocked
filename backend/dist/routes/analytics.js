@@ -495,18 +495,31 @@ router.get('/benchmark', auth_1.requireAuth, async (req, res) => {
         const userStocks = await models_1.Stock.findAll({ where: { userId } });
         const benchmarks = [];
         for (const stock of userStocks) {
-            // Find price at or earliest after startDate and on or before endDate
-            const startPriceRecord = await models_1.DailyPrice.findOne({
+            // Find price at or latest before startDate
+            let startPriceRecord = await models_1.DailyPrice.findOne({
                 where: {
                     stockId: stock.id,
                     date: {
-                        [sequelize_1.Op.gte]: startDate,
-                        [sequelize_1.Op.lte]: endDate,
+                        [sequelize_1.Op.lte]: startDate,
                     },
                     userId,
                 },
-                order: [['date', 'ASC']],
+                order: [['date', 'DESC']],
             });
+            // Fallback to the earliest price within the range if no prior price exists
+            if (!startPriceRecord) {
+                startPriceRecord = await models_1.DailyPrice.findOne({
+                    where: {
+                        stockId: stock.id,
+                        date: {
+                            [sequelize_1.Op.gte]: startDate,
+                            [sequelize_1.Op.lte]: endDate,
+                        },
+                        userId,
+                    },
+                    order: [['date', 'ASC']],
+                });
+            }
             // Find price at or latest before endDate and on or after startDate
             const endPriceRecord = await models_1.DailyPrice.findOne({
                 where: {

@@ -4,6 +4,7 @@ import { Op } from 'sequelize';
 import { Stock, DailyPrice } from '../models';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
 import { handleValidationErrors } from '../middleware/validate';
+import { recalculateStockPriceHistory } from '../utils/recalculate';
 
 const router = Router();
 
@@ -129,10 +130,13 @@ router.post(
         source: 'manual',
       });
 
+      await recalculateStockPriceHistory(stockId, userId);
+      const updatedPrice = await DailyPrice.findByPk(newPrice.id);
+
       return res.status(201).json({
         success: true,
         message: 'Price record logged successfully.',
-        data: newPrice,
+        data: updatedPrice || newPrice,
       });
     } catch (error: any) {
       console.error('Error creating price record:', error);
@@ -202,10 +206,13 @@ router.put(
       priceEntry.date = date;
       await priceEntry.save();
 
+      await recalculateStockPriceHistory(priceEntry.stockId, userId);
+      const updatedPrice = await DailyPrice.findByPk(priceEntry.id);
+
       return res.status(200).json({
         success: true,
         message: 'Price record updated successfully.',
-        data: priceEntry,
+        data: updatedPrice || priceEntry,
       });
     } catch (error: any) {
       console.error('Error updating price entry:', error);
@@ -239,6 +246,8 @@ router.delete(
       }
 
       await priceEntry.destroy();
+
+      await recalculateStockPriceHistory(priceEntry.stockId, userId);
 
       return res.status(200).json({
         success: true,

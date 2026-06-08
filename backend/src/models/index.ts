@@ -8,6 +8,7 @@ import { PerformanceTarget } from './PerformanceTarget';
 import { UserSetting } from './UserSetting';
 import { ExportLogs } from './ExportLogs';
 import bcrypt from 'bcrypt';
+import { recalculateStockPriceHistory } from '../utils/recalculate';
 
 // Stable, valid UUIDv4 constants for seeded accounts
 const SEEDED_USER_UUID = '12345678-abcd-4000-8000-123456789abc';
@@ -156,5 +157,10 @@ export async function initDb() {
     ]);
 
     console.log('Initial price records seeded.');
+
+    // Recalculate seed history to populate change and changePercent
+    await recalculateStockPriceHistory(apple.id, SEEDED_USER_UUID);
+    await recalculateStockPriceHistory(tesla.id, SEEDED_USER_UUID);
+    console.log('Initial seed price history changes calculated.');
   }
 }

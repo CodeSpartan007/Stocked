@@ -91,35 +91,12 @@ export default function Dashboard() {
       try {
         setLoading(true);
 
-        // Dynamically compute the first and last day of the current month (YYYY-MM-DD)
-        const today = new Date();
-        const year = today.getFullYear();
-        const month = today.getMonth();
-        
-        const firstDay = new Date(year, month, 1);
-        const lastDay = new Date(year, month + 1, 0);
-
-        const formatDate = (date: Date) => {
-          const y = date.getFullYear();
-          const m = String(date.getMonth() + 1).padStart(2, '0');
-          const d = String(date.getDate()).padStart(2, '0');
-          return `${y}-${m}-${d}`;
-        };
-
-        const currentMonthStart = formatDate(firstDay);
-        const currentMonthEnd = formatDate(lastDay);
-
-        // Fetch all registered stocks, portfolio summary, recent transactions, benchmarking, and tickers in parallel
-        const [stocksRes, portfolioRes, txRes, benchmarkRes, tickerRes] = await Promise.all([
-          fetch(`${API_BASE}/api/stocks`,
-{ credentials: 'include' }),
-          fetch(`${API_BASE}/api/portfolio/summary`,
-{ credentials: 'include' }),
-          fetch(`${API_BASE}/api/transactions/history`,
-{ credentials: 'include' }),
-          fetch(`${API_BASE}/api/analytics/benchmark?startDate=${currentMonthStart}&endDate=${currentMonthEnd}`, { credentials: 'include' }),
-          fetch(`${API_BASE}/api/stocks/live-prices`,
-{ credentials: 'include' })
+        // Fetch all registered stocks, portfolio summary, recent transactions, and tickers in parallel
+        const [stocksRes, portfolioRes, txRes, tickerRes] = await Promise.all([
+          fetch(`${API_BASE}/api/stocks`, { credentials: 'include' }),
+          fetch(`${API_BASE}/api/portfolio/summary`, { credentials: 'include' }),
+          fetch(`${API_BASE}/api/transactions/history`, { credentials: 'include' }),
+          fetch(`${API_BASE}/api/stocks/live-prices`, { credentials: 'include' })
         ]);
 
         if (!stocksRes.ok || !portfolioRes.ok || !txRes.ok) {
@@ -129,13 +106,6 @@ export default function Dashboard() {
         const stocksJson = await stocksRes.json();
         const portfolioJson = await portfolioRes.json();
         const txJson = await txRes.json();
-        let parsedBenchmarks: BenchmarkItem[] = [];
-        if (benchmarkRes.ok) {
-          const benchmarkJson = await benchmarkRes.json();
-          if (benchmarkJson.success) {
-            parsedBenchmarks = benchmarkJson.data;
-          }
-        }
 
         if (tickerRes.ok) {
           const tickerJson = await tickerRes.json();
@@ -147,7 +117,20 @@ export default function Dashboard() {
         if (stocksJson.success && portfolioJson.success && txJson.success) {
           setStocks(stocksJson.data);
           setPortfolio(portfolioJson.data);
-          setTopPerformers(parsedBenchmarks);
+
+          // Map stocks to top performers based on daily price change percent
+          const dailyTopPerformers = stocksJson.data
+            .filter((s: any) => s.summary.totalPriceRecords > 0)
+            .map((s: any) => ({
+              stockId: s.id,
+              symbol: s.symbol,
+              name: s.name,
+              startPrice: null,
+              endPrice: s.summary.latestPrice,
+              performanceGain: s.summary.priceChangePercent,
+            }));
+          setTopPerformers(dailyTopPerformers);
+
           // Limit to 5 most recent transaction rows
           setRecentTx(txJson.data.slice(0, 5));
         } else {
@@ -329,7 +312,7 @@ export default function Dashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-xs font-bold text-white uppercase tracking-wider">Top Performers</h3>
-                <p className="text-[9px] text-slate-400 mt-0.5">Asset returns (May 2026)</p>
+                <p className="text-[9px] text-slate-400 mt-0.5">Daily performance gain</p>
               </div>
               <span className="text-[9px] font-extrabold text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
                 📈 GAINS

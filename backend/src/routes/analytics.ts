@@ -577,18 +577,32 @@ router.get(
       const benchmarks: any[] = [];
 
       for (const stock of userStocks) {
-        // Find price at or earliest after startDate and on or before endDate
-        const startPriceRecord = await DailyPrice.findOne({
+        // Find price at or latest before startDate
+        let startPriceRecord = await DailyPrice.findOne({
           where: {
             stockId: stock.id,
             date: {
-              [Op.gte]: startDate,
-              [Op.lte]: endDate,
+              [Op.lte]: startDate,
             },
             userId,
           },
-          order: [['date', 'ASC']],
+          order: [['date', 'DESC']],
         });
+
+        // Fallback to the earliest price within the range if no prior price exists
+        if (!startPriceRecord) {
+          startPriceRecord = await DailyPrice.findOne({
+            where: {
+              stockId: stock.id,
+              date: {
+                [Op.gte]: startDate,
+                [Op.lte]: endDate,
+              },
+              userId,
+            },
+            order: [['date', 'ASC']],
+          });
+        }
 
         // Find price at or latest before endDate and on or after startDate
         const endPriceRecord = await DailyPrice.findOne({
