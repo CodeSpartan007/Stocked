@@ -1,0 +1,63 @@
+========================================================================
+STOCKED - HOW TO RUN THE APPLICATION
+========================================================================
+
+Stocked consists of two main components:
+1. Backend: An Express.js REST API server
+2. Frontend: A Next.js web application
+
+Follow the steps below to setup and run both components locally.
+
+------------------------------------------------------------------------
+PREREQUISITES
+------------------------------------------------------------------------
+Make sure you have Node.js (v18+) and npm installed on your system.
+
+------------------------------------------------------------------------
+1. BACKEND SETUP & RUN
+------------------------------------------------------------------------
+1. Navigate to the backend directory:
+   cd backend
+
+2. Install the required dependencies:
+   npm install
+
+3. Copy the environment variables example file:
+   cp .env.example .env
+
+4. (Optional) Configure environment variables in the newly created `.env` file:
+   - PORT: The port the server runs on (defaults to 5001).
+   - JWT_SECRET: Secure string for signing JWT tokens.
+   - ENCRYPTION_SECRET: Secure 32-character hex string for sensitive data.
+   - DATABASE_URL: Leave empty to use local SQLite, or add Postgres URL.
+   - PRICE_FEED_PROVIDER: Set to "manual" or configure live providers.
+
+5. Start the backend development server:
+   npm run dev
+
+   The backend API will run at http://localhost:5001.
+
+------------------------------------------------------------------------
+2. FRONTEND SETUP & RUN
+------------------------------------------------------------------------
+1. Navigate to the frontend directory:
+   cd ../frontend
+   (or from the root folder: cd frontend)
+
+2. Install the required dependencies:
+   npm install
+
+3. Copy the environment variables example file:
+   cp .env.local.example .env.local
+
+4. (Optional) Verify the API URL:
+   Ensure `NEXT_PUBLIC_API_BASE_URL` in `.env.local` points to the
+   backend server (http://localhost:5001).
+
+5. Start the frontend development server:
+   npm run dev
+
+6. Access the application in your browser:
+   Open http://localhost:3000
+
+========================================================================
