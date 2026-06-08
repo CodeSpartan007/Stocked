@@ -19,7 +19,9 @@ function createSequelize() {
     // If DATABASE_URL is provided (either in production or locally), use Postgres
     if (dbUrl) {
         console.log('[Database] Connecting to Postgres database...');
-        return new sequelize_1.Sequelize(dbUrl, {
+        // Replace sslmode=require with sslmode=verify-full to satisfy the pg driver deprecation warning
+        const cleanDbUrl = dbUrl.replace('sslmode=require', 'sslmode=verify-full');
+        return new sequelize_1.Sequelize(cleanDbUrl, {
             dialect: 'postgres',
             dialectOptions: {
                 ssl: {
