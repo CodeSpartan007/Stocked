@@ -46,8 +46,12 @@ export function decrypt(encryptedText: string | null): string | null {
     decrypted += decipher.final('utf8');
     
     return decrypted;
-  } catch (error) {
-    console.error('[CryptoUtil] Decryption failed:', error);
+  } catch (error: any) {
+    if (error && error.message && error.message.includes('bad decrypt')) {
+      console.warn('[CryptoUtil] Decryption failed: Invalid decryption key or secret mismatch. Returning null.');
+    } else {
+      console.error('[CryptoUtil] Decryption failed:', error);
+    }
     return null;
   }
 }

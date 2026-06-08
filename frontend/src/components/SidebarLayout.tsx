@@ -190,7 +190,7 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
   ];
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-slate-950 text-slate-100">
+    <div className="flex h-dvh w-screen overflow-hidden bg-slate-950 text-slate-100">
       {/* Sidebar for Desktop */}
       <aside className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 bg-slate-900/60 backdrop-blur-xl border-r border-slate-800">
         <div className="flex flex-col flex-grow pt-5 pb-4 overflow-y-auto">
@@ -323,7 +323,7 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
       {/* Main Content Area */}
       <div className="flex flex-col flex-1 overflow-hidden md:pl-64">
         {/* Mobile Header Bar */}
-        <header className="md:hidden flex items-center justify-between h-16 px-4 bg-slate-900 border-b border-slate-800">
+        <header className="md:hidden flex items-center justify-between h-16 px-4 bg-slate-900 border-b border-slate-800 shrink-0 relative z-30">
           <div className="flex items-center">
             <div className="h-8 w-8 rounded-lg bg-gradient-to-tr from-indigo-500 to-emerald-400 flex items-center justify-center">
               <svg className="h-4 w-4 text-slate-900" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
@@ -345,12 +345,12 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
         </header>
 
         {/* Content body wrapper with nice dark styling */}
-        <main className="flex-1 overflow-y-auto relative bg-slate-950 p-4 sm:p-6 md:p-8">
+        <main className="flex-1 overflow-y-auto relative bg-slate-950 p-4 pb-16 sm:p-6 sm:pb-20 md:p-8 md:pb-24">
           {/* Neon mesh background glow */}
           <div className="absolute top-0 right-1/4 w-[500px] h-[500px] bg-indigo-500/5 rounded-full blur-[120px] pointer-events-none -z-10" />
           <div className="absolute bottom-0 left-1/4 w-[400px] h-[400px] bg-emerald-500/5 rounded-full blur-[100px] pointer-events-none -z-10" />
 
-          <div className="max-w-7xl mx-auto h-full">
+          <div className="max-w-7xl mx-auto min-h-full flex flex-col">
             {apiStatus && apiStatus.provider !== 'manual' && (
               <div className={`mb-6 p-4 rounded-2xl border backdrop-blur-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs font-semibold shadow-lg transition-all duration-300 ${apiStatus.statusText === 'Rate Limited'
                   ? 'bg-amber-500/10 border-amber-500/20 text-amber-300'

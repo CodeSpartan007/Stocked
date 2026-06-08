@@ -21,7 +21,7 @@ export default function LoginPage() {
       if (!res.success) {
         setError(res.message || 'Incorrect email or password.');
       }
-    } catch (err) {
+    } catch {
       setError('A connection error occurred. Please try again.');
     } finally {
       setSubmitting(false);
@@ -45,7 +45,7 @@ export default function LoginPage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
             </svg>
           </div>
-          <h2 className="text-2xl font-black tracking-wider bg-gradient-to-r from-indigo-200 via-slate-100 to-emerald-250 bg-clip-text text-transparent">
+          <h2 className="text-2xl font-black tracking-wider text-center bg-gradient-to-r from-indigo-200 via-slate-100 to-emerald-250 bg-clip-text text-transparent">
             STOCKED PORTAL
           </h2>
           <p className="text-xs text-slate-400 mt-1.5 text-center">
@@ -130,7 +130,7 @@ export default function LoginPage() {
         {/* Footer Toggle Actions */}
         <div className="mt-8 pt-6 border-t border-slate-800/60 text-center">
           <p className="text-xs text-slate-450">
-            Don't have an enterprise account?{' '}
+            Don&apos;t have an enterprise account?{' '}
             <Link href="/auth/register" className="font-bold text-indigo-400 hover:text-indigo-300 transition-colors">
               Create Account
             </Link>

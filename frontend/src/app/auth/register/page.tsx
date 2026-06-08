@@ -39,7 +39,7 @@ export default function RegisterPage() {
           setError(res.message || 'Registration failed.');
         }
       }
-    } catch (err) {
+    } catch {
       setError('A connection error occurred. Please try again.');
     } finally {
       setSubmitting(false);
@@ -63,7 +63,7 @@ export default function RegisterPage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m2 9h4a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
             </svg>
           </div>
-          <h2 className="text-2xl font-black tracking-wider bg-gradient-to-r from-indigo-200 via-slate-100 to-emerald-250 bg-clip-text text-transparent">
+          <h2 className="text-2xl font-black tracking-wider text-center bg-gradient-to-r from-indigo-200 via-slate-100 to-emerald-250 bg-clip-text text-transparent">
             REGISTER ACCOUNT
           </h2>
           <p className="text-xs text-slate-400 mt-1.5 text-center">

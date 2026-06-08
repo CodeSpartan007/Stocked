@@ -11,3 +11,9 @@ frontend/README.md
 # OS/System files
 .DS_Store
 Thumbs.db
+
+# Environment configuration files
+.env
+.env.*
+!.env.example
+
