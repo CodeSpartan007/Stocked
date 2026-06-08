@@ -44,6 +44,16 @@ DailyPrice.init({
             min: 0.01,
         },
     },
+    change: {
+        type: sequelize_1.DataTypes.DECIMAL(12, 2),
+        allowNull: false,
+        defaultValue: 0.00,
+    },
+    changePercent: {
+        type: sequelize_1.DataTypes.DECIMAL(12, 2),
+        allowNull: false,
+        defaultValue: 0.00,
+    },
     volume: {
         type: sequelize_1.DataTypes.INTEGER,
         allowNull: false,

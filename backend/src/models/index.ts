@@ -49,8 +49,10 @@ export { sequelize, User, Stock, DailyPrice, Purchase, Sales, PerformanceTarget,
 
 export async function initDb() {
   // In development, `alter: true` applies schema changes automatically.
+  // In SQLite/development: do not use `alter: true` as it causes duplicate unique constraint bugs.
   // In production, never alter/drop tables — only create if not exists.
-  await sequelize.sync({ alter: process.env.NODE_ENV !== 'production' });
+  const isSqlite = sequelize.getDialect() === 'sqlite';
+  await sequelize.sync({ alter: process.env.NODE_ENV !== 'production' && !isSqlite });
   console.log('Database synced successfully.');
 
   // Seed default user if not exists

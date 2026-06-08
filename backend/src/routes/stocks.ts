@@ -172,10 +172,16 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res: Response) =>
           highestPrice = Math.max(...numericPrices);
           lowestPrice = Math.min(...numericPrices);
 
-          if (totalRecords > 1) {
-            const previousPrice = Number(prices[1].price);
-            priceChange = latestPrice - previousPrice;
-            priceChangePercent = (priceChange / previousPrice) * 100;
+          // Use stored values if available (from live API)
+          priceChange = Number(prices[0].change) || 0;
+          priceChangePercent = Number(prices[0].changePercent) || 0;
+
+          if (prices[0].source === 'manual' || (priceChange === 0 && priceChangePercent === 0)) {
+            if (totalRecords > 1) {
+              const previousPrice = Number(prices[1].price);
+              priceChange = latestPrice - previousPrice;
+              priceChangePercent = (priceChange / previousPrice) * 100;
+            }
           }
         }
 

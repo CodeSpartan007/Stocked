@@ -9,6 +9,8 @@ export class DailyPrice extends Model {
   declare stockId: string;
   declare date: string; // YYYY-MM-DD format
   declare price: number;
+  declare change: number;
+  declare changePercent: number;
   declare volume: number;
   declare source: 'manual' | 'api';
 
@@ -52,6 +54,16 @@ DailyPrice.init(
       validate: {
         min: 0.01,
       },
+    },
+    change: {
+      type: DataTypes.DECIMAL(12, 2),
+      allowNull: false,
+      defaultValue: 0.00,
+    },
+    changePercent: {
+      type: DataTypes.DECIMAL(12, 2),
+      allowNull: false,
+      defaultValue: 0.00,
     },
     volume: {
       type: DataTypes.INTEGER,

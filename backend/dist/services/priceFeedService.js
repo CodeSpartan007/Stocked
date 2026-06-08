@@ -234,6 +234,8 @@ async function getLivePriceForStock(stock, userId) {
             price: tickerData.price,
             volume: tickerData.volume,
             source: 'api',
+            change: tickerData.change,
+            changePercent: tickerData.changePercent,
         });
         console.log(`[PriceFeedService] Live price cached for ${stock.symbol}: $${tickerData.price} (Source: ${provider})`);
         const fetchedPrice = await models_1.DailyPrice.findOne({
@@ -295,12 +297,14 @@ async function fetchLocalFallback(stock, fallbackLabel) {
         };
     }
     const latest = latestPrices[0];
-    let change = 0;
-    let changePercent = 0;
-    if (latestPrices.length > 1) {
-        const prev = latestPrices[1];
-        change = Number(latest.price) - Number(prev.price);
-        changePercent = Number(prev.price) !== 0 ? (change / Number(prev.price)) * 100 : 0;
+    let change = Number(latest.change) || 0;
+    let changePercent = Number(latest.changePercent) || 0;
+    if (latest.source === 'manual' || (change === 0 && changePercent === 0)) {
+        if (latestPrices.length > 1) {
+            const prev = latestPrices[1];
+            change = Number(latest.price) - Number(prev.price);
+            changePercent = Number(prev.price) !== 0 ? (change / Number(prev.price)) * 100 : 0;
+        }
     }
     return {
         symbol: stock.symbol,
