@@ -49,13 +49,11 @@ DailyPrice.belongsTo(User, { foreignKey: 'userId', as: 'User' });
 export { sequelize, User, Stock, DailyPrice, Purchase, Sales, PerformanceTarget, UserSetting, ExportLogs };
 
 export async function initDb() {
-  // In development, `alter: true` applies schema changes automatically.
-  // In SQLite/development: do not use `alter: true` as it causes duplicate unique constraint bugs.
-  // In production, never alter/drop tables — only create if not exists.
+  // In SQLite: do not use `alter: true` as it causes unique constraint and foreign key bugs when dropping/recreating tables.
+  // In Postgres: we never run automatic sync alters to prevent data risks.
+  // If you need to apply schema changes locally in SQLite, delete the database.sqlite file and restart the server.
   const isSqlite = sequelize.getDialect() === 'sqlite';
-  // In development SQLite, we can alter the schema.
-  // We NEVER run automatic Sequelize sync alters on Postgres (even when running locally) to prevent data risks.
-  await sequelize.sync({ alter: isSqlite && process.env.NODE_ENV !== 'production' });
+  await sequelize.sync({ alter: false });
 
   // Non-destructively add new columns if they are missing in production Postgres schema
   if (!isSqlite) {
