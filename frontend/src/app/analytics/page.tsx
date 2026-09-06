@@ -4,6 +4,7 @@ import { API_BASE } from '../../lib/api';
 
 import React, { useEffect, useState, useRef } from 'react';
 import ExportActionsDropdown from '../../components/ExportActionsDropdown';
+import { useTheme } from '@/app/context/ThemeContext';
 import {
   XAxis,
   YAxis,
@@ -86,6 +87,9 @@ interface BenchmarkItem {
 }
 
 export default function AnalyticsPage() {
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === 'dark';
+
   // Dynamically compute the first and last day of the current month (YYYY-MM-DD)
   const getInitialDates = () => {
     const today = new Date();
@@ -147,8 +151,7 @@ export default function AnalyticsPage() {
   useEffect(() => {
     async function fetchStocks() {
       try {
-        const res = await fetch(`${API_BASE}/api/stocks`,
-{
+        const res = await fetch(`${API_BASE}/api/stocks`, {
           credentials: 'include'
         });
         if (!res.ok) throw new Error();
@@ -165,12 +168,10 @@ export default function AnalyticsPage() {
 
   // Primary data fetcher binding to startDate, endDate, selectedStockId
   useEffect(() => {
-    // 1. Cancel previous pending fetch requests
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
 
-    // 2. Create a new AbortController
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
@@ -218,7 +219,6 @@ export default function AnalyticsPage() {
         console.error(err);
         setError('Failed to refresh data feeds. Verify that the backend server is running.');
       } finally {
-        // Prevent setting loading false if it was aborted (another request is already running)
         if (!controller.signal.aborted) {
           setLoading(false);
         }
@@ -227,7 +227,6 @@ export default function AnalyticsPage() {
 
     fetchAnalyticsData();
 
-    // Cleanup hook to abort when unmounting or re-running
     return () => {
       controller.abort();
     };
@@ -241,8 +240,7 @@ export default function AnalyticsPage() {
     setFormError(null);
 
     try {
-      const res = await fetch(`${API_BASE}/api/analytics/targets`,
-{
+      const res = await fetch(`${API_BASE}/api/analytics/targets`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -259,9 +257,7 @@ export default function AnalyticsPage() {
         setFormSuccess('Goal metric successfully registered!');
         setNewTargetName('');
         setNewTargetValue('');
-        // Refresh targets checklist
-        const updatedTargetsRes = await fetch(`${API_BASE}/api/analytics/targets`,
-{
+        const updatedTargetsRes = await fetch(`${API_BASE}/api/analytics/targets`, {
           credentials: 'include'
         });
         const updatedJson = await updatedTargetsRes.json();
@@ -323,7 +319,6 @@ export default function AnalyticsPage() {
       const json = await res.json();
       if (res.ok && json.success) {
         setEditingTarget(null);
-        // Refresh targets
         const updatedTargetsRes = await fetch(`${API_BASE}/api/analytics/targets`, {
           credentials: 'include',
         });
@@ -364,28 +359,41 @@ export default function AnalyticsPage() {
     }
   };
 
-  // Curated elegant color scheme variables for asset allocation donut cells
-  const DOUGHNUT_COLORS = ['#6366f1', '#10b981', '#f43f5e', '#8b5cf6', '#eab308', '#ec4899', '#3b82f6'];
+  // Coordinated palette for asset allocation donut slices
+  const DOUGHNUT_COLORS = isDark
+    ? ['#e0ff4f', '#00e599', '#38bdf8', '#f43f5e', '#a78bfa', '#fbbf24', '#2dd4bf']
+    : ['#00272b', '#059669', '#0284c7', '#e11d48', '#7c3aed', '#d97706', '#0f766e'];
+
+  const gridStroke = isDark ? '#085862' : '#ccdfda';
+  const axisStroke = isDark ? '#9bbbc0' : '#55797e';
+  const tooltipStyle = {
+    backgroundColor: isDark ? '#023439' : '#ffffff',
+    border: `1px solid ${isDark ? '#085862' : '#ccdfda'}`,
+    borderRadius: '12px',
+    color: isDark ? '#f4fbf8' : '#00272b',
+    fontSize: '11px',
+    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.15)',
+  };
 
   return (
-    <div className="space-y-8 text-slate-100 pb-12">
+    <div className="space-y-8 text-main pb-12">
       {/* Page Title Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-black bg-gradient-to-r from-indigo-200 via-slate-100 to-emerald-200 bg-clip-text text-transparent flex items-center gap-3">
-            <Activity className="text-indigo-400 h-8 w-8" />
+          <h1 className="text-3xl font-black text-main flex items-center gap-3">
+            <Activity className="text-[#00272b] dark:text-[#e0ff4f] h-8 w-8" />
             Performance &amp; Insights
           </h1>
-          <p className="text-slate-400 text-xs mt-1">
+          <p className="text-muted text-xs mt-1">
             View net returns, investment mix, and set financial goals.
           </p>
         </div>
 
         {/* Global Filter Bar */}
-        <div className="bg-slate-900/40 backdrop-blur-xl border border-slate-800/80 rounded-2xl p-3 flex flex-wrap items-center gap-4 shadow-lg">
+        <div className="bg-surface backdrop-blur-xl border border-subtle rounded-2xl p-3 flex flex-wrap items-center gap-4 shadow-lg">
           <div className="flex items-center gap-2">
-            <Calendar className="h-4 w-4 text-slate-400" />
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Date Filters:</span>
+            <Calendar className="h-4 w-4 text-muted" />
+            <span className="text-[10px] font-bold text-muted uppercase tracking-wider">Date Filters:</span>
           </div>
 
           <div className="flex items-center gap-2">
@@ -393,26 +401,26 @@ export default function AnalyticsPage() {
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="bg-slate-950/80 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
+              className="bg-surface-elevated border border-subtle rounded-lg px-2.5 py-1 text-xs text-main focus:outline-none focus:border-[#e0ff4f] font-mono"
             />
-            <span className="text-slate-500 text-xs">to</span>
+            <span className="text-muted text-xs">to</span>
             <input
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="bg-slate-950/80 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
+              className="bg-surface-elevated border border-subtle rounded-lg px-2.5 py-1 text-xs text-main focus:outline-none focus:border-[#e0ff4f] font-mono"
             />
           </div>
 
-          <div className="border-l border-slate-800 h-6 hidden md:block" />
+          <div className="border-l border-subtle h-6 hidden md:block" />
 
           {/* Stock Scope Select dropdown */}
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Scope:</span>
+            <span className="text-[10px] font-bold text-muted uppercase tracking-wider">Scope:</span>
             <select
               value={selectedStockId}
               onChange={(e) => setSelectedStockId(e.target.value)}
-              className="bg-slate-950/80 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-semibold"
+              className="bg-surface-elevated border border-subtle rounded-lg px-2.5 py-1 text-xs text-main focus:outline-none focus:border-[#e0ff4f] font-semibold"
             >
               <option value="portfolio">💼 Entire Portfolio</option>
               {stocksList.map((s) => (
@@ -426,17 +434,17 @@ export default function AnalyticsPage() {
       </div>
 
       {error && (
-        <div className="p-4 bg-rose-500/10 border border-rose-500/20 text-rose-300 rounded-2xl text-xs font-semibold flex items-center gap-2.5">
-          <AlertCircle className="h-5 w-5 text-rose-400 flex-shrink-0" />
+        <div className="p-4 bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 rounded-2xl text-xs font-semibold flex items-center gap-2.5">
+          <AlertCircle className="h-5 w-5 text-rose-500 flex-shrink-0" />
           {error}
         </div>
       )}
 
       {/* Metrics Header with Export Actions */}
-      <div className="relative z-30 flex items-center justify-between bg-slate-900/10 backdrop-blur-md border border-slate-800/40 rounded-2xl p-4 shadow-md">
+      <div className="relative z-30 flex items-center justify-between bg-surface backdrop-blur-md border border-subtle rounded-2xl p-4 shadow-md">
         <div>
-          <h2 className="text-xs font-black uppercase tracking-wider text-indigo-400">Key Metrics View</h2>
-          <p className="text-[9px] text-slate-500 font-medium">Returns, growth, and total market value</p>
+          <h2 className="text-xs font-black uppercase tracking-wider text-[#00272b] dark:text-[#e0ff4f]">Key Metrics View</h2>
+          <p className="text-[9px] text-muted font-medium">Returns, growth, and total market value</p>
         </div>
         <ExportActionsDropdown 
           reportType="analytics" 
@@ -449,107 +457,107 @@ export default function AnalyticsPage() {
       {/* Advanced Quantitative Metrics Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* Total Return Card */}
-        <div className="bg-slate-900/40 backdrop-blur-xl border border-slate-800/80 rounded-2xl p-6 shadow-lg relative overflow-hidden group hover:border-indigo-500/30 transition-all duration-300">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-indigo-500/80" />
+        <div className="bg-surface backdrop-blur-xl border border-subtle hover:border-[#e0ff4f]/60 rounded-2xl p-6 shadow-lg relative overflow-hidden group transition-all duration-300">
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-emerald-500" />
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Total Gain/Loss (%)</span>
-            <span className="h-7 w-7 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
+            <span className="text-[10px] font-bold tracking-wider text-muted uppercase">Total Gain/Loss (%)</span>
+            <span className="h-7 w-7 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
               <Percent className="h-4 w-4" />
             </span>
           </div>
           <h3 className={`text-3xl font-black mt-4 tracking-tight ${
-            (metrics?.totalReturnPercent ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
+            (metrics?.totalReturnPercent ?? 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
           }`}>
             {loading ? (
-              <span className="inline-block w-24 h-9 bg-slate-800 animate-pulse rounded" />
+              <span className="inline-block w-24 h-9 bg-surface-elevated animate-pulse rounded" />
             ) : (
               `${(metrics?.totalReturnPercent ?? 0) >= 0 ? '+' : ''}${(metrics?.totalReturnPercent ?? 0).toFixed(2)}%`
             )}
           </h3>
-          <p className="text-[10px] text-slate-400 mt-2 font-medium">Total gain or loss on your money put in</p>
+          <p className="text-[10px] text-muted mt-2 font-medium">Total gain or loss on your money put in</p>
         </div>
 
         {/* Annualized Return Card */}
-        <div className="bg-slate-900/40 backdrop-blur-xl border border-slate-800/80 rounded-2xl p-6 shadow-lg relative overflow-hidden group hover:border-emerald-500/30 transition-all duration-300">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-emerald-500/80" />
+        <div className="bg-surface backdrop-blur-xl border border-subtle hover:border-[#e0ff4f]/60 rounded-2xl p-6 shadow-lg relative overflow-hidden group transition-all duration-300">
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-emerald-500" />
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Annual Growth Rate (CAGR)</span>
-            <span className="h-7 w-7 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+            <span className="text-[10px] font-bold tracking-wider text-muted uppercase">Annual Growth Rate (CAGR)</span>
+            <span className="h-7 w-7 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
               <TrendingUp className="h-4 w-4" />
             </span>
           </div>
           <h3 className={`text-3xl font-black mt-4 tracking-tight ${
-            (metrics?.annualizedReturnPercent ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
+            (metrics?.annualizedReturnPercent ?? 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
           }`}>
             {loading ? (
-              <span className="inline-block w-24 h-9 bg-slate-800 animate-pulse rounded" />
+              <span className="inline-block w-24 h-9 bg-surface-elevated animate-pulse rounded" />
             ) : (
               `${(metrics?.annualizedReturnPercent ?? 0) >= 0 ? '+' : ''}${(metrics?.annualizedReturnPercent ?? 0).toFixed(2)}%`
             )}
           </h3>
-          <p className="text-[10px] text-slate-400 mt-2 font-medium">Compounded annual growth rate</p>
+          <p className="text-[10px] text-muted mt-2 font-medium">Compounded annual growth rate</p>
         </div>
 
         {/* Volatility Index Card */}
-        <div className="bg-slate-900/40 backdrop-blur-xl border border-slate-800/80 rounded-2xl p-6 shadow-lg relative overflow-hidden group hover:border-rose-500/30 transition-all duration-300">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-rose-500/80" />
+        <div className="bg-surface backdrop-blur-xl border border-subtle hover:border-rose-500/50 rounded-2xl p-6 shadow-lg relative overflow-hidden group transition-all duration-300">
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-rose-500" />
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Stock Volatility</span>
-            <span className="h-7 w-7 rounded-lg bg-rose-500/10 text-rose-400 flex items-center justify-center">
+            <span className="text-[10px] font-bold tracking-wider text-muted uppercase">Stock Volatility</span>
+            <span className="h-7 w-7 rounded-lg bg-rose-500/15 text-rose-600 dark:text-rose-400 flex items-center justify-center">
               <Activity className="h-4 w-4" />
             </span>
           </div>
-          <h3 className="text-3xl font-black mt-4 tracking-tight text-white">
+          <h3 className="text-3xl font-black mt-4 tracking-tight text-main">
             {loading ? (
-              <span className="inline-block w-24 h-9 bg-slate-800 animate-pulse rounded" />
+              <span className="inline-block w-24 h-9 bg-surface-elevated animate-pulse rounded" />
             ) : (
               `${(metrics?.volatility ?? 0).toFixed(3)}%`
             )}
           </h3>
-          <p className="text-[10px] text-slate-400 mt-2 font-medium">Price stability of your active shares</p>
+          <p className="text-[10px] text-muted mt-2 font-medium">Price stability of your active shares</p>
         </div>
 
         {/* Total Assets Valuation Card */}
-        <div className="bg-slate-900/40 backdrop-blur-xl border border-slate-800/80 rounded-2xl p-6 shadow-lg relative overflow-hidden group hover:border-indigo-500/30 transition-all duration-300">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-indigo-500" />
+        <div className="bg-surface backdrop-blur-xl border border-subtle hover:border-[#e0ff4f] rounded-2xl p-6 shadow-lg relative overflow-hidden group transition-all duration-300">
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-[#e0ff4f]" />
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Current Value</span>
-            <span className="h-7 w-7 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
+            <span className="text-[10px] font-bold tracking-wider text-muted uppercase">Current Value</span>
+            <span className="h-7 w-7 rounded-lg bg-[#e0ff4f] text-[#00272b] flex items-center justify-center font-bold">
               <DollarSign className="h-4 w-4" />
             </span>
           </div>
-          <h3 className="text-3xl font-black mt-4 tracking-tight text-slate-100">
+          <h3 className="text-3xl font-black mt-4 tracking-tight text-main">
             {loading ? (
-              <span className="inline-block w-24 h-9 bg-slate-800 animate-pulse rounded" />
+              <span className="inline-block w-24 h-9 bg-surface-elevated animate-pulse rounded" />
             ) : (
               `$${(metrics?.totalPortfolioValue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
             )}
           </h3>
-          <p className="text-[10px] text-slate-400 mt-2 font-medium">Market value of your active shares</p>
+          <p className="text-[10px] text-muted mt-2 font-medium">Market value of your active shares</p>
         </div>
       </div>
 
       {/* Primary Chart Visualization Panels */}
-      <div className="bg-slate-900/20 backdrop-blur-md border border-slate-800/80 rounded-2xl p-6 shadow-xl space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
+      <div className="bg-surface backdrop-blur-md border border-subtle rounded-2xl p-6 shadow-xl space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-subtle pb-4">
           <div>
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <BarChart2 className="text-indigo-400 h-5 w-5" />
+            <h2 className="text-lg font-bold text-main flex items-center gap-2">
+              <BarChart2 className="text-[#00272b] dark:text-[#e0ff4f] h-5 w-5" />
               Portfolio Value Over Time
             </h2>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-muted">
               Interactive visualizations plotting your {selectedStockId === 'portfolio' ? 'cumulative portfolio performance' : 'stock price history'}.
             </p>
           </div>
 
           {/* Visual Tabs */}
-          <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-850 self-start sm:self-auto">
+          <div className="flex bg-surface-elevated p-1 rounded-xl border border-subtle self-start sm:self-auto">
             <button
               onClick={() => setActiveChartTab('performance')}
               className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
                 activeChartTab === 'performance'
-                  ? 'bg-indigo-500/10 text-indigo-300 border border-indigo-500/20'
-                  : 'text-slate-400 hover:text-slate-200 border border-transparent'
+                  ? 'bg-[#e0ff4f] text-[#00272b] shadow-sm'
+                  : 'text-muted hover:text-main'
               }`}
             >
               Total Gains/Losses
@@ -558,8 +566,8 @@ export default function AnalyticsPage() {
               onClick={() => setActiveChartTab('price')}
               className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
                 activeChartTab === 'price'
-                  ? 'bg-indigo-500/10 text-indigo-300 border border-indigo-500/20'
-                  : 'text-slate-400 hover:text-slate-200 border border-transparent'
+                  ? 'bg-[#e0ff4f] text-[#00272b] shadow-sm'
+                  : 'text-muted hover:text-main'
               }`}
             >
               Price Trend
@@ -568,8 +576,8 @@ export default function AnalyticsPage() {
               onClick={() => setActiveChartTab('volume')}
               className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${
                 activeChartTab === 'volume'
-                  ? 'bg-indigo-500/10 text-indigo-300 border border-indigo-500/20'
-                  : 'text-slate-400 hover:text-slate-200 border border-transparent'
+                  ? 'bg-[#e0ff4f] text-[#00272b] shadow-sm'
+                  : 'text-muted hover:text-main'
               }`}
             >
               Volume Trend
@@ -580,23 +588,23 @@ export default function AnalyticsPage() {
         {/* Charts Container */}
         <div className="h-[360px] w-full relative">
           {loading ? (
-            <div className="absolute inset-0 flex items-center justify-center bg-slate-900/10 rounded-xl border border-dashed border-slate-800">
+            <div className="absolute inset-0 flex items-center justify-center bg-surface-elevated/50 rounded-xl border border-dashed border-subtle">
               <div className="flex flex-col items-center gap-2">
-                <svg className="animate-spin h-8 w-8 text-indigo-500" fill="none" viewBox="0 0 24 24">
+                <svg className="animate-spin h-8 w-8 text-[#00272b] dark:text-[#e0ff4f]" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                 </svg>
-                <span className="text-xs font-semibold text-slate-400">Loading charts, plotting data...</span>
+                <span className="text-xs font-semibold text-muted">Loading charts, plotting data...</span>
               </div>
             </div>
           ) : !chartData ||
             (activeChartTab === 'performance' && chartData.cumulativePerformance.length === 0) ||
             (activeChartTab === 'price' && chartData.priceTrend.length === 0) ||
             (activeChartTab === 'volume' && chartData.volumeTrend.length === 0) ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center border border-dashed border-slate-800 rounded-xl gap-2 text-slate-400">
-              <BarChart2 className="h-10 w-10 text-slate-600" />
+            <div className="absolute inset-0 flex flex-col items-center justify-center border border-dashed border-subtle rounded-xl gap-2 text-muted">
+              <BarChart2 className="h-10 w-10 text-muted/60" />
               <p className="text-xs font-medium">No price records found for this selection.</p>
-              <p className="text-[10px] text-slate-500">Add price history points or adjust target dates.</p>
+              <p className="text-[10px] text-muted">Add price history points or adjust target dates.</p>
             </div>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
@@ -604,29 +612,21 @@ export default function AnalyticsPage() {
                 <AreaChart data={chartData.cumulativePerformance} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="gradTotalPL" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.25} />
-                      <stop offset="95%" stopColor="#10b981" stopOpacity={0.0} />
+                      <stop offset="5%" stopColor={isDark ? "#e0ff4f" : "#00272b"} stopOpacity={isDark ? 0.35 : 0.2} />
+                      <stop offset="95%" stopColor={isDark ? "#e0ff4f" : "#00272b"} stopOpacity={0.0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" opacity={0.3} />
-                  <XAxis dataKey="date" stroke="#64748b" fontSize={10} tickLine={false} />
-                  <YAxis stroke="#64748b" fontSize={10} tickLine={false} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                      border: '1px solid rgba(148, 163, 184, 0.1)',
-                      borderRadius: '12px',
-                      color: '#f8fafc',
-                      fontSize: '11px'
-                    }}
-                  />
+                  <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} opacity={0.5} />
+                  <XAxis dataKey="date" stroke={axisStroke} fontSize={10} tickLine={false} />
+                  <YAxis stroke={axisStroke} fontSize={10} tickLine={false} />
+                  <Tooltip contentStyle={tooltipStyle} />
                   <Legend wrapperStyle={{ fontSize: '10px' }} />
                   <Area
                     type="monotone"
                     name="Total Gains/Losses ($)"
                     dataKey="totalPL"
-                    stroke="#10b981"
-                    strokeWidth={2}
+                    stroke={isDark ? "#e0ff4f" : "#00272b"}
+                    strokeWidth={2.5}
                     fillOpacity={1}
                     fill="url(#gradTotalPL)"
                   />
@@ -634,7 +634,7 @@ export default function AnalyticsPage() {
                     type="monotone"
                     name="Current Value ($)"
                     dataKey="portfolioValue"
-                    stroke="#6366f1"
+                    stroke={isDark ? "#38bdf8" : "#0284c7"}
                     strokeWidth={1.5}
                     strokeDasharray="4 4"
                     fill="transparent"
@@ -643,7 +643,7 @@ export default function AnalyticsPage() {
                     type="monotone"
                     name="Money Put In ($)"
                     dataKey="investedCapital"
-                    stroke="#f43f5e"
+                    stroke={isDark ? "#f43f5e" : "#e11d48"}
                     strokeWidth={1.5}
                     strokeDasharray="4 4"
                     fill="transparent"
@@ -653,52 +653,38 @@ export default function AnalyticsPage() {
                 <AreaChart data={chartData.priceTrend} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="gradPrice" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.2} />
-                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0.0} />
+                      <stop offset="5%" stopColor={isDark ? "#e0ff4f" : "#00272b"} stopOpacity={isDark ? 0.35 : 0.2} />
+                      <stop offset="95%" stopColor={isDark ? "#e0ff4f" : "#00272b"} stopOpacity={0.0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" opacity={0.3} />
-                  <XAxis dataKey="date" stroke="#64748b" fontSize={10} tickLine={false} />
-                  <YAxis stroke="#64748b" fontSize={10} tickLine={false} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                      border: '1px solid rgba(148, 163, 184, 0.1)',
-                      borderRadius: '12px',
-                      color: '#f8fafc',
-                      fontSize: '11px'
-                    }}
-                  />
+                  <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} opacity={0.5} />
+                  <XAxis dataKey="date" stroke={axisStroke} fontSize={10} tickLine={false} />
+                  <YAxis stroke={axisStroke} fontSize={10} tickLine={false} />
+                  <Tooltip contentStyle={tooltipStyle} />
                   <Area
                     type="monotone"
                     name="Closing Price ($)"
                     dataKey="price"
-                    stroke="#6366f1"
+                    stroke={isDark ? "#e0ff4f" : "#00272b"}
                     strokeWidth={2.5}
                     fillOpacity={1}
                     fill="url(#gradPrice)"
-                    dot={{ stroke: '#6366f1', strokeWidth: 1.5, r: 2 }}
+                    dot={{ stroke: isDark ? '#e0ff4f' : '#00272b', strokeWidth: 1.5, r: 2 }}
                     activeDot={{ r: 5, strokeWidth: 0 }}
                   />
                 </AreaChart>
               ) : (
                 <BarChart data={chartData.volumeTrend} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" opacity={0.3} />
-                  <XAxis dataKey="date" stroke="#64748b" fontSize={10} tickLine={false} />
-                  <YAxis stroke="#64748b" fontSize={10} tickLine={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} opacity={0.5} />
+                  <XAxis dataKey="date" stroke={axisStroke} fontSize={10} tickLine={false} />
+                  <YAxis stroke={axisStroke} fontSize={10} tickLine={false} />
                   <Tooltip
-                    cursor={{ fill: 'rgba(255,255,255,0.03)' }}
-                    contentStyle={{
-                      backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                      border: '1px solid rgba(148, 163, 184, 0.1)',
-                      borderRadius: '12px',
-                      color: '#f8fafc',
-                      fontSize: '11px'
-                    }}
+                    cursor={{ fill: isDark ? 'rgba(224,255,79,0.05)' : 'rgba(0,39,43,0.05)' }}
+                    contentStyle={tooltipStyle}
                   />
-                  <Bar name="Trading Volume" dataKey="volume" fill="#059669" radius={[4, 4, 0, 0]}>
+                  <Bar name="Trading Volume" dataKey="volume" fill={isDark ? "#e0ff4f" : "#00272b"} radius={[4, 4, 0, 0]}>
                     {chartData.volumeTrend.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill="#059669" opacity={0.8} />
+                      <Cell key={`cell-${index}`} fill={isDark ? "#e0ff4f" : "#00272b"} opacity={0.85} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -711,20 +697,20 @@ export default function AnalyticsPage() {
       {/* Asset Allocation & Benchmarking split panels */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
         {/* Asset Allocation Donut Chart */}
-        <div className="lg:col-span-2 bg-slate-900/20 backdrop-blur-md border border-slate-800/80 rounded-2xl p-6 shadow-xl flex flex-col justify-between">
+        <div className="lg:col-span-2 bg-surface backdrop-blur-md border border-subtle rounded-2xl p-6 shadow-xl flex flex-col justify-between">
           <div>
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <PieIcon className="text-emerald-400 h-5 w-5" />
+            <h2 className="text-lg font-bold text-main flex items-center gap-2">
+              <PieIcon className="text-emerald-500 dark:text-emerald-400 h-5 w-5" />
               My Investment Mix
             </h2>
-            <p className="text-xs text-slate-400 mt-1">Diversification mix of your current stocks</p>
+            <p className="text-xs text-muted mt-1">Diversification mix of your current stocks</p>
           </div>
 
           <div className="h-60 w-full relative flex items-center justify-center my-4">
             {loading ? (
-              <div className="h-16 w-16 rounded-full border-4 border-indigo-500/25 border-t-indigo-500 animate-spin" />
+              <div className="h-16 w-16 rounded-full border-4 border-[#e0ff4f]/25 border-t-[#e0ff4f] animate-spin" />
             ) : !metrics || metrics.assetAllocation.length === 0 ? (
-              <div className="text-center text-slate-500 text-xs py-10">No active stock holdings to distribute.</div>
+              <div className="text-center text-muted text-xs py-10">No active stock holdings to distribute.</div>
             ) : (
               <div className="relative w-full h-full flex items-center justify-center">
                 <ResponsiveContainer width="100%" height="100%">
@@ -744,20 +730,14 @@ export default function AnalyticsPage() {
                     </Pie>
                     <Tooltip
                       formatter={(value: unknown) => [`$${Number(value).toLocaleString()}`, 'Valuation']}
-                      contentStyle={{
-                        backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                        border: '1px solid rgba(148, 163, 184, 0.1)',
-                        borderRadius: '12px',
-                        color: '#f8fafc',
-                        fontSize: '11px'
-                      }}
+                      contentStyle={tooltipStyle}
                     />
                   </PieChart>
                 </ResponsiveContainer>
                 {/* Mid Donut text */}
                 <div className="absolute flex flex-col items-center justify-center">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Value</span>
-                  <span className="text-sm font-extrabold text-white mt-0.5">
+                  <span className="text-[10px] font-bold text-muted uppercase tracking-wider">Total Value</span>
+                  <span className="text-sm font-black text-main mt-0.5">
                     ${(metrics?.totalPortfolioValue ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                   </span>
                 </div>
@@ -775,12 +755,12 @@ export default function AnalyticsPage() {
                       className="h-2.5 w-2.5 rounded-full flex-shrink-0"
                       style={{ backgroundColor: DOUGHNUT_COLORS[index % DOUGHNUT_COLORS.length] }}
                     />
-                    <span className="font-extrabold text-slate-200 font-mono w-10">{item.symbol}</span>
-                    <span className="text-slate-400 truncate max-w-[120px]">{item.name}</span>
+                    <span className="font-extrabold text-main font-mono w-10">{item.symbol}</span>
+                    <span className="text-muted truncate max-w-[120px]">{item.name}</span>
                   </div>
                   <div className="text-right">
-                    <span className="font-bold text-slate-300 font-mono">${item.marketValue.toLocaleString()}</span>
-                    <span className="text-[10px] text-slate-400 font-semibold ml-2 font-mono">{item.percentage}%</span>
+                    <span className="font-bold text-secondary font-mono">${item.marketValue.toLocaleString()}</span>
+                    <span className="text-[10px] text-muted font-semibold ml-2 font-mono">{item.percentage}%</span>
                   </div>
                 </div>
               ))}
@@ -788,53 +768,53 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Benchmarking Counters Panel */}
-        <div className="lg:col-span-3 bg-slate-900/20 backdrop-blur-md border border-slate-800/80 rounded-2xl p-6 shadow-xl space-y-6">
+        <div className="lg:col-span-3 bg-surface backdrop-blur-md border border-subtle rounded-2xl p-6 shadow-xl space-y-6">
           <div>
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <TrendingUp className="text-indigo-400 h-5 w-5" />
+            <h2 className="text-lg font-bold text-main flex items-center gap-2">
+              <TrendingUp className="text-[#00272b] dark:text-[#e0ff4f] h-5 w-5" />
               Stock Performance Comparison
             </h2>
-            <p className="text-xs text-slate-400 mt-1">
+            <p className="text-xs text-muted mt-1">
               Compare stock price changes within the selected dates.
             </p>
           </div>
 
-          <div className="overflow-hidden border border-slate-850 rounded-xl max-h-96 overflow-y-auto">
+          <div className="overflow-hidden border border-subtle rounded-xl max-h-96 overflow-y-auto">
             {loading ? (
-              <div className="p-12 text-center text-slate-500 text-xs">Awaiting benchmarking calculations...</div>
+              <div className="p-12 text-center text-muted text-xs">Awaiting benchmarking calculations...</div>
             ) : benchmarks.length === 0 ? (
-              <div className="p-12 text-center text-slate-500 text-xs">No performance records found.</div>
+              <div className="p-12 text-center text-muted text-xs">No performance records found.</div>
             ) : (
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="bg-slate-950/70 text-slate-400 text-[10px] font-bold uppercase tracking-wider border-b border-slate-800/80">
+                  <tr className="bg-surface-elevated text-secondary text-[10px] font-bold uppercase tracking-wider border-b border-subtle">
                     <th className="px-4 py-3">Stock Name &amp; Symbol</th>
                     <th className="px-4 py-3 text-right">Start Price</th>
                     <th className="px-4 py-3 text-right">End Price</th>
                     <th className="px-4 py-3 text-right">Gains/Losses (%)</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-850 text-xs font-medium">
+                <tbody className="divide-y divide-subtle text-xs font-medium">
                   {benchmarks.map((item) => {
                     const isPositive = item.performanceGain >= 0;
                     return (
-                      <tr key={item.stockId} className="hover:bg-slate-900/30 transition-colors">
+                      <tr key={item.stockId} className="hover:bg-surface-hover transition-colors">
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
-                            <span className="h-6 w-10 rounded bg-slate-850 flex items-center justify-center text-xs font-bold text-indigo-300">
+                            <span className="h-6 w-10 rounded bg-surface-elevated border border-subtle flex items-center justify-center text-xs font-bold text-main font-mono">
                               {item.symbol}
                             </span>
-                            <span className="text-slate-300 truncate max-w-[120px]">{item.name}</span>
+                            <span className="text-secondary truncate max-w-[120px]">{item.name}</span>
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-right font-mono text-slate-400">
+                        <td className="px-4 py-3 text-right font-mono text-muted">
                           {item.startPrice !== null ? `$${item.startPrice.toFixed(2)}` : 'N/A'}
                         </td>
-                        <td className="px-4 py-3 text-right font-mono text-slate-400">
+                        <td className="px-4 py-3 text-right font-mono text-muted">
                           {item.endPrice !== null ? `$${item.endPrice.toFixed(2)}` : 'N/A'}
                         </td>
                         <td className={`px-4 py-3 text-right font-mono font-extrabold ${
-                          isPositive ? 'text-emerald-400' : 'text-rose-400'
+                          isPositive ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
                         }`}>
                           {item.startPrice !== null && item.endPrice !== null ? (
                             `${isPositive ? '+' : ''}${item.performanceGain.toFixed(2)}%`
@@ -855,47 +835,47 @@ export default function AnalyticsPage() {
       {/* Target Progress checklist & target register Form widgets */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
         {/* Active Target checklist */}
-        <div className="lg:col-span-3 bg-slate-900/20 backdrop-blur-md border border-slate-800/80 rounded-2xl p-6 shadow-xl space-y-6">
+        <div className="lg:col-span-3 bg-surface backdrop-blur-md border border-subtle rounded-2xl p-6 shadow-xl space-y-6">
           <div>
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <Target className="text-rose-400 h-5 w-5" />
+            <h2 className="text-lg font-bold text-main flex items-center gap-2">
+              <Target className="text-rose-500 dark:text-rose-400 h-5 w-5" />
               My Financial Goals
             </h2>
-            <p className="text-xs text-slate-400 mt-1">Track progress towards your investment milestones</p>
+            <p className="text-xs text-muted mt-1">Track progress towards your investment milestones</p>
           </div>
 
           <div className="space-y-4 max-h-[360px] overflow-y-auto pr-1">
             {loading ? (
-              <div className="p-8 text-center text-slate-500 text-xs">Parsing user milestone trackers...</div>
+              <div className="p-8 text-center text-muted text-xs">Parsing user milestone trackers...</div>
             ) : targets.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-10 border border-dashed border-slate-800 rounded-xl space-y-2">
-                <Target className="h-8 w-8 text-slate-700" />
-                <p className="text-xs text-slate-400 font-medium">No financial goals set yet.</p>
-                <p className="text-[10px] text-slate-500">Create a goal in the form below to start tracking.</p>
+              <div className="flex flex-col items-center justify-center py-10 border border-dashed border-subtle rounded-xl space-y-2">
+                <Target className="h-8 w-8 text-muted/60" />
+                <p className="text-xs text-muted font-medium">No financial goals set yet.</p>
+                <p className="text-[10px] text-muted">Create a goal in the form below to start tracking.</p>
               </div>
             ) : (
               targets.map((t) => (
                 <div
                   key={t.id}
-                  className="bg-slate-950/40 border border-slate-850 hover:border-slate-800 transition-all rounded-xl p-4 space-y-3"
+                  className="bg-surface-elevated border border-subtle hover:border-[#e0ff4f]/50 transition-all rounded-xl p-4 space-y-3"
                 >
                   <div className="flex items-center justify-between">
                     <div>
-                      <h4 className="text-xs font-bold text-slate-100">{t.targetName}</h4>
-                      <p className="text-[10px] text-slate-400 mt-0.5 font-mono">
+                      <h4 className="text-xs font-bold text-main">{t.targetName}</h4>
+                      <p className="text-[10px] text-muted mt-0.5 font-mono">
                         Target Date: {t.targetDate} &bull; Type:{' '}
-                        <span className="font-extrabold text-indigo-400">{t.targetType.replace('_', ' ')}</span>
+                        <span className="font-extrabold text-[#00272b] dark:text-[#e0ff4f]">{t.targetType.replace('_', ' ')}</span>
                       </p>
                     </div>
 
                     <div className="flex items-center gap-1.5">
                       {t.isAchieved ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-black bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                        <span className="inline-flex items-center gap-1 text-[10px] font-black bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full">
                           <CheckCircle2 className="h-3 w-3" />
                           ACHIEVED
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-black bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2 py-0.5 rounded-full">
+                        <span className="inline-flex items-center gap-1 text-[10px] font-black bg-[#e0ff4f]/20 text-[#00272b] dark:text-[#e0ff4f] border border-[#e0ff4f]/40 px-2 py-0.5 rounded-full">
                           IN PROGRESS
                         </span>
                       )}
@@ -903,7 +883,7 @@ export default function AnalyticsPage() {
                       <button
                         type="button"
                         onClick={() => handleStartEditTarget(t)}
-                        className="p-1 rounded-lg text-slate-400 hover:text-indigo-300 hover:bg-slate-800/60 transition-colors"
+                        className="p-1 rounded-lg text-muted hover:text-main hover:bg-surface transition-colors cursor-pointer"
                         title="Edit financial goal"
                       >
                         <Pencil className="h-3.5 w-3.5" />
@@ -912,7 +892,7 @@ export default function AnalyticsPage() {
                       <button
                         type="button"
                         onClick={() => handleDeleteTarget(t.id, t.targetName)}
-                        className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800/60 transition-colors"
+                        className="p-1 rounded-lg text-muted hover:text-rose-500 hover:bg-surface transition-colors cursor-pointer"
                         title="Delete financial goal"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -923,27 +903,27 @@ export default function AnalyticsPage() {
                   {/* Progress Tracker Slider Meter */}
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between text-[10px] font-mono">
-                      <span className="text-slate-400 font-medium">
+                      <span className="text-muted font-medium">
                         Current: {t.targetType === 'portfolio_value' ? '$' : ''}
                         {t.currentValue.toLocaleString()}
                         {t.targetType !== 'portfolio_value' ? '%' : ''}
                       </span>
-                      <span className="text-slate-200 font-bold">{t.progressPercent}%</span>
-                      <span className="text-slate-400 font-medium font-mono">
+                      <span className="text-main font-bold">{t.progressPercent}%</span>
+                      <span className="text-muted font-medium font-mono">
                         Goal: {t.targetType === 'portfolio_value' ? '$' : ''}
                         {t.targetValue.toLocaleString()}
                         {t.targetType !== 'portfolio_value' ? '%' : ''}
                       </span>
                     </div>
 
-                    <div className="h-2 w-full bg-slate-900 rounded-full overflow-hidden border border-slate-850">
+                    <div className="h-2 w-full bg-app rounded-full overflow-hidden border border-subtle">
                       <div
                         className={`h-full rounded-full transition-all duration-500 ${
                           t.isAchieved
                             ? 'bg-gradient-to-r from-emerald-500 to-teal-400 shadow-[0_0_8px_rgba(16,185,129,0.3)]'
-                            : 'bg-gradient-to-r from-indigo-500 to-violet-500 shadow-[0_0_8px_rgba(99,102,241,0.3)]'
+                            : 'bg-gradient-to-r from-[#e0ff4f] to-emerald-400 shadow-[0_0_8px_rgba(224,255,79,0.3)]'
                         }`}
-                        style={{ width: `${t.progressPercent}%` }}
+                        style={{ width: `${Math.min(100, t.progressPercent)}%` }}
                       />
                     </div>
                   </div>
@@ -954,18 +934,18 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Target Profile Register Widget */}
-        <div className="lg:col-span-2 bg-slate-900/20 backdrop-blur-md border border-slate-800/80 rounded-2xl p-6 shadow-xl flex flex-col justify-between">
+        <div className="lg:col-span-2 bg-surface backdrop-blur-md border border-subtle rounded-2xl p-6 shadow-xl flex flex-col justify-between">
           <div>
-            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-              <Plus className="text-indigo-400 h-5 w-5" />
+            <h2 className="text-lg font-bold text-main flex items-center gap-2">
+              <Plus className="text-[#00272b] dark:text-[#e0ff4f] h-5 w-5" />
               Create a Goal
             </h2>
-            <p className="text-xs text-slate-400 mt-1">Set a new target to keep your investments on track</p>
+            <p className="text-xs text-muted mt-1">Set a new target to keep your investments on track</p>
           </div>
 
           <form onSubmit={handleAddTarget} className="space-y-4 my-4">
             <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-muted mb-1.5">
                 Goal Name
               </label>
               <input
@@ -974,19 +954,19 @@ export default function AnalyticsPage() {
                 value={newTargetName}
                 onChange={(e) => setNewTargetName(e.target.value)}
                 placeholder="e.g. House Down Payment"
-                className="w-full bg-slate-950/80 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 placeholder-slate-650"
+                className="w-full bg-surface-elevated border border-subtle rounded-lg px-3 py-2 text-xs text-main focus:outline-none focus:border-[#e0ff4f] placeholder-muted"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-muted mb-1.5">
                   Target Metric
                 </label>
                 <select
                   value={newTargetType}
                   onChange={(e) => setNewTargetType(e.target.value as 'portfolio_value' | 'total_return' | 'annualized_return')}
-                  className="w-full bg-slate-950/80 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-semibold"
+                  className="w-full bg-surface-elevated border border-subtle rounded-lg px-3 py-2 text-xs text-main focus:outline-none focus:border-[#e0ff4f] font-semibold"
                 >
                   <option value="portfolio_value">Portfolio Value ($)</option>
                   <option value="total_return">Total Return (%)</option>
@@ -995,7 +975,7 @@ export default function AnalyticsPage() {
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-muted mb-1.5">
                   Target Amount
                 </label>
                 <input
@@ -1006,13 +986,13 @@ export default function AnalyticsPage() {
                   value={newTargetValue}
                   onChange={(e) => setNewTargetValue(e.target.value)}
                   placeholder="e.g. 50000"
-                  className="w-full bg-slate-950/80 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
+                  className="w-full bg-surface-elevated border border-subtle rounded-lg px-3 py-2 text-xs text-main focus:outline-none focus:border-[#e0ff4f] font-mono"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-muted mb-1.5">
                 Target Date
               </label>
               <input
@@ -1020,17 +1000,17 @@ export default function AnalyticsPage() {
                 required
                 value={newTargetDate}
                 onChange={(e) => setNewTargetDate(e.target.value)}
-                className="w-full bg-slate-950/80 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
+                className="w-full bg-surface-elevated border border-subtle rounded-lg px-3 py-2 text-xs text-main focus:outline-none focus:border-[#e0ff4f] font-mono"
               />
             </div>
 
-            {formError && <p className="text-rose-400 text-[11px] font-bold">{formError}</p>}
-            {formSuccess && <p className="text-emerald-400 text-[11px] font-bold">{formSuccess}</p>}
+            {formError && <p className="text-rose-500 text-[11px] font-bold">{formError}</p>}
+            {formSuccess && <p className="text-emerald-500 text-[11px] font-bold">{formSuccess}</p>}
 
             <button
               type="submit"
               disabled={formSubmitting}
-              className="w-full flex items-center justify-center bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-4 rounded-xl text-xs shadow-lg shadow-indigo-600/10 hover:shadow-indigo-500/20 active:scale-95 transition-all disabled:opacity-50"
+              className="w-full flex items-center justify-center bg-[#e0ff4f] hover:bg-[#d2f33b] text-[#00272b] font-black py-2.5 px-4 rounded-xl text-xs shadow-md active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
             >
               {formSubmitting ? 'Saving Goal...' : 'Save Goal'}
             </button>
@@ -1040,24 +1020,24 @@ export default function AnalyticsPage() {
 
       {/* Edit Target Modal */}
       {editingTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl w-full max-w-md space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Pencil className="h-4 w-4 text-indigo-400" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-surface border border-subtle rounded-2xl p-6 shadow-2xl w-full max-w-md space-y-4">
+            <div className="flex items-center justify-between border-b border-subtle pb-3">
+              <h3 className="text-sm font-bold text-main flex items-center gap-2">
+                <Pencil className="h-4 w-4 text-[#00272b] dark:text-[#e0ff4f]" />
                 Edit Financial Goal
               </h3>
               <button
                 type="button"
                 onClick={() => setEditingTarget(null)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                className="text-muted hover:text-main p-1 rounded-lg hover:bg-surface-hover transition-colors cursor-pointer"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             {editError && (
-              <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs rounded-xl flex items-center gap-2">
+              <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs rounded-xl flex items-center gap-2">
                 <AlertCircle className="h-4 w-4 flex-shrink-0" />
                 <span>{editError}</span>
               </div>
@@ -1065,7 +1045,7 @@ export default function AnalyticsPage() {
 
             <form onSubmit={handleSaveEditTarget} className="space-y-3">
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                <label className="block text-[10px] font-bold text-muted uppercase tracking-wider mb-1">
                   Goal Name
                 </label>
                 <input
@@ -1073,18 +1053,18 @@ export default function AnalyticsPage() {
                   value={editTargetName}
                   onChange={(e) => setEditTargetName(e.target.value)}
                   required
-                  className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 rounded-xl px-3.5 py-2 text-xs text-slate-200 focus:outline-none"
+                  className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-3.5 py-2 text-xs text-main focus:outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                <label className="block text-[10px] font-bold text-muted uppercase tracking-wider mb-1">
                   Target Metric Type
                 </label>
                 <select
                   value={editTargetType}
                   onChange={(e) => setEditTargetType(e.target.value as 'portfolio_value' | 'total_return' | 'annualized_return')}
-                  className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 rounded-xl px-3.5 py-2 text-xs text-slate-200 focus:outline-none cursor-pointer"
+                  className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-3.5 py-2 text-xs text-main focus:outline-none cursor-pointer"
                 >
                   <option value="portfolio_value">Total Portfolio Market Value ($)</option>
                   <option value="total_return">Overall Portfolio Gain/Yield (%)</option>
@@ -1093,7 +1073,7 @@ export default function AnalyticsPage() {
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                <label className="block text-[10px] font-bold text-muted uppercase tracking-wider mb-1">
                   Target Goal Value
                 </label>
                 <input
@@ -1102,12 +1082,12 @@ export default function AnalyticsPage() {
                   value={editTargetValue}
                   onChange={(e) => setEditTargetValue(e.target.value)}
                   required
-                  className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 rounded-xl px-3.5 py-2 text-xs text-slate-200 focus:outline-none font-mono"
+                  className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-3.5 py-2 text-xs text-main focus:outline-none font-mono"
                 />
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                <label className="block text-[10px] font-bold text-muted uppercase tracking-wider mb-1">
                   Target Completion Date
                 </label>
                 <input
@@ -1115,7 +1095,7 @@ export default function AnalyticsPage() {
                   value={editTargetDate}
                   onChange={(e) => setEditTargetDate(e.target.value)}
                   required
-                  className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 rounded-xl px-3.5 py-2 text-xs text-slate-200 focus:outline-none font-mono cursor-pointer"
+                  className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-3.5 py-2 text-xs text-main focus:outline-none font-mono cursor-pointer"
                 />
               </div>
 
@@ -1125,25 +1105,25 @@ export default function AnalyticsPage() {
                   id="editIsAchieved"
                   checked={editIsAchieved}
                   onChange={(e) => setEditIsAchieved(e.target.checked)}
-                  className="rounded bg-slate-950 border-slate-800 text-indigo-500 focus:ring-indigo-500 h-4 w-4 cursor-pointer"
+                  className="rounded bg-surface-elevated border-subtle text-[#00272b] dark:text-[#e0ff4f] focus:ring-[#e0ff4f] h-4 w-4 cursor-pointer"
                 />
-                <label htmlFor="editIsAchieved" className="text-xs text-slate-300 font-medium cursor-pointer">
+                <label htmlFor="editIsAchieved" className="text-xs text-secondary font-medium cursor-pointer">
                   Mark as Completed / Achieved
                 </label>
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+              <div className="flex justify-end gap-2 pt-3 border-t border-subtle">
                 <button
                   type="button"
                   onClick={() => setEditingTarget(null)}
-                  className="px-4 py-2 text-xs font-bold text-slate-400 hover:text-white bg-slate-800/50 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                  className="px-4 py-2 text-xs font-bold text-muted hover:text-main bg-surface-elevated hover:bg-surface-hover rounded-xl transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={editSubmitting}
-                  className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl transition-colors disabled:opacity-50 cursor-pointer"
+                  className="px-4 py-2 text-xs font-bold text-[#00272b] bg-[#e0ff4f] hover:bg-[#d2f33b] rounded-xl transition-colors disabled:opacity-50 cursor-pointer shadow-sm"
                 >
                   {editSubmitting ? 'Saving...' : 'Save Changes'}
                 </button>

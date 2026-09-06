@@ -100,25 +100,25 @@ export default function DailyPricesRecording() {
           }
         }
       } catch (err: unknown) {
-        if (active) {
-          console.error(err);
-          setGlobalError('Unable to fetch stock selectors. Is the API backend running?');
-        }
+        console.error(err);
+        setGlobalError('Failed to load registered stocks.');
       } finally {
-        if (active) {
-          setLoadingStocks(false);
-        }
+        if (active) setLoadingStocks(false);
       }
     }
 
     loadStocksList();
+
     return () => {
       active = false;
     };
   }, []);
 
   useEffect(() => {
-    if (!selectedStockId) return;
+    if (!selectedStockId) {
+      return;
+    }
+
     let active = true;
 
     async function loadPriceHistory() {
@@ -147,6 +147,7 @@ export default function DailyPricesRecording() {
     }
 
     loadPriceHistory();
+
     return () => {
       active = false;
     };
@@ -164,8 +165,7 @@ export default function DailyPricesRecording() {
     }
 
     try {
-      const response = await fetch(`${API_BASE}/api/prices`,
-{
+      const response = await fetch(`${API_BASE}/api/prices`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -182,7 +182,6 @@ export default function DailyPricesRecording() {
         setFormPrice('');
         setFormVolume('');
         setFormSuccessMessage('Daily price record logged successfully!');
-        // Refresh price list
         fetchPriceHistory(selectedStockId, 1);
       } else {
         if (json.errors) {
@@ -256,15 +255,13 @@ export default function DailyPricesRecording() {
 
       const json = await response.json();
       if (response.ok && json.success) {
-        // Fetch current page again (or previous page if current is now empty)
-        const isCurrentPageEmpty = priceHistory.length === 1 && pagination.currentPage > 1;
-        fetchPriceHistory(selectedStockId, isCurrentPageEmpty ? pagination.currentPage - 1 : pagination.currentPage);
+        fetchPriceHistory(selectedStockId, pagination.currentPage);
       } else {
-        setGlobalError(json.message || 'Failed to delete record.');
+        setGlobalError(json.message || 'Failed to remove price record.');
       }
     } catch (err: unknown) {
       console.error(err);
-      setGlobalError('Network connection failure while deleting price record.');
+      setGlobalError('Network connection failure while deleting record.');
     }
   };
 
@@ -277,17 +274,17 @@ export default function DailyPricesRecording() {
   };
 
   return (
-    <div className="space-y-8 animate-fade-in">
+    <div className="space-y-8 animate-fade-in text-main">
       {/* Header section */}
       <div>
-        <h1 className="text-3xl font-black tracking-tight text-white">Daily Price Recording</h1>
-        <p className="text-sm text-slate-400 mt-1">
+        <h1 className="text-3xl font-black tracking-tight text-main">Daily Price Recording</h1>
+        <p className="text-sm text-muted mt-1">
           Manually input stock prices and daily volumes. View and update entries in real-time.
         </p>
       </div>
 
       {globalError && (
-        <div className="p-4 bg-rose-500/10 border border-rose-500/20 text-rose-300 rounded-xl text-sm font-semibold flex items-center">
+        <div className="p-4 bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 rounded-xl text-sm font-semibold flex items-center">
           <svg className="h-5 w-5 mr-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
           </svg>
@@ -298,17 +295,17 @@ export default function DailyPricesRecording() {
       {/* Main Split Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
         {/* Left Column: Recording Form */}
-        <div className="bg-slate-900/40 backdrop-blur-xl border border-slate-800 rounded-3xl p-6 shadow-xl space-y-6">
+        <div className="bg-surface backdrop-blur-xl border border-subtle rounded-3xl p-6 shadow-xl space-y-6">
           <div>
-            <h2 className="text-lg font-bold text-white">Add Price Record</h2>
+            <h2 className="text-lg font-bold text-main">Add Price Record</h2>
           </div>
 
           {loadingStocks ? (
-            <div className="h-48 w-full rounded-2xl bg-slate-950/20 animate-pulse border border-slate-850" />
+            <div className="h-48 w-full rounded-2xl bg-surface-elevated animate-pulse border border-subtle" />
           ) : stocks.length === 0 ? (
-            <div className="text-center py-6 bg-slate-950/40 rounded-2xl border border-slate-850 px-4 space-y-3">
-              <p className="text-slate-400 text-xs font-semibold">No stocks registered in catalog.</p>
-              <p className="text-slate-500 text-[11px] leading-relaxed">
+            <div className="text-center py-6 bg-surface-elevated rounded-2xl border border-subtle px-4 space-y-3">
+              <p className="text-muted text-xs font-semibold">No stocks registered in catalog.</p>
+              <p className="text-muted text-[11px] leading-relaxed">
                 You must register at least one stock before logging daily prices.
               </p>
             </div>
@@ -316,13 +313,13 @@ export default function DailyPricesRecording() {
             <form onSubmit={handleRecordPrice} className="space-y-4">
               {/* Stock Selector */}
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-2">
                   Select Stock
                 </label>
                 <select
                   value={selectedStockId}
                   onChange={(e) => setSelectedStockId(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 rounded-xl px-4 py-2.5 text-sm text-slate-100 focus:outline-none transition-all cursor-pointer"
+                  className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-4 py-2.5 text-sm text-main focus:outline-none transition-all cursor-pointer font-semibold"
                 >
                   {stocks.map((stock) => (
                     <option key={stock.id} value={stock.id}>
@@ -331,13 +328,13 @@ export default function DailyPricesRecording() {
                   ))}
                 </select>
                 {getFormError('stockId') && (
-                  <p className="text-rose-450 text-xs mt-1.5 font-medium">{getFormError('stockId')}</p>
+                  <p className="text-rose-500 text-xs mt-1.5 font-medium">{getFormError('stockId')}</p>
                 )}
               </div>
 
               {/* Date Selector */}
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-2">
                   Trading Date
                 </label>
                 <input
@@ -345,16 +342,16 @@ export default function DailyPricesRecording() {
                   required
                   value={formDate}
                   onChange={(e) => setFormDate(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 rounded-xl px-4 py-2.5 text-sm text-slate-100 focus:outline-none transition-all cursor-pointer"
+                  className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-4 py-2.5 text-sm text-main focus:outline-none transition-all cursor-pointer font-mono"
                 />
                 {getFormError('date') && (
-                  <p className="text-rose-450 text-xs mt-1.5 font-medium">{getFormError('date')}</p>
+                  <p className="text-rose-500 text-xs mt-1.5 font-medium">{getFormError('date')}</p>
                 )}
               </div>
 
               {/* Price field */}
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-2">
                   Price per Share ($)
                 </label>
                 <input
@@ -365,16 +362,16 @@ export default function DailyPricesRecording() {
                   placeholder="e.g. 178.45"
                   value={formPrice}
                   onChange={(e) => setFormPrice(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-700 focus:outline-none transition-all"
+                  className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-4 py-2.5 text-sm text-main placeholder-muted focus:outline-none transition-all font-mono"
                 />
                 {getFormError('price') && (
-                  <p className="text-rose-450 text-xs mt-1.5 font-medium">{getFormError('price')}</p>
+                  <p className="text-rose-500 text-xs mt-1.5 font-medium">{getFormError('price')}</p>
                 )}
               </div>
 
               {/* Volume field */}
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-2">
                   Number of Shares Traded
                 </label>
                 <input
@@ -384,16 +381,16 @@ export default function DailyPricesRecording() {
                   placeholder="e.g. 52000000"
                   value={formVolume}
                   onChange={(e) => setFormVolume(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-700 focus:outline-none transition-all"
+                  className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-4 py-2.5 text-sm text-main placeholder-muted focus:outline-none transition-all font-mono"
                 />
                 {getFormError('volume') && (
-                  <p className="text-rose-450 text-xs mt-1.5 font-medium">{getFormError('volume')}</p>
+                  <p className="text-rose-500 text-xs mt-1.5 font-medium">{getFormError('volume')}</p>
                 )}
               </div>
 
               {/* Success / Info states */}
               {formSuccessMessage && (
-                <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-xl text-xs font-semibold flex items-center">
+                <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-xl text-xs font-semibold flex items-center">
                   <svg className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
@@ -403,7 +400,7 @@ export default function DailyPricesRecording() {
 
               <button
                 type="submit"
-                className="w-full inline-flex items-center justify-center px-4 py-2.5 rounded-xl text-sm font-bold text-slate-900 bg-gradient-to-r from-indigo-400 to-indigo-300 hover:from-indigo-300 hover:to-indigo-200 transition-all duration-200 shadow-lg shadow-indigo-500/20 cursor-pointer active:scale-98"
+                className="w-full inline-flex items-center justify-center px-4 py-2.5 rounded-xl text-sm font-black text-[#00272b] bg-[#e0ff4f] hover:bg-[#d2f33b] transition-all duration-200 shadow-md cursor-pointer active:scale-98"
               >
                 Save Price Record
               </button>
@@ -412,21 +409,21 @@ export default function DailyPricesRecording() {
         </div>
 
         {/* Right Column: Historical Logs Panel */}
-        <div className="lg:col-span-2 bg-slate-900/20 backdrop-blur-md border border-slate-800 rounded-3xl p-6 shadow-xl space-y-6">
+        <div className="lg:col-span-2 bg-surface backdrop-blur-md border border-subtle rounded-3xl p-6 shadow-xl space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h2 className="text-lg font-bold text-white">Price History Over Time</h2>
-              <p className="text-xs text-slate-400 mt-1">View paginated daily logs, edit, or remove records.</p>
+              <h2 className="text-lg font-bold text-main">Price History Over Time</h2>
+              <p className="text-xs text-muted mt-1">View paginated daily logs, edit, or remove records.</p>
             </div>
 
             {/* Filter by Stock selector */}
             {stocks.length > 0 && (
               <div className="flex items-center space-x-2">
-                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Viewing:</span>
+                <span className="text-xs font-bold text-muted uppercase tracking-wider">Viewing:</span>
                 <select
                   value={selectedStockId}
                   onChange={(e) => setSelectedStockId(e.target.value)}
-                  className="bg-slate-950 border border-slate-850 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none transition-all cursor-pointer"
+                  className="bg-surface-elevated border border-subtle rounded-xl px-3 py-2 text-xs text-main focus:outline-none transition-all cursor-pointer font-semibold"
                 >
                   {stocks.map((stock) => (
                     <option key={stock.id} value={stock.id}>
@@ -441,89 +438,89 @@ export default function DailyPricesRecording() {
           {/* Table displaying price logs */}
           {loadingHistory ? (
             <div className="space-y-4 py-10">
-              <div className="h-6 w-full rounded bg-slate-900 animate-pulse" />
+              <div className="h-6 w-full rounded bg-surface-elevated animate-pulse" />
               {[1, 2, 3].map((i) => (
-                <div key={i} className="h-10 w-full rounded bg-slate-950 animate-pulse" />
+                <div key={i} className="h-10 w-full rounded bg-surface-elevated animate-pulse" />
               ))}
             </div>
           ) : priceHistory.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 border border-dashed border-slate-800 rounded-2xl text-center p-6">
-              <svg className="h-12 w-12 text-slate-700 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+            <div className="flex flex-col items-center justify-center py-20 border border-dashed border-subtle rounded-2xl text-center p-6">
+              <svg className="h-12 w-12 text-muted/60 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
-              <h4 className="text-sm font-bold text-slate-300">No Price History Found</h4>
-              <p className="text-xs text-slate-500 mt-1.5 max-w-xs">
+              <h4 className="text-sm font-bold text-main">No Price History Found</h4>
+              <p className="text-xs text-muted mt-1.5 max-w-xs">
                 No price history is recorded for this stock yet. Save a price above to get started!
               </p>
             </div>
           ) : (
             <div className="space-y-6">
-              <div className="overflow-x-auto rounded-2xl border border-slate-800">
-                <table className="min-w-full divide-y divide-slate-800 bg-slate-950/20">
-                  <thead className="bg-slate-900/60">
+              <div className="overflow-x-auto rounded-2xl border border-subtle">
+                <table className="min-w-full divide-y divide-subtle bg-surface">
+                  <thead className="bg-surface-elevated">
                     <tr>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Date</th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Price</th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Volume Traded</th>
-                      <th className="px-6 py-4 text-left text-xs font-bold text-slate-300 uppercase tracking-wider">Price Type</th>
-                      <th className="px-6 py-4 text-right text-xs font-bold text-slate-300 uppercase tracking-wider">Actions</th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-secondary uppercase tracking-wider">Date</th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-secondary uppercase tracking-wider">Price</th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-secondary uppercase tracking-wider">Volume Traded</th>
+                      <th className="px-6 py-4 text-left text-xs font-bold text-secondary uppercase tracking-wider">Price Type</th>
+                      <th className="px-6 py-4 text-right text-xs font-bold text-secondary uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800/60">
+                  <tbody className="divide-y divide-subtle">
                     {priceHistory.map((record) => {
                       const isEditing = editingRecordId === record.id;
 
                       if (isEditing) {
                         return (
-                          <tr key={record.id} className="bg-indigo-500/5">
+                          <tr key={record.id} className="bg-[#e0ff4f]/10">
                             {/* Inline Editing Mode Row */}
-                            <td className="px-6 py-3 text-sm text-slate-200">
+                            <td className="px-6 py-3 text-sm text-main">
                               <input
                                 type="date"
                                 value={editDate}
                                 onChange={(e) => setEditDate(e.target.value)}
-                                className="bg-slate-950 border border-slate-850 rounded px-2 py-1 text-xs text-slate-200 w-32 focus:outline-none"
+                                className="bg-surface-elevated border border-subtle rounded px-2 py-1 text-xs text-main w-32 focus:outline-none"
                               />
                               {getEditError('date') && (
-                                <p className="text-rose-450 text-[10px] mt-1 font-semibold">{getEditError('date')}</p>
+                                <p className="text-rose-500 text-[10px] mt-1 font-semibold">{getEditError('date')}</p>
                               )}
                             </td>
-                            <td className="px-6 py-3 text-sm text-slate-200">
+                            <td className="px-6 py-3 text-sm text-main">
                               <input
                                 type="number"
                                 step="0.01"
                                 value={editPrice}
                                 onChange={(e) => setEditPrice(e.target.value)}
-                                className="bg-slate-950 border border-slate-850 rounded px-2 py-1 text-xs text-slate-200 w-24 focus:outline-none"
+                                className="bg-surface-elevated border border-subtle rounded px-2 py-1 text-xs text-main w-24 focus:outline-none font-mono"
                               />
                               {getEditError('price') && (
-                                <p className="text-rose-450 text-[10px] mt-1 font-semibold">{getEditError('price')}</p>
+                                <p className="text-rose-500 text-[10px] mt-1 font-semibold">{getEditError('price')}</p>
                               )}
                             </td>
-                            <td className="px-6 py-3 text-sm text-slate-200">
+                            <td className="px-6 py-3 text-sm text-main">
                               <input
                                 type="number"
                                 value={editVolume}
                                 onChange={(e) => setEditVolume(e.target.value)}
-                                className="bg-slate-950 border border-slate-850 rounded px-2 py-1 text-xs text-slate-200 w-28 focus:outline-none"
+                                className="bg-surface-elevated border border-subtle rounded px-2 py-1 text-xs text-main w-28 focus:outline-none font-mono"
                               />
                               {getEditError('volume') && (
-                                <p className="text-rose-450 text-[10px] mt-1 font-semibold">{getEditError('volume')}</p>
+                                <p className="text-rose-500 text-[10px] mt-1 font-semibold">{getEditError('volume')}</p>
                               )}
                             </td>
-                            <td className="px-6 py-3 text-sm text-slate-200">
-                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-400">
+                            <td className="px-6 py-3 text-sm text-main">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-surface-elevated border border-subtle text-muted">
                                 {record.source}
                               </span>
                             </td>
                             <td className="px-6 py-3 text-right text-xs font-semibold space-x-2">
                               <button
                                 onClick={() => handleUpdatePrice(record.id)}
-                                className="text-emerald-400 hover:text-emerald-300 font-bold"
+                                className="text-emerald-600 dark:text-emerald-400 font-bold hover:underline"
                               >
                                 Save
                               </button>
-                              <button onClick={cancelEditing} className="text-slate-450 hover:text-slate-300">
+                              <button onClick={cancelEditing} className="text-muted hover:text-main">
                                 Cancel
                               </button>
                             </td>
@@ -532,23 +529,23 @@ export default function DailyPricesRecording() {
                       }
 
                       return (
-                        <tr key={record.id} className="hover:bg-slate-900/20 transition-all">
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-slate-300">
+                        <tr key={record.id} className="hover:bg-surface-hover transition-all">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-secondary">
                             {record.date}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-slate-100">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-main font-mono">
                             ${Number(record.price).toFixed(2)}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-400">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-secondary font-mono">
                             {Number(record.volume).toLocaleString()} shares
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             {record.source === 'api' ? (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wider uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wider uppercase bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
                                 Live Network Price
                               </span>
                             ) : (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wider uppercase bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wider uppercase bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
                                 Added by You
                               </span>
                             )}
@@ -556,14 +553,14 @@ export default function DailyPricesRecording() {
                           <td className="px-6 py-4 whitespace-nowrap text-right text-xs font-semibold space-x-3">
                             <button
                               onClick={() => startEditing(record)}
-                              className="text-indigo-400 hover:text-indigo-300 transition-colors"
+                              className="text-[#00272b] dark:text-[#e0ff4f] hover:underline transition-colors font-bold cursor-pointer"
                               title="Edit Price Record"
                             >
                               Edit
                             </button>
                             <button
                               onClick={() => handleDeletePrice(record.id)}
-                              className="text-slate-500 hover:text-rose-400 transition-colors"
+                              className="text-muted hover:text-rose-500 transition-colors cursor-pointer"
                               title="Delete Price Record"
                             >
                               Delete
@@ -578,19 +575,19 @@ export default function DailyPricesRecording() {
 
               {/* Explicit, Interactive Pagination Controls */}
               {pagination.totalPages > 1 && (
-                <div className="flex items-center justify-between border-t border-slate-800/60 pt-4 px-2">
-                  <div className="text-xs text-slate-450">
-                    Showing page <span className="font-semibold text-slate-200">{pagination.currentPage}</span> of{' '}
-                    <span className="font-semibold text-slate-200">{pagination.totalPages}</span> (
-                    <span className="font-semibold text-slate-200">{pagination.totalItems}</span> records total)
+                <div className="flex items-center justify-between border-t border-subtle pt-4 px-2">
+                  <div className="text-xs text-muted">
+                    Showing page <span className="font-bold text-main">{pagination.currentPage}</span> of{' '}
+                    <span className="font-bold text-main">{pagination.totalPages}</span> (
+                    <span className="font-bold text-main">{pagination.totalItems}</span> records total)
                   </div>
 
-                  <nav className="inline-flex rounded-xl bg-slate-900 border border-slate-800 p-1 space-x-1">
+                  <nav className="inline-flex rounded-xl bg-surface-elevated border border-subtle p-1 space-x-1">
                     {/* Previous Button */}
                     <button
                       onClick={() => fetchPriceHistory(selectedStockId, pagination.currentPage - 1)}
                       disabled={pagination.currentPage === 1}
-                      className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-800 text-slate-300 cursor-pointer"
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-hover text-secondary cursor-pointer"
                     >
                       &larr; Prev
                     </button>
@@ -606,8 +603,8 @@ export default function DailyPricesRecording() {
                           onClick={() => fetchPriceHistory(selectedStockId, pageNum)}
                           className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                             active
-                              ? 'bg-indigo-500 text-white shadow-md'
-                              : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
+                              ? 'bg-[#e0ff4f] text-[#00272b] shadow-sm font-black'
+                              : 'hover:bg-surface-hover text-muted hover:text-main'
                           } cursor-pointer`}
                         >
                           {pageNum}
@@ -619,7 +616,7 @@ export default function DailyPricesRecording() {
                     <button
                       onClick={() => fetchPriceHistory(selectedStockId, pagination.currentPage + 1)}
                       disabled={pagination.currentPage === pagination.totalPages}
-                      className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-800 text-slate-300 cursor-pointer"
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-hover text-secondary cursor-pointer"
                     >
                       Next &rarr;
                     </button>

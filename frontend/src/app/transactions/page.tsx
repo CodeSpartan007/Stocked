@@ -63,7 +63,7 @@ export default function TransactionsPage() {
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
-  // Fetch registered stocks for pre-filling logical drop-downs [NFR2.2]
+  // Fetch registered stocks
   useEffect(() => {
     async function loadStocks() {
       try {
@@ -73,7 +73,7 @@ export default function TransactionsPage() {
         const json = await res.json();
         if (json.success && json.data.length > 0) {
           setStocks(json.data);
-          setSelectedStockId(json.data[0].id); // Prefill logical first choice
+          setSelectedStockId(json.data[0].id);
         }
       } catch (err) {
         console.error('Failed to load stocks for select box:', err);
@@ -84,7 +84,7 @@ export default function TransactionsPage() {
     loadStocks();
   }, []);
 
-  // Fetch Transaction Ledger history with date-range filters [FR5]
+  // Fetch Transaction Ledger history with date-range filters
   const fetchLedger = useCallback(async (signal?: AbortSignal) => {
     try {
       let url = `${API_BASE}/api/transactions/history`;
@@ -100,31 +100,20 @@ export default function TransactionsPage() {
       const json = await res.json();
       if (json.success) {
         setTransactions(json.data);
-      } else {
-        throw new Error(json.message || 'Failed to retrieve chronological trade history.');
       }
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === 'AbortError') {
-        // Superseded request, ignore state updates
         return;
       }
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error('Failed to fetch ledger rows:', err);
-      setErrorMessage(`Failed to retrieve trade history: ${msg}`);
-      setTransactions([]); // Reset to clear table on failure
+      console.error('Failed to fetch transaction records:', err);
     } finally {
-      if (!signal || !signal.aborted) {
-        setLoadingLedger(false);
-      }
+      setLoadingLedger(false);
     }
   }, [startDate, endDate]);
 
-  // Trigger ledger reload on date filter change with request cancellation
   useEffect(() => {
-    let ignore = false;
     const controller = new AbortController();
-
-    async function load() {
+    async function loadLedger() {
       try {
         let url = `${API_BASE}/api/transactions/history`;
         const params = new URLSearchParams();
@@ -137,61 +126,52 @@ export default function TransactionsPage() {
 
         const res = await fetch(url, { signal: controller.signal, credentials: 'include' });
         const json = await res.json();
-        if (!ignore && json.success) {
+        if (json.success) {
           setTransactions(json.data);
-        } else if (!ignore) {
-          throw new Error(json.message || 'Failed to retrieve chronological trade history.');
         }
       } catch (err: unknown) {
         if (err instanceof DOMException && err.name === 'AbortError') {
           return;
         }
-        if (!ignore) {
-          const msg = err instanceof Error ? err.message : String(err);
-          console.error('Failed to fetch ledger rows:', err);
-          setErrorMessage(`Failed to retrieve trade history: ${msg}`);
-          setTransactions([]);
-        }
+        console.error('Failed to fetch transaction records:', err);
       } finally {
-        if (!ignore) {
-          setLoadingLedger(false);
-        }
+        setLoadingLedger(false);
       }
     }
 
-    load();
+    loadLedger();
 
     return () => {
-      ignore = true;
       controller.abort();
     };
   }, [startDate, endDate]);
 
-  // Handle transaction recording submit
+  // Handle Form Submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSuccessMessage(null);
     setErrorMessage(null);
 
-    // Validation Guardrail
+    // Frontend validations
     if (!selectedStockId) {
-      setErrorMessage('Please select a stock ticker from the list.');
+      setErrorMessage('Please select a stock counter.');
       return;
     }
-    if (!quantity || Number(quantity) <= 0) {
-      setErrorMessage('Quantity must be strictly greater than 0.');
+    if (Number(quantity) <= 0) {
+      setErrorMessage('Quantity must be a positive number greater than 0.');
       return;
     }
-    if (!price || Number(price) <= 0) {
-      setErrorMessage('Price must be strictly greater than 0.');
+    if (Number(price) <= 0) {
+      setErrorMessage('Price per share must be greater than 0.');
       return;
     }
     if (!txDate) {
-      setErrorMessage('Please select a transaction date.');
+      setErrorMessage('Please specify the transaction execution date.');
       return;
     }
 
     setSubmitting(true);
+
     try {
       const endpoint =
         activeTab === 'BUY'
@@ -218,15 +198,12 @@ export default function TransactionsPage() {
         setSuccessMessage(
           `Successfully recorded ${activeTab === 'BUY' ? 'purchase' : 'sale'} of ${quantity} shares!`
         );
-        // Reset numerical inputs
         setQuantity('');
         setPrice('');
         setTxDate(getTodayString());
-        // Reload transactions
         setLoadingLedger(true);
         fetchLedger();
       } else {
-        // Validation/Business error message
         const message =
           json.errors && json.errors.length > 0 ? json.errors[0].message : json.message;
         setErrorMessage(message || 'Failed to submit transaction.');
@@ -330,16 +307,16 @@ export default function TransactionsPage() {
   };
 
   return (
-    <div className="space-y-8 animate-fade-in text-slate-100">
+    <div className="space-y-8 animate-fade-in text-main">
       {/* Title Header */}
       <div>
-        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 mb-3">
+        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-surface-elevated border border-subtle text-[#00272b] dark:text-[#e0ff4f] mb-3">
           💼 Trade History & Recording
         </span>
-        <h1 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
+        <h1 className="text-3xl font-black tracking-tight text-main sm:text-4xl">
           Trade History
         </h1>
-        <p className="text-slate-400 text-sm mt-1">
+        <p className="text-muted text-sm mt-1">
           Record buys or sells and review trade history.
         </p>
       </div>
@@ -347,52 +324,54 @@ export default function TransactionsPage() {
       {/* Main Form + Table layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left column: Record transaction panel */}
-        <div className="bg-slate-900/40 backdrop-blur-xl border border-slate-800/80 rounded-3xl p-6 shadow-2xl h-fit">
+        <div className="bg-surface backdrop-blur-xl border border-subtle rounded-3xl p-6 shadow-2xl h-fit">
           {/* Dual Tabs for Buy/Sell selection */}
-          <div className="grid grid-cols-2 bg-slate-950 p-1.5 rounded-xl border border-slate-800/80 mb-6">
+          <div className="grid grid-cols-2 bg-surface-elevated p-1.5 rounded-xl border border-subtle mb-6">
             <button
+              type="button"
               onClick={() => {
                 setActiveTab('BUY');
                 setSuccessMessage(null);
                 setErrorMessage(null);
               }}
-              className={`py-2 text-xs sm:text-sm font-bold rounded-lg transition-all ${
+              className={`py-2 text-xs sm:text-sm font-bold rounded-lg transition-all cursor-pointer ${
                 activeTab === 'BUY'
-                  ? 'bg-indigo-600 text-white shadow-lg'
-                  : 'text-slate-400 hover:text-white'
+                  ? 'bg-[#e0ff4f] text-[#00272b] font-black shadow-md'
+                  : 'text-muted hover:text-main'
               }`}
             >
               📈 Buy Stock
             </button>
             <button
+              type="button"
               onClick={() => {
                 setActiveTab('SELL');
                 setSuccessMessage(null);
                 setErrorMessage(null);
               }}
-              className={`py-2 text-xs sm:text-sm font-bold rounded-lg transition-all ${
+              className={`py-2 text-xs sm:text-sm font-bold rounded-lg transition-all cursor-pointer ${
                 activeTab === 'SELL'
-                  ? 'bg-rose-600 text-white shadow-lg shadow-rose-950/20'
-                  : 'text-slate-400 hover:text-white'
+                  ? 'bg-rose-600 text-white font-black shadow-md shadow-rose-950/20'
+                  : 'text-muted hover:text-main'
               }`}
             >
               📉 Sell Stock
             </button>
           </div>
 
-          <h3 className="text-lg font-bold text-white mb-4">
+          <h3 className="text-lg font-bold text-main mb-4">
             {activeTab === 'BUY' ? 'Record a Buy' : 'Record a Sell'}
           </h3>
 
           {/* Feedback banners */}
           {successMessage && (
-            <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 rounded-xl text-xs font-semibold mb-4">
+            <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-xl text-xs font-semibold mb-4">
               {successMessage}
             </div>
           )}
 
           {errorMessage && (
-            <div className="p-4 bg-rose-500/10 border border-rose-500/20 text-rose-300 rounded-xl text-xs font-semibold mb-4">
+            <div className="p-4 bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 rounded-xl text-xs font-semibold mb-4">
               {errorMessage}
             </div>
           )}
@@ -400,26 +379,26 @@ export default function TransactionsPage() {
           {/* Forms */}
           {loadingStocks ? (
             <div className="space-y-4 animate-pulse">
-              <div className="h-10 bg-slate-850 rounded-xl" />
-              <div className="h-10 bg-slate-850 rounded-xl" />
-              <div className="h-10 bg-slate-850 rounded-xl" />
-              <div className="h-12 bg-slate-800 rounded-xl" />
+              <div className="h-10 bg-surface-elevated rounded-xl" />
+              <div className="h-10 bg-surface-elevated rounded-xl" />
+              <div className="h-10 bg-surface-elevated rounded-xl" />
+              <div className="h-12 bg-surface-elevated rounded-xl" />
             </div>
           ) : stocks.length === 0 ? (
-            <div className="py-6 text-center border border-dashed border-slate-800 rounded-2xl">
-              <p className="text-slate-400 text-sm">Please register at least one stock counter first.</p>
+            <div className="py-6 text-center border border-dashed border-subtle rounded-2xl">
+              <p className="text-muted text-sm">Please register at least one stock counter first.</p>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-5">
               {/* Select Stock */}
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-2">
                   Select Stock
                 </label>
                 <select
                   value={selectedStockId}
                   onChange={(e) => setSelectedStockId(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition-colors"
+                  className="w-full bg-surface-elevated border border-subtle rounded-xl px-4 py-3 text-sm text-main focus:outline-none focus:border-[#e0ff4f] transition-colors font-semibold"
                 >
                   {stocks.map((stock) => (
                     <option key={stock.id} value={stock.id}>
@@ -431,7 +410,7 @@ export default function TransactionsPage() {
 
               {/* Quantity */}
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-2">
                   Number of Shares
                 </label>
                 <input
@@ -440,14 +419,14 @@ export default function TransactionsPage() {
                   placeholder="e.g. 10.50"
                   value={quantity}
                   onChange={(e) => setQuantity(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition-colors"
+                  className="w-full bg-surface-elevated border border-subtle rounded-xl px-4 py-3 text-sm text-main focus:outline-none focus:border-[#e0ff4f] transition-colors font-mono"
                   required
                 />
               </div>
 
               {/* Purchase/Sell Price */}
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-2">
                   Price per Share ($)
                 </label>
                 <input
@@ -456,21 +435,21 @@ export default function TransactionsPage() {
                   placeholder="e.g. 175.50"
                   value={price}
                   onChange={(e) => setPrice(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition-colors"
+                  className="w-full bg-surface-elevated border border-subtle rounded-xl px-4 py-3 text-sm text-main focus:outline-none focus:border-[#e0ff4f] transition-colors font-mono"
                   required
                 />
               </div>
 
               {/* Date */}
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-2">
                   Transaction Date
                 </label>
                 <input
                   type="date"
                   value={txDate}
                   onChange={(e) => setTxDate(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 transition-colors"
+                  className="w-full bg-surface-elevated border border-subtle rounded-xl px-4 py-3 text-sm text-main focus:outline-none focus:border-[#e0ff4f] transition-colors font-mono"
                   required
                 />
               </div>
@@ -479,16 +458,16 @@ export default function TransactionsPage() {
               <button
                 type="submit"
                 disabled={submitting}
-                className={`w-full py-3.5 font-bold rounded-xl text-sm transition-all duration-200 flex items-center justify-center text-white ${
+                className={`w-full py-3.5 font-black rounded-xl text-sm transition-all duration-200 flex items-center justify-center cursor-pointer ${
                   activeTab === 'BUY'
-                    ? 'bg-indigo-600 hover:bg-indigo-500 active:scale-[0.98]'
-                    : 'bg-rose-600 hover:bg-rose-500 active:scale-[0.98]'
-                } disabled:opacity-50 disabled:pointer-events-none`}
+                    ? 'bg-[#e0ff4f] text-[#00272b] hover:bg-[#d2f33b] shadow-md'
+                    : 'bg-rose-600 hover:bg-rose-500 text-white shadow-md'
+                } disabled:opacity-50 disabled:pointer-events-none active:scale-[0.98]`}
               >
                 {submitting ? (
                   <span className="flex items-center">
                     <svg
-                      className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                      className="animate-spin -ml-1 mr-3 h-5 w-5"
                       fill="none"
                       viewBox="0 0 24 24"
                     >
@@ -521,11 +500,11 @@ export default function TransactionsPage() {
         {/* Right column: Ledger details table */}
         <div className="lg:col-span-2 space-y-6">
           {/* Header & Date filters */}
-          <div className="bg-slate-900/20 backdrop-blur-md border border-slate-800/80 rounded-3xl p-6 shadow-xl space-y-4">
+          <div className="bg-surface backdrop-blur-md border border-subtle rounded-3xl p-6 shadow-xl space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
-                <h3 className="text-lg font-bold text-white">Trade Log</h3>
-                <p className="text-xs text-slate-400 mt-1">History of all logged buys and sells</p>
+                <h3 className="text-lg font-bold text-main">Trade Log</h3>
+                <p className="text-xs text-muted mt-1">History of all logged buys and sells</p>
               </div>
 
               {/* Date Filters with live-refresh controls */}
@@ -534,15 +513,15 @@ export default function TransactionsPage() {
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
-                  className="bg-slate-950 border border-slate-850 text-xs text-slate-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-indigo-500"
+                  className="bg-surface-elevated border border-subtle text-xs text-main rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[#e0ff4f] font-mono"
                   placeholder="Start Date"
                 />
-                <span className="text-slate-600 text-xs font-bold">to</span>
+                <span className="text-muted text-xs font-bold">to</span>
                 <input
                   type="date"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
-                  className="bg-slate-950 border border-slate-850 text-xs text-slate-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-indigo-500"
+                  className="bg-surface-elevated border border-subtle text-xs text-main rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-[#e0ff4f] font-mono"
                   placeholder="End Date"
                 />
                 {(startDate || endDate) && (
@@ -551,7 +530,7 @@ export default function TransactionsPage() {
                       setStartDate('');
                       setEndDate('');
                     }}
-                    className="text-[10px] text-rose-400 hover:text-rose-300 font-bold bg-rose-500/10 border border-rose-500/20 px-2 py-1.5 rounded-lg"
+                    className="text-[10px] text-rose-500 hover:text-rose-400 font-bold bg-rose-500/10 border border-rose-500/20 px-2 py-1.5 rounded-lg cursor-pointer"
                   >
                     Clear
                   </button>
@@ -569,13 +548,13 @@ export default function TransactionsPage() {
             {loadingLedger ? (
               <div className="space-y-3 py-6">
                 {[1, 2, 3].map((i) => (
-                  <div key={i} className="h-12 bg-slate-900/50 rounded-xl animate-pulse" />
+                  <div key={i} className="h-12 bg-surface-elevated rounded-xl animate-pulse" />
                 ))}
               </div>
             ) : transactions.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-20 border border-dashed border-slate-800 rounded-2xl space-y-3">
+              <div className="flex flex-col items-center justify-center py-20 border border-dashed border-subtle rounded-2xl space-y-3">
                 <svg
-                  className="h-10 w-10 text-slate-600"
+                  className="h-10 w-10 text-muted/60"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -587,13 +566,13 @@ export default function TransactionsPage() {
                     d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2"
                   />
                 </svg>
-                <p className="text-slate-400 text-sm font-semibold">No trade records found within the selected dates.</p>
+                <p className="text-muted text-sm font-semibold">No trade records found within the selected dates.</p>
               </div>
             ) : (
-              <div className="overflow-x-auto rounded-xl border border-slate-800/80">
+              <div className="overflow-x-auto rounded-xl border border-subtle">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="bg-slate-950 text-slate-400 text-[10px] font-bold uppercase tracking-wider border-b border-slate-800/85">
+                    <tr className="bg-surface-elevated text-secondary text-[10px] font-bold uppercase tracking-wider border-b border-subtle">
                       <th className="px-4 py-3.5">Type</th>
                       <th className="px-4 py-3.5">Stock Code &amp; Name</th>
                       <th className="px-4 py-3.5 text-right">Quantity</th>
@@ -603,56 +582,56 @@ export default function TransactionsPage() {
                       <th className="px-4 py-3.5 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-850 bg-slate-950/20 text-xs">
+                  <tbody className="divide-y divide-subtle text-xs">
                     {transactions.map((tx) => {
                       const isBuy = tx.type === 'BUY';
                       return (
-                        <tr key={tx.id} className="hover:bg-slate-900/40 transition-colors">
+                        <tr key={tx.id} className="hover:bg-surface-hover transition-colors">
                           {/* Type badge */}
                           <td className="px-4 py-3.5">
                             <span
-                              className={`inline-flex px-2 py-0.5 rounded text-[10px] font-extrabold border ${
+                              className={`inline-flex px-2 py-0.5 rounded text-[10px] font-black border ${
                                 isBuy
-                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                                  : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                                  ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
+                                  : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30'
                               }`}
                             >
                               {tx.type}
                             </span>
                           </td>
                           {/* Stock symbol */}
-                          <td className="px-4 py-3.5 font-semibold text-slate-200">
-                            <div>{tx.symbol}</div>
-                            <div className="text-[10px] font-normal text-slate-500 truncate max-w-[120px]">
+                          <td className="px-4 py-3.5 font-semibold text-main">
+                            <div className="font-mono">{tx.symbol}</div>
+                            <div className="text-[10px] font-normal text-muted truncate max-w-[120px]">
                               {tx.name}
                             </div>
                           </td>
                           {/* Qty */}
-                          <td className="px-4 py-3.5 text-right text-slate-300 font-mono font-medium">
+                          <td className="px-4 py-3.5 text-right text-secondary font-mono font-medium">
                             {tx.quantity.toLocaleString(undefined, {
                               minimumFractionDigits: 2,
                               maximumFractionDigits: 4,
                             })}
                           </td>
                           {/* Price */}
-                          <td className="px-4 py-3.5 text-right text-slate-300 font-mono font-medium">
+                          <td className="px-4 py-3.5 text-right text-secondary font-mono font-medium">
                             ${tx.price.toFixed(2)}
                           </td>
                           {/* Date */}
-                          <td className="px-4 py-3.5 text-right text-slate-400 font-medium">
+                          <td className="px-4 py-3.5 text-right text-muted font-medium">
                             {tx.date}
                           </td>
                           {/* P&L */}
                           <td className="px-4 py-3.5 text-right font-mono font-bold">
                             {tx.profitLoss !== null ? (
                               <span
-                                className={tx.profitLoss >= 0 ? 'text-emerald-400' : 'text-rose-400'}
+                                className={tx.profitLoss >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}
                               >
                                 {tx.profitLoss >= 0 ? '+' : ''}
                                 ${tx.profitLoss.toFixed(2)}
                               </span>
                             ) : (
-                              <span className="text-slate-600">—</span>
+                              <span className="text-muted">—</span>
                             )}
                           </td>
                           {/* Actions */}
@@ -661,7 +640,7 @@ export default function TransactionsPage() {
                               <button
                                 type="button"
                                 onClick={() => handleStartEdit(tx)}
-                                className="p-1 rounded-lg text-slate-400 hover:text-indigo-300 hover:bg-slate-800 transition-colors cursor-pointer"
+                                className="p-1 rounded-lg text-muted hover:text-main hover:bg-surface-elevated transition-colors cursor-pointer"
                                 title="Edit transaction"
                               >
                                 <Pencil className="h-3.5 w-3.5" />
@@ -669,7 +648,7 @@ export default function TransactionsPage() {
                               <button
                                 type="button"
                                 onClick={() => handleDeleteTx(tx)}
-                                className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors cursor-pointer"
+                                className="p-1 rounded-lg text-muted hover:text-rose-500 hover:bg-surface-elevated transition-colors cursor-pointer"
                                 title="Delete transaction"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -689,34 +668,34 @@ export default function TransactionsPage() {
 
       {/* Edit Transaction Modal */}
       {editingTx && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl w-full max-w-md space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-surface border border-subtle rounded-2xl p-6 shadow-2xl w-full max-w-md space-y-4">
+            <div className="flex items-center justify-between border-b border-subtle pb-3">
               <div className="flex items-center gap-2">
                 <span
-                  className={`inline-flex px-2 py-0.5 rounded text-[10px] font-extrabold border ${
+                  className={`inline-flex px-2 py-0.5 rounded text-[10px] font-black border ${
                     editingTx.type === 'BUY'
-                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                      : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                      ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
+                      : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30'
                   }`}
                 >
                   {editingTx.type}
                 </span>
-                <h3 className="text-sm font-bold text-white">
+                <h3 className="text-sm font-bold text-main">
                   Edit {editingTx.symbol} ({editingTx.name})
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setEditingTx(null)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                className="text-muted hover:text-main p-1 rounded-lg hover:bg-surface-hover transition-colors cursor-pointer"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             {editError && (
-              <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs rounded-xl flex items-center gap-2">
+              <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs rounded-xl flex items-center gap-2">
                 <AlertCircle className="h-4 w-4 flex-shrink-0" />
                 <span>{editError}</span>
               </div>
@@ -724,7 +703,7 @@ export default function TransactionsPage() {
 
             <form onSubmit={handleSaveEdit} className="space-y-3">
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                <label className="block text-[10px] font-bold text-muted uppercase tracking-wider mb-1">
                   Quantity (Shares)
                 </label>
                 <input
@@ -734,12 +713,12 @@ export default function TransactionsPage() {
                   value={editQuantity}
                   onChange={(e) => setEditQuantity(e.target.value)}
                   required
-                  className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 rounded-xl px-3.5 py-2 text-xs text-slate-200 focus:outline-none font-mono"
+                  className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-3.5 py-2 text-xs text-main focus:outline-none font-mono"
                 />
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                <label className="block text-[10px] font-bold text-muted uppercase tracking-wider mb-1">
                   Price ($)
                 </label>
                 <input
@@ -749,12 +728,12 @@ export default function TransactionsPage() {
                   value={editPrice}
                   onChange={(e) => setEditPrice(e.target.value)}
                   required
-                  className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 rounded-xl px-3.5 py-2 text-xs text-slate-200 focus:outline-none font-mono"
+                  className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-3.5 py-2 text-xs text-main focus:outline-none font-mono"
                 />
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                <label className="block text-[10px] font-bold text-muted uppercase tracking-wider mb-1">
                   Transaction Date
                 </label>
                 <input
@@ -763,22 +742,26 @@ export default function TransactionsPage() {
                   value={editDate}
                   onChange={(e) => setEditDate(e.target.value)}
                   required
-                  className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 rounded-xl px-3.5 py-2 text-xs text-slate-200 focus:outline-none font-mono cursor-pointer"
+                  className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-3.5 py-2 text-xs text-main focus:outline-none font-mono cursor-pointer"
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+              <div className="flex justify-end gap-2 pt-3 border-t border-subtle">
                 <button
                   type="button"
                   onClick={() => setEditingTx(null)}
-                  className="px-4 py-2 text-xs font-bold text-slate-400 hover:text-white bg-slate-800/50 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                  className="px-4 py-2 text-xs font-semibold text-muted hover:text-main bg-surface-elevated hover:bg-surface-hover rounded-xl transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={editSubmitting}
-                  className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl transition-colors disabled:opacity-50 cursor-pointer"
+                  className={`px-4 py-2 text-xs font-black rounded-xl transition-colors disabled:opacity-50 cursor-pointer shadow-sm ${
+                    editingTx.type === 'BUY'
+                      ? 'bg-[#e0ff4f] text-[#00272b] hover:bg-[#d2f33b]'
+                      : 'bg-rose-600 text-white hover:bg-rose-500'
+                  }`}
                 >
                   {editSubmitting ? 'Saving...' : 'Save Changes'}
                 </button>
