@@ -10,6 +10,7 @@ const bcrypt_1 = __importDefault(require("bcrypt"));
 const models_1 = require("../models");
 const auth_1 = require("../middleware/auth");
 const validate_1 = require("../middleware/validate");
+const rateLimiter_1 = require("../middleware/rateLimiter");
 const router = (0, express_1.Router)();
 const JWT_SECRET = (() => {
     if (!process.env.JWT_SECRET) {
@@ -21,7 +22,7 @@ const JWT_SECRET = (() => {
     return process.env.JWT_SECRET;
 })();
 // POST /api/auth/register -> Standard user signup endpoint
-router.post('/register', [
+router.post('/register', rateLimiter_1.authRateLimiter, [
     (0, express_validator_1.body)('email')
         .trim()
         .notEmpty().withMessage('Email address is required.')
@@ -100,7 +101,7 @@ router.post('/register', [
     }
 });
 // POST /api/auth/login -> Standard authentication login endpoint
-router.post('/login', [
+router.post('/login', rateLimiter_1.authRateLimiter, [
     (0, express_validator_1.body)('email')
         .trim()
         .notEmpty().withMessage('Email address is required.')

@@ -9,3 +9,9 @@ dist/
 
 # Ignore dependency directories
 node_modules/
+
+# Ignore test coverage reports
+coverage/
+
+# Ignore test sqlite databases
+test_*.sqlite*

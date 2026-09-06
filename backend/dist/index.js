@@ -3,6 +3,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.app = void 0;
+exports.startServer = startServer;
 require("dotenv/config");
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
@@ -18,7 +20,9 @@ const analytics_1 = __importDefault(require("./routes/analytics"));
 const settings_1 = __importDefault(require("./routes/settings"));
 const exports_1 = __importDefault(require("./routes/exports"));
 const priceFeedService_1 = require("./services/priceFeedService");
+const crypto_1 = require("./utils/crypto");
 const app = (0, express_1.default)();
+exports.app = app;
 const PORT = process.env.PORT || 5001;
 // CORS setup
 app.use((0, cors_1.default)({
@@ -56,6 +60,8 @@ app.get('/health', (req, res) => {
 // Start Server
 async function startServer() {
     try {
+        // Validate required cryptographic secrets on server initialization [NFR4.3]
+        (0, crypto_1.getEncryptionSecret)();
         // Sync DB and Seed Mock Data
         await (0, models_1.initDb)();
         // Initialize active user synchronization timers on system startup
@@ -73,4 +79,7 @@ async function startServer() {
         process.exit(1);
     }
 }
-startServer();
+if (process.env.NODE_ENV !== 'test') {
+    startServer();
+}
+exports.default = app;

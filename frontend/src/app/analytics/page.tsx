@@ -5,8 +5,6 @@ import { API_BASE } from '../../lib/api';
 import React, { useEffect, useState, useRef } from 'react';
 import ExportActionsDropdown from '../../components/ExportActionsDropdown';
 import {
-  LineChart,
-  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -32,7 +30,10 @@ import {
   Plus,
   CheckCircle2,
   DollarSign,
-  Activity
+  Activity,
+  Pencil,
+  Trash2,
+  X
 } from 'lucide-react';
 
 interface ChartData {
@@ -155,8 +156,8 @@ export default function AnalyticsPage() {
         if (json.success) {
           setStocksList(json.data);
         }
-      } catch (err) {
-        console.error('Failed to load stocks list.');
+      } catch (err: unknown) {
+        console.error('Failed to load stocks list.', err);
       }
     }
     fetchStocks();
@@ -210,11 +211,12 @@ export default function AnalyticsPage() {
         } else {
           throw new Error('API reported unsuccessful payload parsing.');
         }
-      } catch (err: any) {
-        if (err.name !== 'AbortError') {
-          console.error(err);
-          setError('Failed to refresh data feeds. Verify that the backend server is running.');
+      } catch (err: unknown) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          return;
         }
+        console.error(err);
+        setError('Failed to refresh data feeds. Verify that the backend server is running.');
       } finally {
         // Prevent setting loading false if it was aborted (another request is already running)
         if (!controller.signal.aborted) {
@@ -269,10 +271,96 @@ export default function AnalyticsPage() {
       } else {
         throw new Error(json.message || 'Validation error saving target.');
       }
-    } catch (err: any) {
-      setFormError(err.message || 'Connection breakdown sending target profile.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Connection breakdown sending target profile.';
+      setFormError(msg);
     } finally {
       setFormSubmitting(false);
+    }
+  };
+
+  // Target Edit states
+  const [editingTarget, setEditingTarget] = useState<PerformanceTarget | null>(null);
+  const [editTargetName, setEditTargetName] = useState('');
+  const [editTargetType, setEditTargetType] = useState<'portfolio_value' | 'total_return' | 'annualized_return'>('portfolio_value');
+  const [editTargetValue, setEditTargetValue] = useState('');
+  const [editTargetDate, setEditTargetDate] = useState('');
+  const [editIsAchieved, setEditIsAchieved] = useState(false);
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  const handleStartEditTarget = (t: PerformanceTarget) => {
+    setEditingTarget(t);
+    setEditTargetName(t.targetName);
+    setEditTargetType(t.targetType);
+    setEditTargetValue(String(t.targetValue));
+    setEditTargetDate(t.targetDate);
+    setEditIsAchieved(t.isAchieved);
+    setEditError(null);
+  };
+
+  const handleSaveEditTarget = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTarget) return;
+
+    setEditSubmitting(true);
+    setEditError(null);
+
+    try {
+      const res = await fetch(`${API_BASE}/api/analytics/targets/${editingTarget.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targetName: editTargetName,
+          targetType: editTargetType,
+          targetValue: Number(editTargetValue),
+          targetDate: editTargetDate,
+          isAchieved: editIsAchieved,
+        }),
+        credentials: 'include',
+      });
+
+      const json = await res.json();
+      if (res.ok && json.success) {
+        setEditingTarget(null);
+        // Refresh targets
+        const updatedTargetsRes = await fetch(`${API_BASE}/api/analytics/targets`, {
+          credentials: 'include',
+        });
+        const updatedJson = await updatedTargetsRes.json();
+        if (updatedJson.success) {
+          setTargets(updatedJson.data);
+        }
+      } else {
+        throw new Error(json.message || 'Failed to update performance target.');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error updating performance target.';
+      setEditError(msg);
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
+
+  const handleDeleteTarget = async (id: string, name: string) => {
+    const confirmDelete = window.confirm(`Are you sure you want to delete the goal "${name}"?`);
+    if (!confirmDelete) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/analytics/targets/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      const json = await res.json();
+      if (res.ok && json.success) {
+        setTargets((prev) => prev.filter((t) => t.id !== id));
+      } else {
+        throw new Error(json.message || 'Failed to delete target.');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert(`Could not delete goal: ${msg}`);
     }
   };
 
@@ -655,7 +743,7 @@ export default function AnalyticsPage() {
                       ))}
                     </Pie>
                     <Tooltip
-                      formatter={(value: any) => [`$${Number(value).toLocaleString()}`, 'Valuation']}
+                      formatter={(value: unknown) => [`$${Number(value).toLocaleString()}`, 'Valuation']}
                       contentStyle={{
                         backgroundColor: 'rgba(15, 23, 42, 0.9)',
                         border: '1px solid rgba(148, 163, 184, 0.1)',
@@ -800,7 +888,7 @@ export default function AnalyticsPage() {
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                       {t.isAchieved ? (
                         <span className="inline-flex items-center gap-1 text-[10px] font-black bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full">
                           <CheckCircle2 className="h-3 w-3" />
@@ -811,6 +899,24 @@ export default function AnalyticsPage() {
                           IN PROGRESS
                         </span>
                       )}
+
+                      <button
+                        type="button"
+                        onClick={() => handleStartEditTarget(t)}
+                        className="p-1 rounded-lg text-slate-400 hover:text-indigo-300 hover:bg-slate-800/60 transition-colors"
+                        title="Edit financial goal"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteTarget(t.id, t.targetName)}
+                        className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800/60 transition-colors"
+                        title="Delete financial goal"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                   </div>
 
@@ -879,7 +985,7 @@ export default function AnalyticsPage() {
                 </label>
                 <select
                   value={newTargetType}
-                  onChange={(e) => setNewTargetType(e.target.value as any)}
+                  onChange={(e) => setNewTargetType(e.target.value as 'portfolio_value' | 'total_return' | 'annualized_return')}
                   className="w-full bg-slate-950/80 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-semibold"
                 >
                   <option value="portfolio_value">Portfolio Value ($)</option>
@@ -931,6 +1037,121 @@ export default function AnalyticsPage() {
           </form>
         </div>
       </div>
+
+      {/* Edit Target Modal */}
+      {editingTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl w-full max-w-md space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Pencil className="h-4 w-4 text-indigo-400" />
+                Edit Financial Goal
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditingTarget(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {editError && (
+              <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs rounded-xl flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                <span>{editError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveEditTarget} className="space-y-3">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                  Goal Name
+                </label>
+                <input
+                  type="text"
+                  value={editTargetName}
+                  onChange={(e) => setEditTargetName(e.target.value)}
+                  required
+                  className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 rounded-xl px-3.5 py-2 text-xs text-slate-200 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                  Target Metric Type
+                </label>
+                <select
+                  value={editTargetType}
+                  onChange={(e) => setEditTargetType(e.target.value as 'portfolio_value' | 'total_return' | 'annualized_return')}
+                  className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 rounded-xl px-3.5 py-2 text-xs text-slate-200 focus:outline-none cursor-pointer"
+                >
+                  <option value="portfolio_value">Total Portfolio Market Value ($)</option>
+                  <option value="total_return">Overall Portfolio Gain/Yield (%)</option>
+                  <option value="annualized_return">Annualized Compound Return (%)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                  Target Goal Value
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  value={editTargetValue}
+                  onChange={(e) => setEditTargetValue(e.target.value)}
+                  required
+                  className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 rounded-xl px-3.5 py-2 text-xs text-slate-200 focus:outline-none font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                  Target Completion Date
+                </label>
+                <input
+                  type="date"
+                  value={editTargetDate}
+                  onChange={(e) => setEditTargetDate(e.target.value)}
+                  required
+                  className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 rounded-xl px-3.5 py-2 text-xs text-slate-200 focus:outline-none font-mono cursor-pointer"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  id="editIsAchieved"
+                  checked={editIsAchieved}
+                  onChange={(e) => setEditIsAchieved(e.target.checked)}
+                  className="rounded bg-slate-950 border-slate-800 text-indigo-500 focus:ring-indigo-500 h-4 w-4 cursor-pointer"
+                />
+                <label htmlFor="editIsAchieved" className="text-xs text-slate-300 font-medium cursor-pointer">
+                  Mark as Completed / Achieved
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setEditingTarget(null)}
+                  className="px-4 py-2 text-xs font-bold text-slate-400 hover:text-white bg-slate-800/50 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editSubmitting}
+                  className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  {editSubmitting ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

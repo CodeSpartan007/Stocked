@@ -29,11 +29,13 @@ UserSetting.init({
         allowNull: true,
         get() {
             const rawValue = this.getDataValue('apiKey');
-            return rawValue ? (0, crypto_1.decrypt)(rawValue) : null;
+            const userId = this.getDataValue('userId') || this.userId;
+            return rawValue ? (0, crypto_1.decrypt)(rawValue, userId) : null;
         },
         set(value) {
             if (value) {
-                this.setDataValue('apiKey', (0, crypto_1.encrypt)(value));
+                const userId = this.getDataValue('userId') || this.userId;
+                this.setDataValue('apiKey', (0, crypto_1.encrypt)(value, userId));
             }
             else {
                 this.setDataValue('apiKey', null);
@@ -44,6 +46,11 @@ UserSetting.init({
         type: sequelize_1.DataTypes.INTEGER,
         allowNull: false,
         defaultValue: 60,
+    },
+    costBasisMethod: {
+        type: sequelize_1.DataTypes.ENUM('average', 'fifo'),
+        allowNull: false,
+        defaultValue: 'average',
     },
 }, {
     sequelize: database_1.sequelize,

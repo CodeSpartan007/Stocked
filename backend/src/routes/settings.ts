@@ -3,7 +3,9 @@ import { body } from 'express-validator';
 import { UserSetting } from '../models';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
 import { handleValidationErrors } from '../middleware/validate';
+import { apiTestRateLimiter } from '../middleware/rateLimiter';
 import { startPriceSyncPoller, fetchFromAlphaVantage, fetchFromPolygon, getOrUpdateApiStatus } from '../services/priceFeedService';
+import { recalculateAllUserSales } from './transactions';
 
 const router = Router();
 
@@ -20,6 +22,7 @@ router.get('/feed', requireAuth, async (req: AuthenticatedRequest, res: Response
         provider: 'manual',
         apiKey: null,
         refreshInterval: 60,
+        costBasisMethod: 'average',
       });
       settings = await UserSetting.scope('withApiKey').findByPk(userId);
     }
@@ -30,6 +33,7 @@ router.get('/feed', requireAuth, async (req: AuthenticatedRequest, res: Response
         provider: settings!.provider,
         apiKey: settings!.apiKey ? '••••••••••••••••' : '',
         refreshInterval: settings!.refreshInterval,
+        costBasisMethod: settings!.costBasisMethod || 'average',
       },
     });
   } catch (error: any) {
@@ -56,12 +60,17 @@ router.post(
     body('refreshInterval')
       .isInt({ min: 10, max: 86400 })
       .withMessage('Refresh interval must be an integer between 10 seconds and 24 hours.'),
+    body('costBasisMethod')
+      .optional()
+      .trim()
+      .isIn(['average', 'fifo'])
+      .withMessage('costBasisMethod must be either average or fifo.'),
   ],
   handleValidationErrors,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
       const userId = req.user!.id;
-      const { provider, apiKey, refreshInterval } = req.body;
+      const { provider, apiKey, refreshInterval, costBasisMethod } = req.body;
 
       // Ensure API key is provided if provider is alphavantage or polygon
       if (provider !== 'manual' && (!apiKey || apiKey.trim() === '')) {
@@ -134,14 +143,23 @@ router.post(
         }
       }
 
+      const updatedCostBasisMethod = costBasisMethod || existing?.costBasisMethod || 'average';
+
       const [settings] = await UserSetting.upsert({
         userId,
         provider,
         apiKey: updatedApiKey,
         refreshInterval,
+        costBasisMethod: updatedCostBasisMethod,
       });
 
-      console.log(`[SettingsRouter] Saved configurations for ${userId}. Provider: ${provider}, Interval: ${refreshInterval}s`);
+      // Recalculate historical sales if user changed cost-basis accounting methodology
+      const previousMethod = existing?.costBasisMethod || 'average';
+      if (previousMethod !== updatedCostBasisMethod) {
+        await recalculateAllUserSales(userId, undefined, updatedCostBasisMethod);
+      }
+
+      console.log(`[SettingsRouter] Saved configurations for ${userId}. Provider: ${provider}, Interval: ${refreshInterval}s, Method: ${updatedCostBasisMethod}`);
 
       // Proactively restart poller if live sync is active
       if (provider !== 'manual' && updatedApiKey) {
@@ -155,6 +173,7 @@ router.post(
           provider: settings.provider,
           apiKey: updatedApiKey ? '••••••••••••••••' : '',
           refreshInterval: settings.refreshInterval,
+          costBasisMethod: settings.costBasisMethod || 'average',
         },
       });
     } catch (error: any) {
@@ -171,6 +190,7 @@ router.post(
 router.post(
   '/test-connection',
   requireAuth,
+  apiTestRateLimiter,
   [
     body('provider')
       .trim()

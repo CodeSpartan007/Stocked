@@ -5,6 +5,7 @@ import bcrypt from 'bcrypt';
 import { sequelize, User, UserSetting } from '../models';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
 import { handleValidationErrors } from '../middleware/validate';
+import { authRateLimiter } from '../middleware/rateLimiter';
 
 const router = Router();
 const JWT_SECRET = (() => {
@@ -20,6 +21,7 @@ const JWT_SECRET = (() => {
 // POST /api/auth/register -> Standard user signup endpoint
 router.post(
   '/register',
+  authRateLimiter,
   [
     body('email')
       .trim()
@@ -115,6 +117,7 @@ router.post(
 // POST /api/auth/login -> Standard authentication login endpoint
 router.post(
   '/login',
+  authRateLimiter,
   [
     body('email')
       .trim()

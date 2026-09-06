@@ -8,6 +8,7 @@ export class UserSetting extends Model {
   declare provider: 'alphavantage' | 'polygon' | 'manual';
   declare apiKey: string | null;
   declare refreshInterval: number;
+  declare costBasisMethod: 'average' | 'fifo';
 
   declare readonly createdAt: Date;
   declare readonly updatedAt: Date;
@@ -35,11 +36,13 @@ UserSetting.init(
       allowNull: true,
       get() {
         const rawValue = this.getDataValue('apiKey');
-        return rawValue ? decrypt(rawValue) : null;
+        const userId = this.getDataValue('userId') || this.userId;
+        return rawValue ? decrypt(rawValue, userId) : null;
       },
       set(value: string | null) {
         if (value) {
-          this.setDataValue('apiKey', encrypt(value));
+          const userId = this.getDataValue('userId') || this.userId;
+          this.setDataValue('apiKey', encrypt(value, userId));
         } else {
           this.setDataValue('apiKey', null);
         }
@@ -49,6 +52,11 @@ UserSetting.init(
       type: DataTypes.INTEGER,
       allowNull: false,
       defaultValue: 60,
+    },
+    costBasisMethod: {
+      type: DataTypes.ENUM('average', 'fifo'),
+      allowNull: false,
+      defaultValue: 'average',
     },
   },
   {

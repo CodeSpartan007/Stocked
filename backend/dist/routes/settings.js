@@ -5,7 +5,9 @@ const express_validator_1 = require("express-validator");
 const models_1 = require("../models");
 const auth_1 = require("../middleware/auth");
 const validate_1 = require("../middleware/validate");
+const rateLimiter_1 = require("../middleware/rateLimiter");
 const priceFeedService_1 = require("../services/priceFeedService");
+const transactions_1 = require("./transactions");
 const router = (0, express_1.Router)();
 // GET /api/settings/feed -> Fetch active price feed configuration (with masked credentials)
 router.get('/feed', auth_1.requireAuth, async (req, res) => {
@@ -19,6 +21,7 @@ router.get('/feed', auth_1.requireAuth, async (req, res) => {
                 provider: 'manual',
                 apiKey: null,
                 refreshInterval: 60,
+                costBasisMethod: 'average',
             });
             settings = await models_1.UserSetting.scope('withApiKey').findByPk(userId);
         }
@@ -28,6 +31,7 @@ router.get('/feed', auth_1.requireAuth, async (req, res) => {
                 provider: settings.provider,
                 apiKey: settings.apiKey ? '••••••••••••••••' : '',
                 refreshInterval: settings.refreshInterval,
+                costBasisMethod: settings.costBasisMethod || 'average',
             },
         });
     }
@@ -51,10 +55,15 @@ router.post('/feed', auth_1.requireAuth, [
     (0, express_validator_1.body)('refreshInterval')
         .isInt({ min: 10, max: 86400 })
         .withMessage('Refresh interval must be an integer between 10 seconds and 24 hours.'),
+    (0, express_validator_1.body)('costBasisMethod')
+        .optional()
+        .trim()
+        .isIn(['average', 'fifo'])
+        .withMessage('costBasisMethod must be either average or fifo.'),
 ], validate_1.handleValidationErrors, async (req, res) => {
     try {
         const userId = req.user.id;
-        const { provider, apiKey, refreshInterval } = req.body;
+        const { provider, apiKey, refreshInterval, costBasisMethod } = req.body;
         // Ensure API key is provided if provider is alphavantage or polygon
         if (provider !== 'manual' && (!apiKey || apiKey.trim() === '')) {
             // If we already have a saved key, we can allow keeping it
@@ -122,13 +131,20 @@ router.post('/feed', auth_1.requireAuth, [
                 }
             }
         }
+        const updatedCostBasisMethod = costBasisMethod || existing?.costBasisMethod || 'average';
         const [settings] = await models_1.UserSetting.upsert({
             userId,
             provider,
             apiKey: updatedApiKey,
             refreshInterval,
+            costBasisMethod: updatedCostBasisMethod,
         });
-        console.log(`[SettingsRouter] Saved configurations for ${userId}. Provider: ${provider}, Interval: ${refreshInterval}s`);
+        // Recalculate historical sales if user changed cost-basis accounting methodology
+        const previousMethod = existing?.costBasisMethod || 'average';
+        if (previousMethod !== updatedCostBasisMethod) {
+            await (0, transactions_1.recalculateAllUserSales)(userId, undefined, updatedCostBasisMethod);
+        }
+        console.log(`[SettingsRouter] Saved configurations for ${userId}. Provider: ${provider}, Interval: ${refreshInterval}s, Method: ${updatedCostBasisMethod}`);
         // Proactively restart poller if live sync is active
         if (provider !== 'manual' && updatedApiKey) {
             (0, priceFeedService_1.startPriceSyncPoller)(userId, refreshInterval);
@@ -140,6 +156,7 @@ router.post('/feed', auth_1.requireAuth, [
                 provider: settings.provider,
                 apiKey: updatedApiKey ? '••••••••••••••••' : '',
                 refreshInterval: settings.refreshInterval,
+                costBasisMethod: settings.costBasisMethod || 'average',
             },
         });
     }
@@ -152,7 +169,7 @@ router.post('/feed', auth_1.requireAuth, [
     }
 });
 // POST /api/settings/test-connection -> Verify API key connection before saving
-router.post('/test-connection', auth_1.requireAuth, [
+router.post('/test-connection', auth_1.requireAuth, rateLimiter_1.apiTestRateLimiter, [
     (0, express_validator_1.body)('provider')
         .trim()
         .isIn(['alphavantage', 'polygon'])

@@ -25,6 +25,7 @@ const ExportLogs_1 = require("./ExportLogs");
 Object.defineProperty(exports, "ExportLogs", { enumerable: true, get: function () { return ExportLogs_1.ExportLogs; } });
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const recalculate_1 = require("../utils/recalculate");
+const migrator_1 = require("../migrator");
 // Stable, valid UUIDv4 constants for seeded accounts
 const SEEDED_USER_UUID = '12345678-abcd-4000-8000-123456789abc';
 const SEEDED_ADMIN_UUID = '87654321-abcd-4000-8000-abcdefabcdef';
@@ -51,25 +52,22 @@ Sales_1.Sales.belongsTo(User_1.User, { foreignKey: 'userId', as: 'User' });
 User_1.User.hasMany(DailyPrice_1.DailyPrice, { foreignKey: 'userId', onDelete: 'CASCADE', as: 'DailyPrices' });
 DailyPrice_1.DailyPrice.belongsTo(User_1.User, { foreignKey: 'userId', as: 'User' });
 async function initDb() {
-    // In development, `alter: true` applies schema changes automatically.
-    // In SQLite/development: do not use `alter: true` as it causes duplicate unique constraint bugs.
-    // In production, never alter/drop tables — only create if not exists.
     const isSqlite = database_1.sequelize.getDialect() === 'sqlite';
-    // In development SQLite, we can alter the schema.
-    // We NEVER run automatic Sequelize sync alters on Postgres (even when running locally) to prevent data risks.
-    await database_1.sequelize.sync({ alter: isSqlite && process.env.NODE_ENV !== 'production' });
-    // Non-destructively add new columns if they are missing in production Postgres schema
-    if (!isSqlite) {
+    // Clean up any stale backup tables left behind by previous interrupted SQLite alters
+    if (isSqlite) {
         try {
-            await database_1.sequelize.query('ALTER TABLE "DailyPrices" ADD COLUMN IF NOT EXISTS "change" DECIMAL(12, 2) DEFAULT 0.00;');
-            await database_1.sequelize.query('ALTER TABLE "DailyPrices" ADD COLUMN IF NOT EXISTS "changePercent" DECIMAL(12, 2) DEFAULT 0.00;');
-            console.log('DailyPrices columns verified/added successfully for Postgres.');
+            const [backupTables] = await database_1.sequelize.query("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%_backup';");
+            for (const table of backupTables) {
+                await database_1.sequelize.query(`DROP TABLE IF EXISTS \`${table.name}\`;`);
+            }
         }
         catch (err) {
-            console.error('Failed to run schema migration for Postgres:', err);
+            console.warn('Warning: Could not check/drop SQLite backup tables:', err);
         }
     }
-    console.log('Database synced successfully.');
+    // Execute versioned migrations to maintain schema integrity across all dialects
+    await migrator_1.migrator.up();
+    console.log('Database synced and migrated successfully.');
     // Seed default user if not exists
     let mockUser = await User_1.User.findByPk(SEEDED_USER_UUID);
     const existingUserWithEmail = await User_1.User.findOne({ where: { email: 'user@stocked.com' } });

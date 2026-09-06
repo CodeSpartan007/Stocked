@@ -31,6 +31,7 @@ export default function FeedSettings() {
   const [apiKey, setApiKey] = useState('');
   const [apiKeyDirty, setApiKeyDirty] = useState(false);
   const [refreshInterval, setRefreshInterval] = useState(60);
+  const [costBasisMethod, setCostBasisMethod] = useState<'average' | 'fifo'>('average');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showKey, setShowKey] = useState(false);
@@ -47,13 +48,30 @@ export default function FeedSettings() {
   const [roleUpdatingId, setRoleUpdatingId] = useState<string | null>(null);
   const [userDeletingId, setUserDeletingId] = useState<string | null>(null);
 
+  const triggerToast = (message: string, type: 'success' | 'error') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => {
+      setToast((prev) => ({ ...prev, show: false }));
+    }, 4000);
+  };
+
+  const handleSelectProvider = (newProvider: 'alphavantage' | 'polygon' | 'manual') => {
+    setProvider(newProvider);
+    if (!loadedConfig || newProvider !== loadedConfig.provider) {
+      setConnectionStatus('idle');
+      setConnectionMessage('');
+    } else if (loadedConfig.apiKey && (loadedConfig.apiKey.includes('•') || loadedConfig.apiKey.includes('*'))) {
+      setConnectionStatus('success');
+      setConnectionMessage(`API Key is active and successfully connected to ${newProvider === 'alphavantage' ? 'Alpha Vantage' : 'Polygon.io'}.`);
+    }
+  };
+
   // Fetch current feed config
   useEffect(() => {
     async function fetchSettings() {
       try {
         setLoading(true);
-        const response = await fetch(`${API_BASE}/api/settings/feed`,
-{
+        const response = await fetch(`${API_BASE}/api/settings/feed`, {
           method: 'GET',
           credentials: 'include',
         });
@@ -66,6 +84,9 @@ export default function FeedSettings() {
           setApiKey(json.data.apiKey || '');
           setApiKeyDirty(false);
           setRefreshInterval(json.data.refreshInterval);
+          if (json.data.costBasisMethod) {
+            setCostBasisMethod(json.data.costBasisMethod);
+          }
           setLoadedConfig({
             provider: json.data.provider,
             apiKey: json.data.apiKey || '',
@@ -77,7 +98,7 @@ export default function FeedSettings() {
             setConnectionMessage(`API Key is active and successfully connected to ${json.data.provider === 'alphavantage' ? 'Alpha Vantage' : 'Polygon.io'}.`);
           }
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error(err);
         triggerToast('Could not sync settings from backend server.', 'error');
       } finally {
@@ -88,15 +109,6 @@ export default function FeedSettings() {
     fetchSettings();
   }, []);
 
-  // Reset connection status when provider or key changes
-  useEffect(() => {
-    if (!loadedConfig) return;
-    if (provider !== loadedConfig.provider || apiKey !== loadedConfig.apiKey) {
-      setConnectionStatus('idle');
-      setConnectionMessage('');
-    }
-  }, [provider, apiKey, loadedConfig]);
-
   const handleTestConnection = async () => {
     if (!apiKey) {
       triggerToast('API Key is required to test connection.', 'error');
@@ -105,8 +117,7 @@ export default function FeedSettings() {
     setConnectionStatus('testing');
     setConnectionMessage('');
     try {
-      const response = await fetch(`${API_BASE}/api/settings/test-connection`,
-{
+      const response = await fetch(`${API_BASE}/api/settings/test-connection`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -125,11 +136,12 @@ export default function FeedSettings() {
         setConnectionMessage(json.message || 'Connection failed.');
         triggerToast(json.message || 'Connection failed.', 'error');
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
+      const msg = err instanceof Error ? err.message : 'Network error testing API connection.';
       setConnectionStatus('failed');
-      setConnectionMessage(err.message || 'Network error testing API connection.');
-      triggerToast(err.message || 'Network error testing API connection.', 'error');
+      setConnectionMessage(msg);
+      triggerToast(msg, 'error');
     }
   };
 
@@ -154,7 +166,7 @@ export default function FeedSettings() {
         setAdminPage(json.data.pagination.currentPage);
         setAdminTotalPages(json.data.pagination.totalPages);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       triggerToast('Could not retrieve user matrix from backend.', 'error');
     } finally {
@@ -163,26 +175,61 @@ export default function FeedSettings() {
   };
 
   useEffect(() => {
-    if (activeTab === 'admin') {
-      fetchAdminUsers(1);
-    }
-  }, [activeTab]);
+    if (activeTab !== 'admin' || user?.role !== 'admin') return;
+    let active = true;
 
-  const triggerToast = (message: string, type: 'success' | 'error') => {
-    setToast({ show: true, message, type });
-    setTimeout(() => {
-      setToast((prev) => ({ ...prev, show: false }));
-    }, 4000);
-  };
+    async function loadAdminUsers() {
+      try {
+        setAdminLoading(true);
+        const response = await fetch(`${API_BASE}/api/admin?page=1&limit=8`, {
+          method: 'GET',
+          credentials: 'include',
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to load registered system accounts.');
+        }
+
+        const json = await response.json();
+        if (active && json.success && json.data) {
+          setAdminUsers(json.data.users);
+          setAdminPage(json.data.pagination.currentPage);
+          setAdminTotalPages(json.data.pagination.totalPages);
+        }
+      } catch (err: unknown) {
+        if (active) {
+          console.error(err);
+          triggerToast('Could not retrieve user matrix from backend.', 'error');
+        }
+      } finally {
+        if (active) {
+          setAdminLoading(false);
+        }
+      }
+    }
+
+    loadAdminUsers();
+    return () => {
+      active = false;
+    };
+  }, [activeTab, user?.role]);
 
   const handleSaveFeed = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
 
     try {
-      const payload: any = {
+      interface FeedSettingsPayload {
+        provider: 'alphavantage' | 'polygon' | 'manual';
+        refreshInterval: number;
+        costBasisMethod: 'average' | 'fifo';
+        apiKey?: string;
+      }
+
+      const payload: FeedSettingsPayload = {
         provider,
         refreshInterval: Number(refreshInterval),
+        costBasisMethod,
       };
 
       const isMasked = apiKey.includes('•') || apiKey.includes('★') || apiKey.includes('*');
@@ -195,8 +242,7 @@ export default function FeedSettings() {
         payload.apiKey = '';
       }
 
-      const response = await fetch(`${API_BASE}/api/settings/feed`,
-{
+      const response = await fetch(`${API_BASE}/api/settings/feed`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -209,6 +255,9 @@ export default function FeedSettings() {
         if (json.data) {
           setApiKey(json.data.apiKey || '');
           setApiKeyDirty(false);
+          if (json.data.costBasisMethod) {
+            setCostBasisMethod(json.data.costBasisMethod);
+          }
           setLoadedConfig({
             provider: json.data.provider,
             apiKey: json.data.apiKey || '',
@@ -225,9 +274,10 @@ export default function FeedSettings() {
         const errorMsg = json.errors && json.errors.length > 0 ? json.errors[0].message : json.message;
         throw new Error(errorMsg || 'Failed to persist feed parameters.');
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      triggerToast(err.message || 'Error occurred while saving configurations.', 'error');
+      const msg = err instanceof Error ? err.message : 'Error occurred while saving configurations.';
+      triggerToast(msg, 'error');
     } finally {
       setSaving(false);
     }
@@ -257,9 +307,10 @@ export default function FeedSettings() {
       } else {
         throw new Error(json.message || 'Failed to update user role.');
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      triggerToast(err.message || 'Error toggling account role.', 'error');
+      const msg = err instanceof Error ? err.message : 'Error toggling account role.';
+      triggerToast(msg, 'error');
     } finally {
       setRoleUpdatingId(null);
     }
@@ -289,9 +340,10 @@ export default function FeedSettings() {
       } else {
         throw new Error(json.message || 'Failed to delete user account.');
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      triggerToast(err.message || 'Error deleting system account.', 'error');
+      const msg = err instanceof Error ? err.message : 'Error deleting system account.';
+      triggerToast(msg, 'error');
     } finally {
       setUserDeletingId(null);
     }
@@ -392,14 +444,14 @@ export default function FeedSettings() {
                 >
                   {/* Alpha Vantage */}
                   <div
-                    onClick={() => setProvider('alphavantage')}
+                    onClick={() => handleSelectProvider('alphavantage')}
                     role="radio"
                     aria-checked={provider === 'alphavantage'}
                     tabIndex={0}
                     onKeyDown={(e) => {
                       if (e.key === ' ' || e.key === 'Enter') {
                         e.preventDefault();
-                        setProvider('alphavantage');
+                        handleSelectProvider('alphavantage');
                       }
                     }}
                     className={`cursor-pointer rounded-2xl p-5 border transition-all duration-300 relative flex flex-col justify-between h-32 hover:border-indigo-500/40 hover:bg-slate-900/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
@@ -425,14 +477,14 @@ export default function FeedSettings() {
 
                   {/* Polygon.io */}
                   <div
-                    onClick={() => setProvider('polygon')}
+                    onClick={() => handleSelectProvider('polygon')}
                     role="radio"
                     aria-checked={provider === 'polygon'}
                     tabIndex={0}
                     onKeyDown={(e) => {
                       if (e.key === ' ' || e.key === 'Enter') {
                         e.preventDefault();
-                        setProvider('polygon');
+                        handleSelectProvider('polygon');
                       }
                     }}
                     className={`cursor-pointer rounded-2xl p-5 border transition-all duration-300 relative flex flex-col justify-between h-32 hover:border-indigo-500/40 hover:bg-slate-900/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
@@ -458,14 +510,14 @@ export default function FeedSettings() {
 
                   {/* Manual Fallback */}
                   <div
-                    onClick={() => setProvider('manual')}
+                    onClick={() => handleSelectProvider('manual')}
                     role="radio"
                     aria-checked={provider === 'manual'}
                     tabIndex={0}
                     onKeyDown={(e) => {
                       if (e.key === ' ' || e.key === 'Enter') {
                         e.preventDefault();
-                        setProvider('manual');
+                        handleSelectProvider('manual');
                       }
                     }}
                     className={`cursor-pointer rounded-2xl p-5 border transition-all duration-300 relative flex flex-col justify-between h-32 hover:border-emerald-500/40 hover:bg-slate-900/60 focus:outline-none focus:ring-2 focus:ring-emerald-500 ${
@@ -511,6 +563,8 @@ export default function FeedSettings() {
                       onChange={(e) => {
                         setApiKey(e.target.value);
                         setApiKeyDirty(true);
+                        setConnectionStatus('idle');
+                        setConnectionMessage('');
                       }}
                       required
                       className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 rounded-xl pl-11 pr-12 py-3 text-sm text-slate-100 placeholder-slate-650 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
@@ -570,6 +624,86 @@ export default function FeedSettings() {
                   </div>
                 </div>
               )}
+
+              {/* Cost-Basis Accounting Method Toggle [SRS Section 8.1] */}
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-350 uppercase tracking-wider">
+                    Cost-Basis Accounting Method
+                  </label>
+                  <p className="text-[10px] text-slate-500 mt-0.5">
+                    Select how cost basis and realized gains/losses are calculated for your trade sales.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Average Cost */}
+                  <div
+                    onClick={() => setCostBasisMethod('average')}
+                    role="radio"
+                    aria-checked={costBasisMethod === 'average'}
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === ' ' || e.key === 'Enter') {
+                        e.preventDefault();
+                        setCostBasisMethod('average');
+                      }
+                    }}
+                    className={`cursor-pointer rounded-2xl p-4 border transition-all duration-300 relative flex flex-col justify-between hover:border-indigo-500/40 hover:bg-slate-900/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                      costBasisMethod === 'average'
+                        ? 'border-indigo-500 bg-indigo-500/5 shadow-[0_0_15px_rgba(99,102,241,0.15)]'
+                        : 'border-slate-850 bg-slate-950/40'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between pointer-events-none">
+                      <span className="text-xs font-black text-slate-300 tracking-wider">AVERAGE COST (DEFAULT)</span>
+                      <div
+                        className={`h-4.5 w-4.5 rounded-full border flex items-center justify-center transition-colors ${
+                          costBasisMethod === 'average' ? 'border-indigo-400 bg-indigo-500/20' : 'border-slate-700'
+                        }`}
+                      >
+                        {costBasisMethod === 'average' && <div className="h-2 w-2 rounded-full bg-indigo-400" />}
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-relaxed mt-2 pointer-events-none">
+                      Computes cost basis using historical volume-weighted average price. Standard for long-term investments.
+                    </p>
+                  </div>
+
+                  {/* FIFO */}
+                  <div
+                    onClick={() => setCostBasisMethod('fifo')}
+                    role="radio"
+                    aria-checked={costBasisMethod === 'fifo'}
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === ' ' || e.key === 'Enter') {
+                        e.preventDefault();
+                        setCostBasisMethod('fifo');
+                      }
+                    }}
+                    className={`cursor-pointer rounded-2xl p-4 border transition-all duration-300 relative flex flex-col justify-between hover:border-indigo-500/40 hover:bg-slate-900/60 focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                      costBasisMethod === 'fifo'
+                        ? 'border-indigo-500 bg-indigo-500/5 shadow-[0_0_15px_rgba(99,102,241,0.15)]'
+                        : 'border-slate-850 bg-slate-950/40'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between pointer-events-none">
+                      <span className="text-xs font-black text-slate-300 tracking-wider">FIRST-IN, FIRST-OUT (FIFO)</span>
+                      <div
+                        className={`h-4.5 w-4.5 rounded-full border flex items-center justify-center transition-colors ${
+                          costBasisMethod === 'fifo' ? 'border-indigo-400 bg-indigo-500/20' : 'border-slate-700'
+                        }`}
+                      >
+                        {costBasisMethod === 'fifo' && <div className="h-2 w-2 rounded-full bg-indigo-400" />}
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-relaxed mt-2 pointer-events-none">
+                      Matches sales to the oldest acquired purchase lots first. Realizes profit/loss against specific acquisition prices.
+                    </p>
+                  </div>
+                </div>
+              </div>
 
               <div className="space-y-3">
                 <div>

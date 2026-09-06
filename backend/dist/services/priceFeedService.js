@@ -299,9 +299,9 @@ async function fetchLocalFallback(stock, fallbackLabel) {
         };
     }
     const latest = latestPrices[0];
-    const first = latestPrices[latestPrices.length - 1];
-    const change = Number(latest.price) - Number(first.price);
-    const changePercent = Number(first.price) !== 0 ? (change / Number(first.price)) * 100 : 0;
+    const previous = latestPrices.length > 1 ? latestPrices[1] : null;
+    const change = previous ? Number(latest.price) - Number(previous.price) : 0;
+    const changePercent = previous && Number(previous.price) > 0 ? (change / Number(previous.price)) * 100 : 0;
     return {
         symbol: stock.symbol,
         price: Number(latest.price),

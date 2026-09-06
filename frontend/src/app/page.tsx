@@ -119,9 +119,9 @@ export default function Dashboard() {
           setPortfolio(portfolioJson.data);
 
           // Map stocks to top performers based on daily price change percent
-          const dailyTopPerformers = stocksJson.data
-            .filter((s: any) => s.summary.totalPriceRecords > 0)
-            .map((s: any) => ({
+          const dailyTopPerformers = (stocksJson.data as StockSummary[])
+            .filter((s: StockSummary) => s.summary.totalPriceRecords > 0)
+            .map((s: StockSummary) => ({
               stockId: s.id,
               symbol: s.symbol,
               name: s.name,
@@ -136,7 +136,7 @@ export default function Dashboard() {
         } else {
           throw new Error('API reported unsuccessful data retrieval.');
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error(err);
         setError('Unable to load real-time portfolio metrics. Is the backend server running?');
       } finally {

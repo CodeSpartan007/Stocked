@@ -10,8 +10,9 @@ const exceljs_1 = __importDefault(require("exceljs"));
 const auth_1 = require("../middleware/auth");
 const models_1 = require("../models");
 const transactions_1 = require("./transactions");
+const analytics_1 = require("./analytics");
 const router = (0, express_1.Router)();
-function computeStockHoldingsTimeline(purchases, sales) {
+function computeStockHoldingsTimeline(purchases, sales, costBasisMethod = 'average') {
     const transactions = [
         ...purchases.map((p) => ({
             type: 'BUY',
@@ -28,39 +29,78 @@ function computeStockHoldingsTimeline(purchases, sales) {
             createdAt: s.createdAt,
         })),
     ];
-    // Chronological sort
+    // Chronological sort: by date first (BUY before SELL on same date), then createdAt
     transactions.sort((a, b) => {
-        if (a.date < b.date)
-            return -1;
-        if (a.date > b.date)
-            return 1;
+        if (a.date !== b.date)
+            return a.date.localeCompare(b.date);
+        if (a.type !== b.type)
+            return a.type === 'BUY' ? -1 : 1;
         return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
     });
-    let remainingShares = 0;
-    let totalCostBasis = 0;
-    let averageCost = 0;
-    let cumulativeRealizedPL = 0;
     const timeline = [];
-    for (const tx of transactions) {
-        if (tx.type === 'BUY') {
-            remainingShares += tx.quantity;
-            totalCostBasis += tx.quantity * tx.price;
-            averageCost = remainingShares > 0 ? totalCostBasis / remainingShares : 0;
+    if (costBasisMethod === 'fifo') {
+        const lots = [];
+        let cumulativeRealizedPL = 0;
+        for (const tx of transactions) {
+            if (tx.type === 'BUY') {
+                lots.push({ quantity: tx.quantity, price: tx.price });
+            }
+            else {
+                let needed = tx.quantity;
+                let saleCost = 0;
+                while (needed > 0 && lots.length > 0) {
+                    const lot = lots[0];
+                    if (lot.quantity <= needed + 1e-9) {
+                        saleCost += lot.quantity * lot.price;
+                        needed -= lot.quantity;
+                        lots.shift();
+                    }
+                    else {
+                        saleCost += needed * lot.price;
+                        lot.quantity -= needed;
+                        needed = 0;
+                    }
+                }
+                const profitLoss = (tx.quantity * tx.price) - saleCost;
+                cumulativeRealizedPL += profitLoss;
+            }
+            const remainingShares = lots.reduce((acc, l) => acc + l.quantity, 0);
+            const totalCostBasis = lots.reduce((acc, l) => acc + l.quantity * l.price, 0);
+            const averageCost = remainingShares > 0 ? totalCostBasis / remainingShares : 0;
+            timeline.push({
+                date: tx.date,
+                remainingShares: Number(remainingShares.toFixed(4)),
+                averageCost: Number(averageCost.toFixed(4)),
+                cumulativeRealizedPL: Number(cumulativeRealizedPL.toFixed(2)),
+            });
         }
-        else {
-            averageCost = remainingShares > 0 ? totalCostBasis / remainingShares : 0;
-            const saleQty = Math.min(tx.quantity, remainingShares);
-            const profitLoss = saleQty * (tx.price - averageCost);
-            cumulativeRealizedPL += profitLoss;
-            remainingShares -= saleQty;
-            totalCostBasis = remainingShares * averageCost;
+    }
+    else {
+        let remainingShares = 0;
+        let totalCostBasis = 0;
+        let averageCost = 0;
+        let cumulativeRealizedPL = 0;
+        for (const tx of transactions) {
+            if (tx.type === 'BUY') {
+                remainingShares += tx.quantity;
+                totalCostBasis += tx.quantity * tx.price;
+                averageCost = remainingShares > 0 ? totalCostBasis / remainingShares : 0;
+            }
+            else {
+                averageCost = remainingShares > 0 ? totalCostBasis / remainingShares : 0;
+                const saleQty = Math.min(tx.quantity, remainingShares);
+                const profitLoss = saleQty * (tx.price - averageCost);
+                cumulativeRealizedPL += profitLoss;
+                remainingShares -= saleQty;
+                totalCostBasis = remainingShares * averageCost;
+            }
+            timeline.push({
+                date: tx.date,
+                remainingShares: Number(remainingShares.toFixed(4)),
+                averageCost: Number(averageCost.toFixed(4)),
+                cumulativeRealizedPL: Number(cumulativeRealizedPL.toFixed(2)),
+            });
         }
-        timeline.push({
-            date: tx.date,
-            remainingShares: Number(remainingShares.toFixed(4)),
-            averageCost: Number(averageCost.toFixed(4)),
-            cumulativeRealizedPL: Number(cumulativeRealizedPL.toFixed(2)),
-        });
     }
     return timeline;
 }
@@ -232,12 +272,14 @@ router.post('/generate', auth_1.requireAuth, async (req, res) => {
             else {
                 const purchases = await models_1.Purchase.findAll({ where: { stockId: activeIds, userId }, order: [['purchaseDate', 'ASC']] });
                 const sales = await models_1.Sales.findAll({ where: { stockId: activeIds, userId }, order: [['saleDate', 'ASC']] });
+                const userSetting = await models_1.UserSetting.findByPk(userId);
+                const costBasisMethod = userSetting?.costBasisMethod === 'fifo' ? 'fifo' : 'average';
                 const stockTimelines = {};
                 const stocksToProcess = targetStock ? [targetStock] : userStocks;
                 stocksToProcess.forEach((stock) => {
                     const stockPurchases = purchases.filter((p) => p.stockId === stock.id);
                     const stockSales = sales.filter((s) => s.stockId === stock.id);
-                    stockTimelines[stock.id] = computeStockHoldingsTimeline(stockPurchases, stockSales);
+                    stockTimelines[stock.id] = computeStockHoldingsTimeline(stockPurchases, stockSales, costBasisMethod);
                 });
                 const latestPrices = await Promise.all(stocksToProcess.map(async (stock) => {
                     const lp = await models_1.DailyPrice.findOne({
@@ -289,14 +331,7 @@ router.post('/generate', auth_1.requireAuth, async (req, res) => {
                     const today = new Date();
                     const diffTime = Math.abs(today.getTime() - purchaseDate.getTime());
                     const daysHeld = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
-                    const totalReturnDecimal = totalReturnPercent / 100;
-                    // NAN protection guard before exponential Math.pow calculation [FR8]
-                    if (totalReturnDecimal <= -1) {
-                        annualizedReturnPercent = -100; // Floor return rate limit to prevent imaginary root errors
-                    }
-                    else {
-                        annualizedReturnPercent = (Math.pow(1 + totalReturnDecimal, 365 / daysHeld) - 1) * 100;
-                    }
+                    annualizedReturnPercent = (0, analytics_1.calculateAnnualizedReturn)(totalReturnPercent, daysHeld, totalInvestedCapital);
                 }
                 // Volatility
                 const allDailyPrices = await models_1.DailyPrice.findAll({
@@ -331,12 +366,14 @@ router.post('/generate', auth_1.requireAuth, async (req, res) => {
                 };
                 const uniquePriceDatesSet = new Set();
                 allDailyPrices.forEach((dp) => uniquePriceDatesSet.add(dp.date));
+                purchases.forEach((p) => uniquePriceDatesSet.add(p.purchaseDate));
+                sales.forEach((s) => uniquePriceDatesSet.add(s.saleDate));
                 let uniquePriceDates = Array.from(uniquePriceDatesSet).sort();
                 if (parsedStartDate)
                     uniquePriceDates = uniquePriceDates.filter((d) => d >= parsedStartDate);
                 if (parsedEndDate)
                     uniquePriceDates = uniquePriceDates.filter((d) => d <= parsedEndDate);
-                const dailyPortfolioValues = [];
+                const dailyValPoints = [];
                 uniquePriceDates.forEach((dStr) => {
                     let dayVal = 0;
                     stocksToProcess.forEach((stock) => {
@@ -345,25 +382,27 @@ router.post('/generate', auth_1.requireAuth, async (req, res) => {
                         const price = getStockPriceAt(stock.id, dStr, holdingState.averageCost);
                         dayVal += holdingState.remainingShares * price;
                     });
-                    if (dayVal > 0) {
-                        dailyPortfolioValues.push(dayVal);
+                    // Net external capital cash flows Ct = Purchases_t - Sales_t executed on day t
+                    let dayCashFlow = 0;
+                    purchases.forEach((p) => {
+                        if (p.purchaseDate === dStr) {
+                            dayCashFlow += Number(p.quantity) * Number(p.purchasePrice);
+                        }
+                    });
+                    sales.forEach((s) => {
+                        if (s.saleDate === dStr) {
+                            dayCashFlow -= Number(s.quantity) * Number(s.sellPrice);
+                        }
+                    });
+                    if (dayVal > 0 || dayCashFlow > 0) {
+                        dailyValPoints.push({
+                            date: dStr,
+                            value: dayVal,
+                            cashFlow: dayCashFlow,
+                        });
                     }
                 });
-                const dailyReturns = [];
-                for (let i = 1; i < dailyPortfolioValues.length; i++) {
-                    const valPrev = dailyPortfolioValues[i - 1];
-                    const valCur = dailyPortfolioValues[i];
-                    if (valPrev > 0) {
-                        dailyReturns.push((valCur - valPrev) / valPrev);
-                    }
-                }
-                let volatility = 0;
-                if (dailyReturns.length >= 2) {
-                    const n = dailyReturns.length;
-                    const mean = dailyReturns.reduce((sum, r) => sum + r, 0) / n;
-                    const varianceSum = dailyReturns.reduce((sum, r) => sum + Math.pow(r - mean, 2), 0);
-                    volatility = Math.sqrt(varianceSum / (n - 1)) * 100;
-                }
+                const volatility = (0, analytics_1.calculateTwrVolatility)(dailyValPoints);
                 // Benchmarking returns
                 const benchmarks = [];
                 if (parsedStartDate && parsedEndDate) {
@@ -456,9 +495,9 @@ router.post('/generate', auth_1.requireAuth, async (req, res) => {
             doc.fontSize(20).font('Helvetica-Bold').fillColor('#1e1b4b').text('STOCKED', { continued: true });
             doc.fontSize(12).font('Helvetica').fillColor('#64748b').text(' - Capital Market Management', 50, 67);
             doc.moveDown(1.5);
-            // Metadata row - REDACT raw userId for PII privacy protection
+            // Metadata row - User identification [FR10.4]
             doc.fontSize(9).fillColor('#64748b');
-            doc.text(`Generated By User Token: REDACTED`);
+            doc.text(`Generated By: ${req.user.email} (${req.user.id.substring(0, 8)})`);
             doc.text(`Timestamp: ${new Date().toUTCString()}`);
             doc.text(`Query Range: ${startStr} to ${endStr}`);
             doc.moveDown(1.5);

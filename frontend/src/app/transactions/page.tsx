@@ -4,6 +4,7 @@ import { API_BASE } from '../../lib/api';
 
 import React, { useState, useEffect, useCallback } from 'react';
 import ExportActionsDropdown from '../../components/ExportActionsDropdown';
+import { Pencil, Trash2, X, AlertCircle } from 'lucide-react';
 
 interface StockOption {
   id: string;
@@ -24,6 +25,14 @@ interface Transaction {
   profitLoss: number | null;
 }
 
+function getTodayString() {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export default function TransactionsPage() {
   const [activeTab, setActiveTab] = useState<'BUY' | 'SELL'>('BUY');
   const [stocks, setStocks] = useState<StockOption[]>([]);
@@ -40,27 +49,25 @@ export default function TransactionsPage() {
   const [selectedStockId, setSelectedStockId] = useState('');
   const [quantity, setQuantity] = useState('');
   const [price, setPrice] = useState('');
-  const [txDate, setTxDate] = useState('');
+  const [txDate, setTxDate] = useState(getTodayString);
 
   // Notifications
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Get localized today date string (YYYY-MM-DD)
-  const getTodayString = () => {
-    const d = new Date();
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
+  // Transaction Edit Modal state
+  const [editingTx, setEditingTx] = useState<Transaction | null>(null);
+  const [editQuantity, setEditQuantity] = useState('');
+  const [editPrice, setEditPrice] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   // Fetch registered stocks for pre-filling logical drop-downs [NFR2.2]
   useEffect(() => {
     async function loadStocks() {
       try {
-        const res = await fetch(`${API_BASE}/api/stocks`,
-{
+        const res = await fetch(`${API_BASE}/api/stocks`, {
           credentials: 'include'
         });
         const json = await res.json();
@@ -75,13 +82,10 @@ export default function TransactionsPage() {
       }
     }
     loadStocks();
-    setTxDate(getTodayString());
   }, []);
 
   // Fetch Transaction Ledger history with date-range filters [FR5]
   const fetchLedger = useCallback(async (signal?: AbortSignal) => {
-    setLoadingLedger(true);
-    setErrorMessage(null); // Clear preceding error on reload attempts
     try {
       let url = `${API_BASE}/api/transactions/history`;
       const params = new URLSearchParams();
@@ -99,13 +103,14 @@ export default function TransactionsPage() {
       } else {
         throw new Error(json.message || 'Failed to retrieve chronological trade history.');
       }
-    } catch (err: any) {
-      if (err.name === 'AbortError' || err.name === 'DOMException') {
+    } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
         // Superseded request, ignore state updates
         return;
       }
+      const msg = err instanceof Error ? err.message : String(err);
       console.error('Failed to fetch ledger rows:', err);
-      setErrorMessage(`Failed to retrieve trade history: ${err.message || err}`);
+      setErrorMessage(`Failed to retrieve trade history: ${msg}`);
       setTransactions([]); // Reset to clear table on failure
     } finally {
       if (!signal || !signal.aborted) {
@@ -116,12 +121,51 @@ export default function TransactionsPage() {
 
   // Trigger ledger reload on date filter change with request cancellation
   useEffect(() => {
+    let ignore = false;
     const controller = new AbortController();
-    fetchLedger(controller.signal);
+
+    async function load() {
+      try {
+        let url = `${API_BASE}/api/transactions/history`;
+        const params = new URLSearchParams();
+        if (startDate) params.append('startDate', startDate);
+        if (endDate) params.append('endDate', endDate);
+
+        if (params.toString()) {
+          url += `?${params.toString()}`;
+        }
+
+        const res = await fetch(url, { signal: controller.signal, credentials: 'include' });
+        const json = await res.json();
+        if (!ignore && json.success) {
+          setTransactions(json.data);
+        } else if (!ignore) {
+          throw new Error(json.message || 'Failed to retrieve chronological trade history.');
+        }
+      } catch (err: unknown) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          return;
+        }
+        if (!ignore) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error('Failed to fetch ledger rows:', err);
+          setErrorMessage(`Failed to retrieve trade history: ${msg}`);
+          setTransactions([]);
+        }
+      } finally {
+        if (!ignore) {
+          setLoadingLedger(false);
+        }
+      }
+    }
+
+    load();
+
     return () => {
+      ignore = true;
       controller.abort();
     };
-  }, [fetchLedger]);
+  }, [startDate, endDate]);
 
   // Handle transaction recording submit
   const handleSubmit = async (e: React.FormEvent) => {
@@ -179,6 +223,7 @@ export default function TransactionsPage() {
         setPrice('');
         setTxDate(getTodayString());
         // Reload transactions
+        setLoadingLedger(true);
         fetchLedger();
       } else {
         // Validation/Business error message
@@ -186,11 +231,101 @@ export default function TransactionsPage() {
           json.errors && json.errors.length > 0 ? json.errors[0].message : json.message;
         setErrorMessage(message || 'Failed to submit transaction.');
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       setErrorMessage('Unable to connect to the backend server. Please verify connections.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleStartEdit = (tx: Transaction) => {
+    setEditingTx(tx);
+    setEditQuantity(String(tx.quantity));
+    setEditPrice(String(tx.price));
+    setEditDate(tx.date);
+    setEditError(null);
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTx) return;
+
+    setEditSubmitting(true);
+    setEditError(null);
+
+    const isBuy = editingTx.type === 'BUY';
+    const endpoint = isBuy
+      ? `${API_BASE}/api/transactions/purchases/${editingTx.id}`
+      : `${API_BASE}/api/transactions/sales/${editingTx.id}`;
+
+    const bodyPayload = isBuy
+      ? {
+          quantity: Number(editQuantity),
+          purchasePrice: Number(editPrice),
+          purchaseDate: editDate,
+        }
+      : {
+          quantity: Number(editQuantity),
+          sellPrice: Number(editPrice),
+          saleDate: editDate,
+        };
+
+    try {
+      const res = await fetch(endpoint, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bodyPayload),
+        credentials: 'include',
+      });
+
+      const json = await res.json();
+      if (res.ok && json.success) {
+        setEditingTx(null);
+        setSuccessMessage(`Successfully updated ${isBuy ? 'buy' : 'sell'} transaction for ${editingTx.symbol}.`);
+        setLoadingLedger(true);
+        fetchLedger();
+      } else {
+        const msg = json.errors?.[0]?.message || json.message || 'Failed to update transaction.';
+        setEditError(msg);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Network error updating transaction.';
+      setEditError(msg);
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
+
+  const handleDeleteTx = async (tx: Transaction) => {
+    const isBuy = tx.type === 'BUY';
+    const confirmDelete = window.confirm(
+      `Are you sure you want to delete this ${isBuy ? 'BUY' : 'SELL'} record of ${tx.quantity} shares of ${tx.symbol}?`
+    );
+    if (!confirmDelete) return;
+
+    const endpoint = isBuy
+      ? `${API_BASE}/api/transactions/purchases/${tx.id}`
+      : `${API_BASE}/api/transactions/sales/${tx.id}`;
+
+    try {
+      const res = await fetch(endpoint, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      const json = await res.json();
+      if (res.ok && json.success) {
+        setSuccessMessage(`Successfully deleted ${isBuy ? 'buy' : 'sell'} transaction for ${tx.symbol}.`);
+        setLoadingLedger(true);
+        fetchLedger();
+      } else {
+        const msg = json.errors?.[0]?.message || json.message || 'Failed to delete transaction.';
+        alert(msg);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert(`Network error deleting transaction: ${msg}`);
     }
   };
 
@@ -465,6 +600,7 @@ export default function TransactionsPage() {
                       <th className="px-4 py-3.5 text-right">Price</th>
                       <th className="px-4 py-3.5 text-right">Date</th>
                       <th className="px-4 py-3.5 text-right">Gains/Losses</th>
+                      <th className="px-4 py-3.5 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-850 bg-slate-950/20 text-xs">
@@ -519,6 +655,27 @@ export default function TransactionsPage() {
                               <span className="text-slate-600">—</span>
                             )}
                           </td>
+                          {/* Actions */}
+                          <td className="px-4 py-3.5 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleStartEdit(tx)}
+                                className="p-1 rounded-lg text-slate-400 hover:text-indigo-300 hover:bg-slate-800 transition-colors cursor-pointer"
+                                title="Edit transaction"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteTx(tx)}
+                                className="p-1 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors cursor-pointer"
+                                title="Delete transaction"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       );
                     })}
@@ -529,6 +686,107 @@ export default function TransactionsPage() {
           </div>
         </div>
       </div>
+
+      {/* Edit Transaction Modal */}
+      {editingTx && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl w-full max-w-md space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <span
+                  className={`inline-flex px-2 py-0.5 rounded text-[10px] font-extrabold border ${
+                    editingTx.type === 'BUY'
+                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                      : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                  }`}
+                >
+                  {editingTx.type}
+                </span>
+                <h3 className="text-sm font-bold text-white">
+                  Edit {editingTx.symbol} ({editingTx.name})
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingTx(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {editError && (
+              <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs rounded-xl flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                <span>{editError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveEdit} className="space-y-3">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                  Quantity (Shares)
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  min="0.0001"
+                  value={editQuantity}
+                  onChange={(e) => setEditQuantity(e.target.value)}
+                  required
+                  className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 rounded-xl px-3.5 py-2 text-xs text-slate-200 focus:outline-none font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                  Price ($)
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  min="0.01"
+                  value={editPrice}
+                  onChange={(e) => setEditPrice(e.target.value)}
+                  required
+                  className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 rounded-xl px-3.5 py-2 text-xs text-slate-200 focus:outline-none font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                  Transaction Date
+                </label>
+                <input
+                  type="date"
+                  max={getTodayString()}
+                  value={editDate}
+                  onChange={(e) => setEditDate(e.target.value)}
+                  required
+                  className="w-full bg-slate-950 border border-slate-850 focus:border-indigo-500 rounded-xl px-3.5 py-2 text-xs text-slate-200 focus:outline-none font-mono cursor-pointer"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setEditingTx(null)}
+                  className="px-4 py-2 text-xs font-bold text-slate-400 hover:text-white bg-slate-800/50 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editSubmitting}
+                  className="px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  {editSubmitting ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -56,32 +56,6 @@ export default function DailyPricesRecording() {
   const [editVolume, setEditVolume] = useState<string>('');
   const [editErrors, setEditErrors] = useState<{ field: string; message: string }[]>([]);
 
-  // Fetch stocks list for selection dropdowns
-  const fetchStocksList = async () => {
-    try {
-      setLoadingStocks(true);
-      const response = await fetch(`${API_BASE}/api/stocks`,
-{
-        credentials: 'include'
-      });
-      if (!response.ok) {
-        throw new Error('Failed to retrieve stocks list.');
-      }
-      const json = await response.json();
-      if (json.success) {
-        setStocks(json.data);
-        if (json.data.length > 0) {
-          setSelectedStockId(json.data[0].id);
-        }
-      }
-    } catch (err: any) {
-      console.error(err);
-      setGlobalError('Unable to fetch stock selectors. Is the API backend running?');
-    } finally {
-      setLoadingStocks(false);
-    }
-  };
-
   // Fetch price history with pagination
   const fetchPriceHistory = async (stockId: string, pageNum = 1) => {
     if (!stockId) return;
@@ -99,7 +73,7 @@ export default function DailyPricesRecording() {
         setPriceHistory(json.data.prices);
         setPagination(json.data.pagination);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       setGlobalError('Failed to synchronize historical daily logs.');
     } finally {
@@ -108,13 +82,74 @@ export default function DailyPricesRecording() {
   };
 
   useEffect(() => {
-    fetchStocksList();
+    let active = true;
+
+    async function loadStocksList() {
+      try {
+        const response = await fetch(`${API_BASE}/api/stocks`, {
+          credentials: 'include'
+        });
+        if (!response.ok) {
+          throw new Error('Failed to retrieve stocks list.');
+        }
+        const json = await response.json();
+        if (active && json.success) {
+          setStocks(json.data);
+          if (json.data.length > 0) {
+            setSelectedStockId(json.data[0].id);
+          }
+        }
+      } catch (err: unknown) {
+        if (active) {
+          console.error(err);
+          setGlobalError('Unable to fetch stock selectors. Is the API backend running?');
+        }
+      } finally {
+        if (active) {
+          setLoadingStocks(false);
+        }
+      }
+    }
+
+    loadStocksList();
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
-    if (selectedStockId) {
-      fetchPriceHistory(selectedStockId, 1);
+    if (!selectedStockId) return;
+    let active = true;
+
+    async function loadPriceHistory() {
+      try {
+        const response = await fetch(`${API_BASE}/api/prices/${selectedStockId}?page=1&limit=5`, {
+          credentials: 'include'
+        });
+        if (!response.ok) {
+          throw new Error('Failed to retrieve price recordings.');
+        }
+        const json = await response.json();
+        if (active && json.success) {
+          setPriceHistory(json.data.prices);
+          setPagination(json.data.pagination);
+        }
+      } catch (err: unknown) {
+        if (active) {
+          console.error(err);
+          setGlobalError('Failed to synchronize historical daily logs.');
+        }
+      } finally {
+        if (active) {
+          setLoadingHistory(false);
+        }
+      }
     }
+
+    loadPriceHistory();
+    return () => {
+      active = false;
+    };
   }, [selectedStockId]);
 
   // Handle Recording Creation
@@ -156,7 +191,7 @@ export default function DailyPricesRecording() {
           setGlobalError(json.message || 'Failed to submit price entry.');
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       setGlobalError('Network connection failure while sending price record.');
     }
@@ -203,7 +238,7 @@ export default function DailyPricesRecording() {
           setGlobalError(json.message || 'Failed to update record.');
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       setGlobalError('Network connection failure while updating price record.');
     }
@@ -227,7 +262,7 @@ export default function DailyPricesRecording() {
       } else {
         setGlobalError(json.message || 'Failed to delete record.');
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       setGlobalError('Network connection failure while deleting price record.');
     }

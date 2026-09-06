@@ -13,6 +13,7 @@ import analyticsRouter from './routes/analytics';
 import settingsRouter from './routes/settings';
 import exportRouter from './routes/exports';
 import { initializeAllPollers } from './services/priceFeedService';
+import { getEncryptionSecret } from './utils/crypto';
 
 const app = express();
 const PORT = process.env.PORT || 5001;
@@ -60,6 +61,9 @@ app.get('/health', (req, res) => {
 // Start Server
 async function startServer() {
   try {
+    // Validate required cryptographic secrets on server initialization [NFR4.3]
+    getEncryptionSecret();
+
     // Sync DB and Seed Mock Data
     await initDb();
 
@@ -79,4 +83,9 @@ async function startServer() {
   }
 }
 
-startServer();
+if (process.env.NODE_ENV !== 'test') {
+  startServer();
+}
+
+export { app, startServer };
+export default app;

@@ -97,7 +97,7 @@ export default function StocksCatalog() {
       } else {
         setLivePriceError(json.message || 'Could not fetch live price.');
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       setLivePriceError('Network error checking live price.');
     } finally {
@@ -109,8 +109,7 @@ export default function StocksCatalog() {
   const fetchStocks = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_BASE}/api/stocks`,
-{
+      const response = await fetch(`${API_BASE}/api/stocks`, {
         credentials: 'include'
       });
       if (!response.ok) {
@@ -123,7 +122,7 @@ export default function StocksCatalog() {
       } else {
         throw new Error(json.message);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       setError('Could not connect to the database. Verify that the server is running on Port 5001.');
     } finally {
@@ -132,9 +131,41 @@ export default function StocksCatalog() {
   };
 
   useEffect(() => {
-    fetchStocks();
-    const interval = setInterval(fetchStocks, 30000);
-    return () => clearInterval(interval);
+    let active = true;
+
+    async function loadStocks() {
+      try {
+        const response = await fetch(`${API_BASE}/api/stocks`, {
+          credentials: 'include'
+        });
+        if (!response.ok) {
+          throw new Error('Could not fetch stocks.');
+        }
+        const json = await response.json();
+        if (active && json.success) {
+          setStocks(json.data);
+          setError(null);
+        } else if (active) {
+          throw new Error(json.message);
+        }
+      } catch (err: unknown) {
+        if (active) {
+          console.error(err);
+          setError('Could not connect to the database. Verify that the server is running on Port 5001.');
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadStocks();
+    const interval = setInterval(loadStocks, 30000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
   }, []);
 
   const openAddModal = () => {
@@ -203,7 +234,7 @@ export default function StocksCatalog() {
           setError(json.message || 'Failed to create stock.');
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       setError('Network communication failure while registering stock.');
     }
@@ -240,7 +271,7 @@ export default function StocksCatalog() {
           setError(json.message || 'Failed to update stock.');
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       setError('Network communication failure while editing stock.');
     }
@@ -263,7 +294,7 @@ export default function StocksCatalog() {
       } else {
         setError(json.message || 'Failed to delete stock.');
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       setError('Network communication failure while deleting stock.');
     }
@@ -369,7 +400,7 @@ export default function StocksCatalog() {
           </div>
           <h3 className="text-xl font-bold text-white">No Stocks Match Filters</h3>
           <p className="text-slate-400 text-sm mt-2 max-w-sm">
-            We couldn't find any stocks matching "{searchQuery}" or sector "{selectedCategory}". Add a new stock to get started!
+            We couldn&apos;t find any stocks matching &quot;{searchQuery}&quot; or sector &quot;{selectedCategory}&quot;. Add a new stock to get started!
           </p>
           <button
             onClick={openAddModal}
@@ -600,7 +631,7 @@ export default function StocksCatalog() {
                             stock.name.toLowerCase().includes(searchTerm.toLowerCase())
                           ).length === 0 ? (
                             <div className="p-3 text-xs text-slate-500 text-center">
-                              No matching popular stocks. Try "Custom Ticker"!
+                              No matching popular stocks. Try &quot;Custom Ticker&quot;!
                             </div>
                           ) : (
                             POPULAR_STOCKS.filter(stock => 
@@ -750,7 +781,7 @@ export default function StocksCatalog() {
                       </div>
                       {livePrice.change !== undefined && livePrice.changePercent !== undefined && (
                         <div className="text-right">
-                          <span className="text-[10px] font-bold text-slate-500 uppercase block tracking-wider">Today's Shift</span>
+                          <span className="text-[10px] font-bold text-slate-500 uppercase block tracking-wider">Today&apos;s Shift</span>
                           <span className={`text-xs font-black ${livePrice.change >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                             {livePrice.change >= 0 ? '▲' : '▼'} ${Math.abs(livePrice.change).toFixed(2)} ({livePrice.changePercent.toFixed(2)}%)
                           </span>
