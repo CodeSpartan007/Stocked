@@ -24,3 +24,11 @@ Docs/
 # SQLite WAL temporary files
 *.sqlite-wal
 *.sqlite-shm
+
+# Database backup files
+dbBackups/*.sqlite
+dbBackups/*.sqlite-wal
+dbBackups/*.sqlite-shm
+dbBackups/*.json
+!dbBackups/README.md
+

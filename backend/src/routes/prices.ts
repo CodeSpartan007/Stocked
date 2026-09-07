@@ -51,6 +51,7 @@ router.get(
       return res.status(200).json({
         success: true,
         data: {
+          stockCurrency: stock.currency,
           prices: rows,
           pagination: {
             totalItems: count,

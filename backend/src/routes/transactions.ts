@@ -4,6 +4,7 @@ import { Op, Transaction } from 'sequelize';
 import { sequelize, Stock, Purchase, Sales, UserSetting } from '../models';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
 import { handleValidationErrors } from '../middleware/validate';
+import { getUserCurrencyContext, convertPrice } from '../services/currencyService';
 
 const router = Router();
 
@@ -1010,43 +1011,75 @@ router.get(
         });
       }
 
+      const { baseCurrency, exchangeRate } = await getUserCurrencyContext(userId);
+
       // Fetch all purchases and sales associated with user's stocks
       const purchases = await Purchase.findAll({
         where: { userId },
-        include: [{ model: Stock, as: 'Stock', attributes: ['symbol', 'name'] }],
+        include: [{ model: Stock, as: 'Stock', attributes: ['symbol', 'name', 'currency'] }],
       });
 
       const sales = await Sales.findAll({
         where: { userId },
-        include: [{ model: Stock, as: 'Stock', attributes: ['symbol', 'name'] }],
+        include: [{ model: Stock, as: 'Stock', attributes: ['symbol', 'name', 'currency'] }],
       });
 
       // Map purchases and sales into unified structures
       let combined: any[] = [
-        ...purchases.map((p) => ({
-          id: p.id,
-          type: 'BUY',
-          stockId: p.stockId,
-          symbol: p.Stock?.symbol || 'UNKNOWN',
-          name: p.Stock?.name || 'Unknown',
-          quantity: Number(p.quantity),
-          price: Number(p.purchasePrice),
-          date: p.purchaseDate,
-          profitLoss: null,
-          createdAt: p.createdAt,
-        })),
-        ...sales.map((s) => ({
-          id: s.id,
-          type: 'SELL',
-          stockId: s.stockId,
-          symbol: s.Stock?.symbol || 'UNKNOWN',
-          name: s.Stock?.name || 'Unknown',
-          quantity: Number(s.quantity),
-          price: Number(s.sellPrice),
-          date: s.saleDate,
-          profitLoss: Number(s.profitLoss),
-          createdAt: s.createdAt,
-        })),
+        ...purchases.map((p) => {
+          const stockCurrency = (p.Stock?.currency as 'USD' | 'KES') || 'USD';
+          const nativePrice = Number(p.purchasePrice);
+          const convertedPrice = Number(
+            convertPrice(nativePrice, stockCurrency, baseCurrency, exchangeRate).toFixed(2)
+          );
+          return {
+            id: p.id,
+            type: 'BUY',
+            stockId: p.stockId,
+            symbol: p.Stock?.symbol || 'UNKNOWN',
+            name: p.Stock?.name || 'Unknown',
+            quantity: Number(p.quantity),
+            price: nativePrice,
+            nativePrice,
+            convertedPrice,
+            currency: stockCurrency,
+            baseCurrency,
+            date: p.purchaseDate,
+            profitLoss: null,
+            nativeProfitLoss: null,
+            convertedProfitLoss: null,
+            createdAt: p.createdAt,
+          };
+        }),
+        ...sales.map((s) => {
+          const stockCurrency = (s.Stock?.currency as 'USD' | 'KES') || 'USD';
+          const nativePrice = Number(s.sellPrice);
+          const convertedPrice = Number(
+            convertPrice(nativePrice, stockCurrency, baseCurrency, exchangeRate).toFixed(2)
+          );
+          const nativeProfitLoss = Number(s.profitLoss);
+          const convertedProfitLoss = Number(
+            convertPrice(nativeProfitLoss, stockCurrency, baseCurrency, exchangeRate).toFixed(2)
+          );
+          return {
+            id: s.id,
+            type: 'SELL',
+            stockId: s.stockId,
+            symbol: s.Stock?.symbol || 'UNKNOWN',
+            name: s.Stock?.name || 'Unknown',
+            quantity: Number(s.quantity),
+            price: nativePrice,
+            nativePrice,
+            convertedPrice,
+            currency: stockCurrency,
+            baseCurrency,
+            date: s.saleDate,
+            profitLoss: nativeProfitLoss,
+            nativeProfitLoss,
+            convertedProfitLoss,
+            createdAt: s.createdAt,
+          };
+        }),
       ];
 
       // Filter by date range if provided

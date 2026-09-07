@@ -10,7 +10,8 @@
     "test": "jest --runInBand",
     "migrate": "ts-node src/migrator.ts up",
     "migrate:undo": "ts-node src/migrator.ts down",
-    "migrate:status": "ts-node src/migrator.ts executed"
+    "migrate:status": "ts-node src/migrator.ts executed",
+    "db:backup": "node ../scripts/backup_db.js"
   },
   "dependencies": {
     "@types/bcrypt": "^6.0.0",

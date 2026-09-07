@@ -4,25 +4,30 @@ const express_1 = require("express");
 const models_1 = require("../models");
 const auth_1 = require("../middleware/auth");
 const transactions_1 = require("./transactions");
+const currencyService_1 = require("../services/currencyService");
 const router = (0, express_1.Router)();
 // GET /api/portfolio/summary -> Aggregate portfolio KPIs [FR5]
 router.get('/summary', auth_1.requireAuth, async (req, res) => {
     try {
         const userId = req.user.id;
+        const { baseCurrency, exchangeRate } = await (0, currencyService_1.getUserCurrencyContext)(userId);
         // 1. Fetch all stock counters registered to the user
         const userStocks = await models_1.Stock.findAll({
             where: { userId },
         });
-        const stockIds = userStocks.map((s) => s.id);
         let totalInvestedCapital = 0;
         let totalRealizedPL = 0;
         let totalUnrealizedPL = 0;
         let totalPortfolioValue = 0;
-        // 2. Realized P&L: Sum of all stored profitLoss items from Sales
-        const salesSum = await models_1.Sales.sum('profitLoss', {
+        // 2. Multi-Currency Realized P&L: Fetch all user sales joined with Stock, convert by stock currency
+        const userSales = await models_1.Sales.findAll({
             where: { userId },
+            include: [{ model: models_1.Stock, as: 'Stock', attributes: ['currency'] }],
         });
-        totalRealizedPL = Number(salesSum || 0);
+        totalRealizedPL = userSales.reduce((sum, s) => {
+            const stockCurrency = s.Stock?.currency || 'USD';
+            return sum + (0, currencyService_1.convertPrice)(Number(s.profitLoss), stockCurrency, baseCurrency, exchangeRate);
+        }, 0);
         // 3. Process remaining assets concurrently
         const activeHoldings = [];
         const holdingsAndPrices = await Promise.all(userStocks.map(async (stock) => {
@@ -42,32 +47,43 @@ router.get('/summary', auth_1.requireAuth, async (req, res) => {
             if (!item)
                 continue;
             const { stock, holdings, latestPriceRecord } = item;
-            // Fallback to average purchase price if no daily price feed exists
-            const currentPrice = latestPriceRecord
+            const stockCurrency = stock.currency || 'USD';
+            // Native prices
+            const nativeCurrentPrice = latestPriceRecord
                 ? Number(latestPriceRecord.price)
                 : holdings.averageCost;
-            const remainingShares = holdings.remainingShares;
-            const averageCost = holdings.averageCost;
-            // Cost basis of remaining shares = remaining shares * average purchase cost
-            const costBasisOfRemainingShares = remainingShares * averageCost;
-            // Current Market Value = remaining shares * current price
-            const currentMarketValue = remainingShares * currentPrice;
-            // Unrealized P&L = Current Market Value - Cost Basis
-            const unrealizedPL = currentMarketValue - costBasisOfRemainingShares;
-            totalInvestedCapital += costBasisOfRemainingShares;
+            const nativeRemainingShares = holdings.remainingShares;
+            const nativeAverageCost = holdings.averageCost;
+            const nativeCostBasis = nativeRemainingShares * nativeAverageCost;
+            const nativeMarketValue = nativeRemainingShares * nativeCurrentPrice;
+            const nativeUnrealizedPL = nativeMarketValue - nativeCostBasis;
+            // Converted prices in user's baseCurrency
+            const averageCost = (0, currencyService_1.convertPrice)(nativeAverageCost, stockCurrency, baseCurrency, exchangeRate);
+            const currentPrice = (0, currencyService_1.convertPrice)(nativeCurrentPrice, stockCurrency, baseCurrency, exchangeRate);
+            const costBasis = (0, currencyService_1.convertPrice)(nativeCostBasis, stockCurrency, baseCurrency, exchangeRate);
+            const marketValue = (0, currencyService_1.convertPrice)(nativeMarketValue, stockCurrency, baseCurrency, exchangeRate);
+            const unrealizedPL = marketValue - costBasis;
+            totalInvestedCapital += costBasis;
             totalUnrealizedPL += unrealizedPL;
-            totalPortfolioValue += currentMarketValue;
+            totalPortfolioValue += marketValue;
             activeHoldings.push({
                 id: stock.id,
                 symbol: stock.symbol,
                 name: stock.name,
                 category: stock.category,
-                remainingShares: Number(remainingShares.toFixed(4)),
+                currency: baseCurrency,
+                nativeCurrency: stockCurrency,
+                remainingShares: Number(nativeRemainingShares.toFixed(4)),
                 averageCost: Number(averageCost.toFixed(2)),
                 currentPrice: Number(currentPrice.toFixed(2)),
-                costBasis: Number(costBasisOfRemainingShares.toFixed(2)),
-                marketValue: Number(currentMarketValue.toFixed(2)),
+                costBasis: Number(costBasis.toFixed(2)),
+                marketValue: Number(marketValue.toFixed(2)),
                 unrealizedPL: Number(unrealizedPL.toFixed(2)),
+                nativeAverageCost: Number(nativeAverageCost.toFixed(2)),
+                nativeCurrentPrice: Number(nativeCurrentPrice.toFixed(2)),
+                nativeCostBasis: Number(nativeCostBasis.toFixed(2)),
+                nativeMarketValue: Number(nativeMarketValue.toFixed(2)),
+                nativeUnrealizedPL: Number(nativeUnrealizedPL.toFixed(2)),
             });
         }
         return res.status(200).json({
@@ -78,6 +94,8 @@ router.get('/summary', auth_1.requireAuth, async (req, res) => {
                 realizedPL: Number(totalRealizedPL.toFixed(2)),
                 unrealizedPL: Number(totalUnrealizedPL.toFixed(2)),
                 holdings: activeHoldings,
+                currency: baseCurrency,
+                exchangeRate,
             },
         });
     }

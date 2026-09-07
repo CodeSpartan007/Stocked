@@ -6,15 +6,19 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import ExportActionsDropdown from '../components/ExportActionsDropdown';
 import { useAuth } from '@/app/context/AuthContext';
+import { useCurrency } from '@/app/context/CurrencyContext';
 
 interface StockSummary {
   id: string;
   name: string;
   symbol: string;
   category: string;
+  currency?: 'USD' | 'KES';
   summary: {
     totalPriceRecords: number;
     latestPrice: number;
+    nativeLatestPrice?: number;
+    nativeCurrency?: 'USD' | 'KES';
     priceChange: number;
     priceChangePercent: number;
     source?: 'live' | 'manual fallback' | 'cache';
@@ -27,6 +31,7 @@ interface PortfolioSummary {
   totalInvestedCapital: number;
   realizedPL: number;
   unrealizedPL: number;
+  currency?: 'USD' | 'KES';
 }
 
 interface RecentTransaction {
@@ -35,8 +40,12 @@ interface RecentTransaction {
   stockId: string;
   symbol: string;
   name: string;
+  currency?: 'USD' | 'KES';
+  baseCurrency?: 'USD' | 'KES';
   quantity: number;
   price: number;
+  nativePrice?: number;
+  convertedPrice?: number;
   date: string;
   profitLoss: number | null;
 }
@@ -44,6 +53,8 @@ interface RecentTransaction {
 interface LiveTickerItem {
   symbol: string;
   price: number;
+  nativePrice?: number;
+  nativeCurrency?: 'USD' | 'KES';
   change: number;
   changePercent: number;
   source: 'live' | 'manual fallback' | 'cache';
@@ -61,6 +72,7 @@ interface BenchmarkItem {
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const { baseCurrency, convert, formatMoney } = useCurrency();
   const [stocks, setStocks] = useState<StockSummary[]>([]);
   const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null);
   const [recentTx, setRecentTx] = useState<RecentTransaction[]>([]);
@@ -177,7 +189,7 @@ export default function Dashboard() {
                     }`}
                   >
                     <span className="font-extrabold text-main font-mono tracking-wider">{item.symbol}</span>
-                    <span className="font-bold font-mono text-main">${item.price.toFixed(2)}</span>
+                    <span className="font-bold font-mono text-main">{formatMoney(item.price, baseCurrency)}</span>
                     <span className="flex items-center gap-0.5 text-[10px] font-black">
                       {isPositive ? '▲' : '▼'} {Math.abs(item.changePercent).toFixed(2)}%
                     </span>
@@ -229,12 +241,17 @@ export default function Dashboard() {
           <div className="bg-surface backdrop-blur-xl border border-subtle hover:border-[#e0ff4f] rounded-2xl p-6 shadow-lg group transition-all duration-300 relative overflow-hidden">
             <div className="absolute top-0 left-0 right-0 h-1.5 bg-[#e0ff4f] shadow-[0_0_12px_rgba(224,255,79,0.3)]" />
             <div>
-              <p className="text-xs font-bold tracking-wider text-muted uppercase">Total Portfolio Value</p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-bold tracking-wider text-muted uppercase">Total Portfolio Value</p>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-[#e0ff4f]/20 text-main border border-[#e0ff4f]/30">
+                  {baseCurrency}
+                </span>
+              </div>
               <h3 className="text-2xl font-black text-main mt-2 group-hover:scale-105 transition-transform duration-200 origin-left">
                 {loading ? (
                   <span className="inline-block w-24 h-8 rounded bg-surface-elevated animate-pulse" />
                 ) : (
-                  `$${(portfolio?.totalPortfolioValue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  formatMoney(portfolio?.totalPortfolioValue ?? 0, baseCurrency)
                 )}
               </h3>
               <p className="text-[11px] font-semibold text-[#00272b] dark:text-[#e0ff4f] mt-2">Combined holdings market valuation</p>
@@ -245,12 +262,17 @@ export default function Dashboard() {
           <div className="bg-surface backdrop-blur-xl border border-subtle hover:border-strong rounded-2xl p-6 shadow-lg group transition-all duration-300 relative overflow-hidden">
             <div className="absolute top-0 left-0 right-0 h-1.5 bg-[#00272b] dark:bg-[#0d7b88]" />
             <div>
-              <p className="text-xs font-bold tracking-wider text-muted uppercase">Total Money Put In</p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-bold tracking-wider text-muted uppercase">Total Money Put In</p>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-surface-elevated text-muted border border-subtle">
+                  {baseCurrency}
+                </span>
+              </div>
               <h3 className="text-2xl font-black text-main mt-2 group-hover:scale-105 transition-transform duration-200 origin-left">
                 {loading ? (
                   <span className="inline-block w-24 h-8 rounded bg-surface-elevated animate-pulse" />
                 ) : (
-                  `$${(portfolio?.totalInvestedCapital ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  formatMoney(portfolio?.totalInvestedCapital ?? 0, baseCurrency)
                 )}
               </h3>
               <p className="text-[11px] font-medium text-secondary mt-2">Money put into your active shares</p>
@@ -269,14 +291,19 @@ export default function Dashboard() {
               loading ? 'bg-surface-elevated' : (portfolio?.realizedPL ?? 0) >= 0 ? 'bg-emerald-500' : 'bg-rose-500'
             }`} />
             <div>
-              <p className="text-xs font-bold tracking-wider text-muted uppercase">Locked-in Profit</p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-bold tracking-wider text-muted uppercase">Locked-in Profit</p>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-surface-elevated text-muted border border-subtle">
+                  {baseCurrency}
+                </span>
+              </div>
               <h3 className={`text-2xl font-black mt-2 group-hover:scale-105 transition-transform duration-200 origin-left ${
                 loading ? 'text-main' : (portfolio?.realizedPL ?? 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
               }`}>
                 {loading ? (
                   <span className="inline-block w-24 h-8 rounded bg-surface-elevated animate-pulse" />
                 ) : (
-                  `${(portfolio?.realizedPL ?? 0) >= 0 ? '+' : ''}$${(portfolio?.realizedPL ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  `${(portfolio?.realizedPL ?? 0) >= 0 ? '+' : ''}${formatMoney(portfolio?.realizedPL ?? 0, baseCurrency)}`
                 )}
               </h3>
               <p className="text-[11px] font-medium text-secondary mt-2">Profit from sold shares</p>
@@ -295,14 +322,19 @@ export default function Dashboard() {
               loading ? 'bg-surface-elevated' : (portfolio?.unrealizedPL ?? 0) >= 0 ? 'bg-emerald-500' : 'bg-rose-500'
             }`} />
             <div>
-              <p className="text-xs font-bold tracking-wider text-muted uppercase">Current Paper Value Change</p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-bold tracking-wider text-muted uppercase">Current Paper Value Change</p>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-surface-elevated text-muted border border-subtle">
+                  {baseCurrency}
+                </span>
+              </div>
               <h3 className={`text-2xl font-black mt-2 group-hover:scale-105 transition-transform duration-200 origin-left ${
                 loading ? 'text-main' : (portfolio?.unrealizedPL ?? 0) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
               }`}>
                 {loading ? (
                   <span className="inline-block w-24 h-8 rounded bg-surface-elevated animate-pulse" />
                 ) : (
-                  `${(portfolio?.unrealizedPL ?? 0) >= 0 ? '+' : ''}$${(portfolio?.unrealizedPL ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  `${(portfolio?.unrealizedPL ?? 0) >= 0 ? '+' : ''}${formatMoney(portfolio?.unrealizedPL ?? 0, baseCurrency)}`
                 )}
               </h3>
               <p className="text-[11px] font-medium text-secondary mt-2">Active investment value change</p>
@@ -428,7 +460,23 @@ export default function Dashboard() {
                       <td className="px-4 py-3 text-right font-mono text-secondary">
                         {tx.quantity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
                       </td>
-                      <td className="px-4 py-3 text-right font-mono text-secondary">${tx.price.toFixed(2)}</td>
+                      <td className="px-4 py-3 text-right font-mono text-secondary">
+                        <div>
+                          {formatMoney(
+                            tx.currency && tx.currency !== baseCurrency
+                              ? (tx.baseCurrency === baseCurrency && tx.convertedPrice !== undefined
+                                  ? tx.convertedPrice
+                                  : convert(tx.price, tx.currency, baseCurrency))
+                              : tx.price,
+                            baseCurrency
+                          )}
+                        </div>
+                        {tx.currency && tx.currency !== baseCurrency && (
+                          <div className="text-[10px] text-muted font-normal">
+                            {formatMoney(tx.nativePrice ?? tx.price, tx.currency)}
+                          </div>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-right text-muted">{tx.date}</td>
                     </tr>
                   ))}
@@ -477,10 +525,10 @@ export default function Dashboard() {
                         {stock.summary.totalPriceRecords > 0 ? (
                           <>
                             <span className="text-[11px] font-extrabold text-main font-mono">
-                              ${stock.summary.latestPrice.toFixed(2)}
+                              {formatMoney(stock.summary.latestPrice, baseCurrency)}
                             </span>
                             <span className={`text-[9px] font-bold ${isPositive ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                              {isPositive ? '+' : ''}{stock.summary.priceChange.toFixed(2)} ({isPositive ? '+' : ''}{stock.summary.priceChangePercent.toFixed(2)}%)
+                              {isPositive ? '+' : ''}{formatMoney(stock.summary.priceChange, baseCurrency)} ({isPositive ? '+' : ''}{stock.summary.priceChangePercent.toFixed(2)}%)
                             </span>
                           </>
                         ) : (

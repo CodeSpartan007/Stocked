@@ -3,20 +3,26 @@
 import { API_BASE } from '../../lib/api';
 
 import React, { useEffect, useState } from 'react';
+import { useCurrency } from '@/app/context/CurrencyContext';
 
 interface StockSummary {
   id: string;
   name: string;
   symbol: string;
+  currency?: 'USD' | 'KES';
   description: string | null;
   category: string;
   summary: {
     totalPriceRecords: number;
     latestPrice: number;
+    nativeLatestPrice?: number;
     latestPriceDate: string;
     averagePrice: number;
+    nativeAveragePrice?: number;
     highestPrice: number;
+    nativeHighestPrice?: number;
     lowestPrice: number;
+    nativeLowestPrice?: number;
     priceChange: number;
     priceChangePercent: number;
     source?: 'live' | 'cache' | 'manual fallback';
@@ -24,29 +30,49 @@ interface StockSummary {
   };
 }
 
-const POPULAR_STOCKS = [
-  { symbol: 'AAPL', name: 'Apple Inc.', category: 'Technology', description: 'Consumer electronics, software, and services company.' },
-  { symbol: 'MSFT', name: 'Microsoft Corporation', category: 'Technology', description: 'Software, services, devices, and cloud computing company.' },
-  { symbol: 'TSLA', name: 'Tesla, Inc.', category: 'Automotive', description: 'Electric vehicles, clean energy, and battery storage company.' },
-  { symbol: 'NVDA', name: 'NVIDIA Corporation', category: 'Technology', description: 'Graphics processing units (GPUs) and artificial intelligence technologies.' },
-  { symbol: 'AMZN', name: 'Amazon.com, Inc.', category: 'Retail', description: 'E-commerce, cloud computing, online advertising, and digital streaming.' },
-  { symbol: 'GOOGL', name: 'Alphabet Inc.', category: 'Technology', description: 'Search engine, online advertising, cloud computing, and hardware.' },
-  { symbol: 'META', name: 'Meta Platforms, Inc.', category: 'Technology', description: 'Social media, online advertising, and virtual reality company.' },
-  { symbol: 'NFLX', name: 'Netflix, Inc.', category: 'Other', description: 'Subscription-based streaming service and production company.' },
-  { symbol: 'AMD', name: 'Advanced Micro Devices, Inc.', category: 'Technology', description: 'Semiconductor company that designs computer processors and technologies.' },
-  { symbol: 'INTC', name: 'Intel Corporation', category: 'Technology', description: 'Semiconductor design and manufacturing company.' },
-  { symbol: 'BABA', name: 'Alibaba Group Holding Limited', category: 'Retail', description: 'E-commerce, retail, internet, and technology company.' },
-  { symbol: 'DIS', name: 'The Walt Disney Company', category: 'Other', description: 'Diversified mass media and entertainment conglomerate.' },
-  { symbol: 'PYPL', name: 'PayPal Holdings, Inc.', category: 'Financials', description: 'Online payments system operator.' },
-  { symbol: 'COIN', name: 'Coinbase Global, Inc.', category: 'Financials', description: 'Cryptocurrency exchange platform.' },
-  { symbol: 'JPM', name: 'JPMorgan Chase & Co.', category: 'Financials', description: 'Multinational banking and financial services.' },
-  { symbol: 'V', name: 'Visa Inc.', category: 'Financials', description: 'Multinational financial services corporation.' },
-  { symbol: 'XOM', name: 'Exxon Mobil Corporation', category: 'Energy', description: 'Multinational oil and gas corporation.' },
-  { symbol: 'JNJ', name: 'Johnson & Johnson', category: 'Health', description: 'Multinational corporation developing medical devices and pharmaceuticals.' },
-  { symbol: 'WMT', name: 'Walmart Inc.', category: 'Retail', description: 'Multinational retail corporation operating hypermarkets.' },
+const POPULAR_STOCKS: { symbol: string; name: string; category: string; description: string; currency: 'USD' | 'KES' }[] = [
+  // Nairobi Securities Exchange (Kenya)
+  { symbol: 'SCOM', name: 'Safaricom Plc', category: 'Technology', currency: 'KES', description: 'Leading telecommunications, mobile money (M-Pesa), and data services provider in Kenya.' },
+  { symbol: 'EQTY', name: 'Equity Group Holdings Ltd', category: 'Financials', currency: 'KES', description: 'Leading financial services and banking conglomerate operating in East and Central Africa.' },
+  { symbol: 'KCB', name: 'KCB Group Plc', category: 'Financials', currency: 'KES', description: 'One of the oldest and largest commercial banking groups in East Africa.' },
+  { symbol: 'EABL', name: 'East African Breweries Ltd', category: 'Consumer Goods', currency: 'KES', description: 'Leading alcoholic beverage producer, brewery, and spirits distributor in East Africa.' },
+  { symbol: 'COOP', name: 'Co-operative Bank of Kenya', category: 'Financials', currency: 'KES', description: 'Major commercial bank providing services to retail and cooperative societies.' },
+  { symbol: 'BAT', name: 'British American Tobacco Kenya', category: 'Consumer Goods', currency: 'KES', description: 'Cigarette, tobacco, and nicotine product manufacturing and distribution.' },
+  { symbol: 'ABSA', name: 'Absa Bank Kenya Plc', category: 'Financials', currency: 'KES', description: 'Full-service commercial bank operating across corporate and retail banking.' },
+  { symbol: 'SCBK', name: 'Standard Chartered Bank Kenya', category: 'Financials', currency: 'KES', description: 'Tier-1 international commercial bank operating in Kenya.' },
+  { symbol: 'NCBA', name: 'NCBA Group Plc', category: 'Financials', currency: 'KES', description: 'Financial services group formed through CBA and NIC Bank merger.' },
+  { symbol: 'KEGN', name: 'KenGen Plc', category: 'Energy', currency: 'KES', description: 'Kenya Electricity Generating Company, leading electric power generation.' },
+  { symbol: 'KPLC', name: 'Kenya Power & Lighting Company', category: 'Energy', currency: 'KES', description: 'National electricity transmission and retail distribution utility.' },
+  { symbol: 'BAMB', name: 'Bamburi Cement Ltd', category: 'Industrial', currency: 'KES', description: 'Leading cement and building materials manufacturer in East Africa.' },
+  { symbol: 'BRIT', name: 'Britam Holdings Ltd', category: 'Financials', currency: 'KES', description: 'Diversified financial services, insurance, and asset management group.' },
+  { symbol: 'NSE', name: 'Nairobi Securities Exchange Plc', category: 'Financials', currency: 'KES', description: 'The principal securities exchange in Kenya providing listing and trading.' },
+  { symbol: 'CIC', name: 'CIC Insurance Group Ltd', category: 'Financials', currency: 'KES', description: 'Micro-insurance, life insurance, and general insurance solutions.' },
+  { symbol: 'SASN', name: 'Sasini Plc', category: 'Agriculture', currency: 'KES', description: 'Tea, coffee, macadamia nuts, and avocado agribusiness.' },
+
+  // US & International Equities
+  { symbol: 'AAPL', name: 'Apple Inc.', category: 'Technology', currency: 'USD', description: 'Consumer electronics, software, and services company.' },
+  { symbol: 'MSFT', name: 'Microsoft Corporation', category: 'Technology', currency: 'USD', description: 'Software, services, devices, and cloud computing company.' },
+  { symbol: 'TSLA', name: 'Tesla, Inc.', category: 'Automotive', currency: 'USD', description: 'Electric vehicles, clean energy, and battery storage company.' },
+  { symbol: 'NVDA', name: 'NVIDIA Corporation', category: 'Technology', currency: 'USD', description: 'Graphics processing units (GPUs) and artificial intelligence technologies.' },
+  { symbol: 'AMZN', name: 'Amazon.com, Inc.', category: 'Retail', currency: 'USD', description: 'E-commerce, cloud computing, online advertising, and digital streaming.' },
+  { symbol: 'GOOGL', name: 'Alphabet Inc.', category: 'Technology', currency: 'USD', description: 'Search engine, online advertising, cloud computing, and hardware.' },
+  { symbol: 'META', name: 'Meta Platforms, Inc.', category: 'Technology', currency: 'USD', description: 'Social media, online advertising, and virtual reality company.' },
+  { symbol: 'NFLX', name: 'Netflix, Inc.', category: 'Other', currency: 'USD', description: 'Subscription-based streaming service and production company.' },
+  { symbol: 'AMD', name: 'Advanced Micro Devices, Inc.', category: 'Technology', currency: 'USD', description: 'Semiconductor company that designs computer processors and technologies.' },
+  { symbol: 'INTC', name: 'Intel Corporation', category: 'Technology', currency: 'USD', description: 'Semiconductor design and manufacturing company.' },
+  { symbol: 'BABA', name: 'Alibaba Group Holding Limited', category: 'Retail', currency: 'USD', description: 'E-commerce, retail, internet, and technology company.' },
+  { symbol: 'DIS', name: 'The Walt Disney Company', category: 'Other', currency: 'USD', description: 'Diversified mass media and entertainment conglomerate.' },
+  { symbol: 'PYPL', name: 'PayPal Holdings, Inc.', category: 'Financials', currency: 'USD', description: 'Online payments system operator.' },
+  { symbol: 'COIN', name: 'Coinbase Global, Inc.', category: 'Financials', currency: 'USD', description: 'Cryptocurrency exchange platform.' },
+  { symbol: 'JPM', name: 'JPMorgan Chase & Co.', category: 'Financials', currency: 'USD', description: 'Multinational banking and financial services.' },
+  { symbol: 'V', name: 'Visa Inc.', category: 'Financials', currency: 'USD', description: 'Multinational financial services corporation.' },
+  { symbol: 'XOM', name: 'Exxon Mobil Corporation', category: 'Energy', currency: 'USD', description: 'Multinational oil and gas corporation.' },
+  { symbol: 'JNJ', name: 'Johnson & Johnson', category: 'Health', currency: 'USD', description: 'Multinational corporation developing medical devices and pharmaceuticals.' },
+  { symbol: 'WMT', name: 'Walmart Inc.', category: 'Retail', currency: 'USD', description: 'Multinational retail corporation operating hypermarkets.' },
 ];
 
 export default function StocksCatalog() {
+  const { baseCurrency, convert, formatMoney } = useCurrency();
   const [stocks, setStocks] = useState<StockSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -65,6 +91,7 @@ export default function StocksCatalog() {
   const [formSymbol, setFormSymbol] = useState('');
   const [formCategory, setFormCategory] = useState('Technology');
   const [formDescription, setFormDescription] = useState('');
+  const [formCurrency, setFormCurrency] = useState<'USD' | 'KES'>('USD');
   const [activeStockId, setActiveStockId] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<{ field: string; message: string }[]>([]);
 
@@ -72,7 +99,7 @@ export default function StocksCatalog() {
   const [useCustomTicker, setUseCustomTicker] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [livePrice, setLivePrice] = useState<{ price: number; provider: string; change?: number; changePercent?: number } | null>(null);
+  const [livePrice, setLivePrice] = useState<{ price: number; provider: string; change?: number; changePercent?: number; currency?: 'USD' | 'KES' } | null>(null);
   const [livePriceError, setLivePriceError] = useState<string | null>(null);
   const [livePriceLoading, setLivePriceLoading] = useState(false);
 
@@ -88,7 +115,7 @@ export default function StocksCatalog() {
       });
       let json: {
         success?: boolean;
-        data?: { price: number; provider: string; change?: number; changePercent?: number };
+        data?: { price: number; provider: string; change?: number; changePercent?: number; currency?: 'USD' | 'KES' };
         message?: string;
       } | null = null;
       try {
@@ -98,6 +125,9 @@ export default function StocksCatalog() {
       }
       if (res.ok && json?.success && json.data) {
         setLivePrice(json.data);
+        if (json.data.currency) {
+          setFormCurrency(json.data.currency);
+        }
       } else {
         setLivePriceError(json?.message || 'Live quote not reachable right now.');
       }
@@ -170,6 +200,7 @@ export default function StocksCatalog() {
     setFormSymbol(firstStock.symbol);
     setFormCategory(firstStock.category);
     setFormDescription(firstStock.description);
+    setFormCurrency(firstStock.currency);
     setLivePrice(null);
     setLivePriceError(null);
     setValidationErrors([]);
@@ -183,6 +214,7 @@ export default function StocksCatalog() {
     setFormSymbol(stock.symbol);
     setFormCategory(stock.category);
     setFormDescription(stock.description || '');
+    setFormCurrency(stock.currency || 'USD');
     setValidationErrors([]);
     setEditModalOpen(true);
   };
@@ -208,6 +240,7 @@ export default function StocksCatalog() {
           symbol: formSymbol,
           category: formCategory,
           description: formDescription,
+          currency: formCurrency,
         }),
         credentials: 'include',
       });
@@ -298,7 +331,7 @@ export default function StocksCatalog() {
   });
 
   // Unique categories list
-  const categoriesList = ['All', 'Technology', 'Automotive', 'Financials', 'Health', 'Energy', 'Retail', 'Other'];
+  const categoriesList = ['All', 'Technology', 'Financials', 'Consumer Goods', 'Industrial', 'Energy', 'Agriculture', 'Automotive', 'Health', 'Retail', 'Other'];
 
   const getFieldError = (fieldName: string) => {
     return validationErrors.find((err) => err.field === fieldName)?.message;
@@ -425,12 +458,15 @@ export default function StocksCatalog() {
                 {/* Top Row: Symbol, Category & Action buttons */}
                 <div className="flex justify-between items-start mb-4">
                   <div className="flex-1">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                       <span className="inline-flex items-center justify-center px-3 py-1 text-sm font-mono font-black tracking-wider bg-surface-elevated border border-subtle text-main rounded-lg">
                         {stock.symbol}
                       </span>
+                      <span className="px-1.5 py-0.5 text-[9px] font-bold font-mono bg-surface-elevated border border-subtle text-muted rounded uppercase">
+                        {stock.currency || 'USD'}
+                      </span>
                       {hasData && (
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 ml-1">
                           <span className="relative flex h-2 w-2">
                             <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
                               stock.summary.source === 'live' ? 'bg-cyan-400' : 'bg-amber-400'
@@ -495,7 +531,14 @@ export default function StocksCatalog() {
                     <div className="grid grid-cols-3 gap-2 text-center">
                       <div className="bg-surface-elevated rounded-xl p-2.5 border border-subtle">
                         <p className="text-[10px] font-bold text-muted uppercase tracking-wider">Latest Price</p>
-                        <p className="text-sm font-bold text-main mt-1 font-mono">${stock.summary.latestPrice.toFixed(2)}</p>
+                        <p className="text-sm font-bold text-main mt-1 font-mono">
+                          {formatMoney(stock.summary.nativeLatestPrice ?? stock.summary.latestPrice, stock.currency || 'USD')}
+                        </p>
+                        {(stock.currency || 'USD') !== baseCurrency && (
+                          <span className="text-[9px] text-muted block font-mono">
+                            ≈ {formatMoney(stock.summary.latestPrice ?? convert(stock.summary.nativeLatestPrice ?? stock.summary.latestPrice, stock.currency || 'USD', baseCurrency), baseCurrency)}
+                          </span>
+                        )}
                         <span className={`inline-flex text-[9px] font-black mt-1 ${isChangePositive ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                           {isChangePositive ? '▲' : '▼'} {Math.abs(stock.summary.priceChangePercent).toFixed(1)}%
                         </span>
@@ -503,7 +546,9 @@ export default function StocksCatalog() {
 
                       <div className="bg-surface-elevated rounded-xl p-2.5 border border-subtle">
                         <p className="text-[10px] font-bold text-muted uppercase tracking-wider">Avg Price</p>
-                        <p className="text-sm font-bold text-main mt-1 font-mono">${stock.summary.averagePrice.toFixed(2)}</p>
+                        <p className="text-sm font-bold text-main mt-1 font-mono">
+                          {formatMoney(stock.summary.nativeAveragePrice ?? stock.summary.averagePrice, stock.currency || 'USD')}
+                        </p>
                         <span className="text-[9px] font-medium text-muted mt-1 block">
                           History mean
                         </span>
@@ -512,7 +557,7 @@ export default function StocksCatalog() {
                       <div className="bg-surface-elevated rounded-xl p-2.5 border border-subtle">
                         <p className="text-[10px] font-bold text-muted uppercase tracking-wider">Price Range</p>
                         <p className="text-[11px] font-bold text-main mt-1.5 truncate font-mono">
-                          ${stock.summary.lowestPrice.toFixed(0)} - ${stock.summary.highestPrice.toFixed(0)}
+                          {formatMoney(stock.summary.nativeLowestPrice ?? stock.summary.lowestPrice, stock.currency || 'USD', 0)} - {formatMoney(stock.summary.nativeHighestPrice ?? stock.summary.highestPrice, stock.currency || 'USD', 0)}
                         </p>
                         <span className="text-[9px] font-bold text-[#00272b] dark:text-[#e0ff4f] mt-1 block">
                           {stock.summary.totalPriceRecords} log(s)
@@ -642,6 +687,7 @@ export default function StocksCatalog() {
                                   setFormSymbol(stock.symbol);
                                   setFormCategory(stock.category);
                                   setFormDescription(stock.description || '');
+                                  setFormCurrency(stock.currency);
                                   setSearchTerm(`${stock.symbol} - ${stock.name}`);
                                   setDropdownOpen(false);
                                   fetchLivePrice(stock.symbol);
@@ -654,7 +700,7 @@ export default function StocksCatalog() {
                                   </span>
                                   <span className="text-xs font-bold text-main">{stock.name}</span>
                                 </div>
-                                <span className="text-[10px] text-muted font-semibold">{stock.category}</span>
+                                <span className="text-[10px] text-muted font-semibold">{stock.category} ({stock.currency})</span>
                               </div>
                             ))
                           )}
@@ -674,6 +720,10 @@ export default function StocksCatalog() {
                         <div>
                           <span className="block text-[10px] font-bold text-muted uppercase tracking-wider">Sector</span>
                           <span className="inline-flex px-2 py-0.5 text-[9px] font-bold bg-surface border border-subtle text-secondary rounded mt-1">{formCategory}</span>
+                        </div>
+                        <div>
+                          <span className="block text-[10px] font-bold text-muted uppercase tracking-wider">Currency</span>
+                          <span className="inline-flex px-2 py-0.5 text-[9px] font-bold bg-surface border border-subtle text-secondary rounded mt-1 font-mono">{formCurrency}</span>
                         </div>
                       </div>
                       {formDescription && (
@@ -741,6 +791,18 @@ export default function StocksCatalog() {
                   </div>
 
                   <div>
+                    <label className="block text-xs font-bold text-muted uppercase mb-2">Trading Currency</label>
+                    <select
+                      value={formCurrency}
+                      onChange={(e) => setFormCurrency(e.target.value as 'USD' | 'KES')}
+                      className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-4 py-2.5 text-sm text-main focus:outline-none transition-all cursor-pointer font-semibold"
+                    >
+                      <option value="USD">USD ($) — US Dollars</option>
+                      <option value="KES">KES (KSh) — Kenyan Shilling</option>
+                    </select>
+                  </div>
+
+                  <div>
                     <label className="block text-xs font-bold text-muted uppercase mb-2">Description (Optional)</label>
                     <textarea
                       placeholder="Details about company profile or metrics..."
@@ -774,13 +836,15 @@ export default function StocksCatalog() {
                     <div className="flex items-center justify-between">
                       <div>
                         <span className="text-[10px] font-bold text-muted uppercase block tracking-wider">Current Market Price</span>
-                        <span className="text-lg font-black text-main font-mono">${livePrice.price.toFixed(2)}</span>
+                        <span className="text-lg font-black text-main font-mono">
+                          {formatMoney(livePrice.price, livePrice.currency || formCurrency)}
+                        </span>
                       </div>
                       {livePrice.change !== undefined && livePrice.changePercent !== undefined && (
                         <div className="text-right">
                           <span className="text-[10px] font-bold text-muted uppercase block tracking-wider">Today&apos;s Shift</span>
                           <span className={`text-xs font-black ${livePrice.change >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                            {livePrice.change >= 0 ? '▲' : '▼'} ${Math.abs(livePrice.change).toFixed(2)} ({livePrice.changePercent.toFixed(2)}%)
+                            {livePrice.change >= 0 ? '▲' : '▼'} {formatMoney(Math.abs(livePrice.change), livePrice.currency || formCurrency)} ({livePrice.changePercent.toFixed(2)}%)
                           </span>
                         </div>
                       )}
@@ -861,6 +925,16 @@ export default function StocksCatalog() {
                     </option>
                   ))}
                 </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-muted uppercase mb-2">Trading Currency</label>
+                <div className="w-full bg-surface-elevated/60 border border-subtle rounded-xl px-4 py-2.5 text-xs text-secondary font-mono font-bold">
+                  {formCurrency === 'KES' ? 'KES (KSh) — Kenyan Shilling' : 'USD ($) — US Dollars'}
+                </div>
+                <p className="text-[10px] text-muted mt-1">
+                  Trading currency cannot be modified to preserve transaction and ledger integrity.
+                </p>
               </div>
 
               <div>

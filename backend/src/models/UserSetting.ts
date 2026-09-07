@@ -5,13 +5,17 @@ import { encrypt, decrypt } from '../utils/crypto';
 
 export class UserSetting extends Model {
   declare userId: string;
-  declare provider: 'alphavantage' | 'polygon' | 'manual';
+  declare provider: 'alphavantage' | 'polygon' | 'nse' | 'manual';
   declare apiKey: string | null;
   declare alphaVantageApiKey: string | null;
   declare polygonApiKey: string | null;
   declare autoSwitchOnRateLimit: boolean;
   declare refreshInterval: number;
   declare costBasisMethod: 'average' | 'fifo';
+  declare baseCurrency: 'USD' | 'KES';
+  declare exchangeRate: number;
+  declare customExchangeRate: number | null;
+  declare exchangeRateUpdatedAt: Date | null;
 
   declare readonly createdAt: Date;
   declare readonly updatedAt: Date;
@@ -30,7 +34,7 @@ UserSetting.init(
       onDelete: 'CASCADE',
     },
     provider: {
-      type: DataTypes.ENUM('alphavantage', 'polygon', 'manual'),
+      type: DataTypes.ENUM('alphavantage', 'polygon', 'nse', 'manual'),
       allowNull: false,
       defaultValue: 'manual',
     },
@@ -124,6 +128,26 @@ UserSetting.init(
       type: DataTypes.ENUM('average', 'fifo'),
       allowNull: false,
       defaultValue: 'average',
+    },
+    baseCurrency: {
+      type: DataTypes.STRING(10),
+      allowNull: false,
+      defaultValue: 'USD',
+    },
+    exchangeRate: {
+      type: DataTypes.DECIMAL(12, 4),
+      allowNull: false,
+      defaultValue: 130.00,
+    },
+    customExchangeRate: {
+      type: DataTypes.DECIMAL(12, 4),
+      allowNull: true,
+      defaultValue: null,
+    },
+    exchangeRateUpdatedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      defaultValue: null,
     },
   },
   {

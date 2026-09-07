@@ -5,6 +5,7 @@ import { API_BASE } from '../../lib/api';
 import React, { useEffect, useState, useRef } from 'react';
 import ExportActionsDropdown from '../../components/ExportActionsDropdown';
 import { useTheme } from '@/app/context/ThemeContext';
+import { useCurrency } from '@/app/context/CurrencyContext';
 import {
   XAxis,
   YAxis,
@@ -64,6 +65,12 @@ interface AdvancedMetrics {
   }[];
   totalPortfolioValue: number;
   totalInvestedCapital: number;
+  currency?: 'USD' | 'KES';
+  scopedStock?: {
+    id: string;
+    symbol: string;
+    name: string;
+  } | null;
 }
 
 interface PerformanceTarget {
@@ -71,6 +78,8 @@ interface PerformanceTarget {
   targetName: string;
   targetType: 'portfolio_value' | 'total_return' | 'annualized_return';
   targetValue: number;
+  currency?: 'USD' | 'KES';
+  normalizedTargetValue?: number;
   targetDate: string;
   isAchieved: boolean;
   currentValue: number;
@@ -84,43 +93,84 @@ interface BenchmarkItem {
   startPrice: number | null;
   endPrice: number | null;
   performanceGain: number;
+  currency?: 'USD' | 'KES';
+  insufficientHistory?: boolean;
 }
+
+export type DatePreset = '1M' | '3M' | '6M' | 'YTD' | '1Y' | 'ALL' | 'CUSTOM';
 
 export default function AnalyticsPage() {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
+  const { baseCurrency, symbol, formatMoney } = useCurrency();
 
-  // Dynamically compute the first and last day of the current month (YYYY-MM-DD)
-  const getInitialDates = () => {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = today.getMonth();
-    
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
+  // Date states - defaults to ALL (All Time) to display complete historical performance
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [activePreset, setActivePreset] = useState<DatePreset>('ALL');
 
-    const format = (date: Date) => {
-      const y = date.getFullYear();
-      const m = String(date.getMonth() + 1).padStart(2, '0');
-      const d = String(date.getDate()).padStart(2, '0');
-      return `${y}-${m}-${d}`;
-    };
-
-    return {
-      start: format(firstDay),
-      end: format(lastDay),
-    };
-  };
-
-  const initialDates = getInitialDates();
-
-  // Date states
-  const [startDate, setStartDate] = useState(initialDates.start);
-  const [endDate, setEndDate] = useState(initialDates.end);
-
-  // Selected Stock ID for chart filtering ('portfolio' or specific stock ID)
+  // Selected Stock ID for chart & metric filtering ('portfolio' or specific stock ID)
   const [selectedStockId, setSelectedStockId] = useState('portfolio');
   const [stocksList, setStocksList] = useState<{ id: string; symbol: string; name: string }[]>([]);
+
+  // Helper to format date as YYYY-MM-DD
+  const formatDateYMD = (date: Date): string => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
+  // Compute preset dates based on user selection
+  const handleSelectPreset = (preset: Exclude<DatePreset, 'CUSTOM'>) => {
+    setActivePreset(preset);
+    if (preset === 'ALL') {
+      setStartDate('');
+      setEndDate('');
+      return;
+    }
+    const today = new Date();
+    const end = formatDateYMD(today);
+    let start = '';
+
+    if (preset === '1M') {
+      const d = new Date(today);
+      d.setDate(d.getDate() - 30);
+      start = formatDateYMD(d);
+    } else if (preset === '3M') {
+      const d = new Date(today);
+      d.setDate(d.getDate() - 90);
+      start = formatDateYMD(d);
+    } else if (preset === '6M') {
+      const d = new Date(today);
+      d.setDate(d.getDate() - 180);
+      start = formatDateYMD(d);
+    } else if (preset === 'YTD') {
+      const d = new Date(today.getFullYear(), 0, 1);
+      start = formatDateYMD(d);
+    } else if (preset === '1Y') {
+      const d = new Date(today);
+      d.setDate(d.getDate() - 365);
+      start = formatDateYMD(d);
+    }
+
+    setStartDate(start);
+    setEndDate(end);
+  };
+
+  // Handle scope dropdown selection with automatic chart tab switching
+  const handleScopeChange = (newStockId: string) => {
+    setSelectedStockId(newStockId);
+    if (newStockId !== 'portfolio') {
+      if (activeChartTab === 'performance') {
+        setActiveChartTab('price');
+      }
+    } else {
+      if (activeChartTab === 'price') {
+        setActiveChartTab('performance');
+      }
+    }
+  };
 
   // Data states
   const [chartData, setChartData] = useState<ChartData | null>(null);
@@ -136,10 +186,17 @@ export default function AnalyticsPage() {
   const [newTargetName, setNewTargetName] = useState('');
   const [newTargetType, setNewTargetType] = useState<'portfolio_value' | 'total_return' | 'annualized_return'>('portfolio_value');
   const [newTargetValue, setNewTargetValue] = useState('');
+  const [newTargetCurrency, setNewTargetCurrency] = useState<'USD' | 'KES'>(baseCurrency);
+  const [prevBaseCurrency, setPrevBaseCurrency] = useState(baseCurrency);
   const [newTargetDate, setNewTargetDate] = useState('2026-12-31');
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+
+  if (baseCurrency !== prevBaseCurrency) {
+    setPrevBaseCurrency(baseCurrency);
+    setNewTargetCurrency(baseCurrency);
+  }
 
   // Active Tab state for Charts
   const [activeChartTab, setActiveChartTab] = useState<'performance' | 'price' | 'volume'>('performance');
@@ -181,13 +238,21 @@ export default function AnalyticsPage() {
         setError(null);
 
         const signal = controller.signal;
-        const queryParams = `startDate=${startDate}&endDate=${endDate}`;
+        const params = new URLSearchParams();
+        if (startDate) params.append('startDate', startDate);
+        if (endDate) params.append('endDate', endDate);
+        const queryParams = params.toString();
+
+        const chartsUrl = `${API_BASE}/api/analytics/charts/${selectedStockId}${queryParams ? `?${queryParams}` : ''}`;
+        const advUrl = `${API_BASE}/api/analytics/advanced?${selectedStockId !== 'portfolio' ? `stockId=${selectedStockId}&` : ''}${queryParams}`;
+        const benchUrl = `${API_BASE}/api/analytics/benchmark${queryParams ? `?${queryParams}` : ''}`;
+        const targetsUrl = `${API_BASE}/api/analytics/targets`;
 
         const [chartsRes, metricsRes, benchmarkRes, targetsRes] = await Promise.all([
-          fetch(`${API_BASE}/api/analytics/charts/${selectedStockId}?${queryParams}`, { signal, credentials: 'include' }),
-          fetch(`${API_BASE}/api/analytics/advanced?${queryParams}`, { signal, credentials: 'include' }),
-          fetch(`${API_BASE}/api/analytics/benchmark?${queryParams}`, { signal, credentials: 'include' }),
-          fetch(`${API_BASE}/api/analytics/targets`, { signal, credentials: 'include' })
+          fetch(chartsUrl, { signal, credentials: 'include' }),
+          fetch(advUrl, { signal, credentials: 'include' }),
+          fetch(benchUrl, { signal, credentials: 'include' }),
+          fetch(targetsUrl, { signal, credentials: 'include' })
         ]);
 
         if (!chartsRes.ok || !metricsRes.ok || !benchmarkRes.ok || !targetsRes.ok) {
@@ -247,7 +312,8 @@ export default function AnalyticsPage() {
           targetName: newTargetName,
           targetType: newTargetType,
           targetValue: Number(newTargetValue),
-          targetDate: newTargetDate
+          targetDate: newTargetDate,
+          currency: newTargetType === 'portfolio_value' ? newTargetCurrency : 'USD'
         }),
         credentials: 'include'
       });
@@ -280,6 +346,7 @@ export default function AnalyticsPage() {
   const [editTargetName, setEditTargetName] = useState('');
   const [editTargetType, setEditTargetType] = useState<'portfolio_value' | 'total_return' | 'annualized_return'>('portfolio_value');
   const [editTargetValue, setEditTargetValue] = useState('');
+  const [editTargetCurrency, setEditTargetCurrency] = useState<'USD' | 'KES'>('USD');
   const [editTargetDate, setEditTargetDate] = useState('');
   const [editIsAchieved, setEditIsAchieved] = useState(false);
   const [editSubmitting, setEditSubmitting] = useState(false);
@@ -290,6 +357,7 @@ export default function AnalyticsPage() {
     setEditTargetName(t.targetName);
     setEditTargetType(t.targetType);
     setEditTargetValue(String(t.targetValue));
+    setEditTargetCurrency(t.currency || 'USD');
     setEditTargetDate(t.targetDate);
     setEditIsAchieved(t.isAchieved);
     setEditError(null);
@@ -312,6 +380,7 @@ export default function AnalyticsPage() {
           targetValue: Number(editTargetValue),
           targetDate: editTargetDate,
           isAchieved: editIsAchieved,
+          currency: editTargetType === 'portfolio_value' ? editTargetCurrency : 'USD',
         }),
         credentials: 'include',
       });
@@ -375,10 +444,12 @@ export default function AnalyticsPage() {
     boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.15)',
   };
 
+  const selectedStock = stocksList.find((s) => s.id === selectedStockId);
+
   return (
     <div className="space-y-8 text-main pb-12">
       {/* Page Title Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-black text-main flex items-center gap-3">
             <Activity className="text-[#00272b] dark:text-[#e0ff4f] h-8 w-8" />
@@ -388,48 +459,84 @@ export default function AnalyticsPage() {
             View net returns, investment mix, and set financial goals.
           </p>
         </div>
+      </div>
 
-        {/* Global Filter Bar */}
-        <div className="bg-surface backdrop-blur-xl border border-subtle rounded-2xl p-3 flex flex-wrap items-center gap-4 shadow-lg">
-          <div className="flex items-center gap-2">
+      {/* Global Filter Bar */}
+      <div className="bg-surface backdrop-blur-xl border border-subtle rounded-2xl p-3 shadow-lg flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        {/* Left: Date Presets & Custom Inputs */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-1.5">
             <Calendar className="h-4 w-4 text-muted" />
-            <span className="text-[10px] font-bold text-muted uppercase tracking-wider">Date Filters:</span>
+            <span className="text-[10px] font-bold text-muted uppercase tracking-wider">Range:</span>
           </div>
 
+          {/* Date Presets */}
+          <div className="flex bg-surface-elevated p-0.5 rounded-xl border border-subtle">
+            {(['1M', '3M', '6M', 'YTD', '1Y', 'ALL'] as const).map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                onClick={() => handleSelectPreset(preset)}
+                className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all ${
+                  activePreset === preset
+                    ? 'bg-[#e0ff4f] text-[#00272b] shadow-sm'
+                    : 'text-muted hover:text-main'
+                }`}
+              >
+                {preset}
+              </button>
+            ))}
+          </div>
+
+          {/* Custom Date Pickers */}
           <div className="flex items-center gap-2">
             <input
               type="date"
               value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
+              onChange={(e) => {
+                setStartDate(e.target.value);
+                setActivePreset('CUSTOM');
+              }}
               className="bg-surface-elevated border border-subtle rounded-lg px-2.5 py-1 text-xs text-main focus:outline-none focus:border-[#e0ff4f] font-mono"
             />
             <span className="text-muted text-xs">to</span>
             <input
               type="date"
               value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
+              onChange={(e) => {
+                setEndDate(e.target.value);
+                setActivePreset('CUSTOM');
+              }}
               className="bg-surface-elevated border border-subtle rounded-lg px-2.5 py-1 text-xs text-main focus:outline-none focus:border-[#e0ff4f] font-mono"
             />
+            {(startDate || endDate) && (
+              <button
+                type="button"
+                onClick={() => handleSelectPreset('ALL')}
+                title="Reset to all history"
+                className="p-1 rounded-lg text-muted hover:text-main hover:bg-surface-elevated transition-colors"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
+        </div>
 
-          <div className="border-l border-subtle h-6 hidden md:block" />
-
-          {/* Stock Scope Select dropdown */}
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold text-muted uppercase tracking-wider">Scope:</span>
-            <select
-              value={selectedStockId}
-              onChange={(e) => setSelectedStockId(e.target.value)}
-              className="bg-surface-elevated border border-subtle rounded-lg px-2.5 py-1 text-xs text-main focus:outline-none focus:border-[#e0ff4f] font-semibold"
-            >
-              <option value="portfolio">💼 Entire Portfolio</option>
-              {stocksList.map((s) => (
-                <option key={s.id} value={s.id}>
-                  📈 {s.symbol} - {s.name}
-                </option>
-              ))}
-            </select>
-          </div>
+        {/* Right: Scope Dropdown */}
+        <div className="flex items-center gap-2 border-t lg:border-t-0 pt-2 lg:pt-0 border-subtle">
+          <span className="text-[10px] font-bold text-muted uppercase tracking-wider">Scope:</span>
+          <select
+            value={selectedStockId}
+            onChange={(e) => handleScopeChange(e.target.value)}
+            className="bg-surface-elevated border border-subtle rounded-lg px-3 py-1.5 text-xs text-main focus:outline-none focus:border-[#e0ff4f] font-semibold cursor-pointer"
+          >
+            <option value="portfolio">💼 Entire Portfolio</option>
+            {stocksList.map((s) => (
+              <option key={s.id} value={s.id}>
+                📈 {s.symbol} - {s.name}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -443,14 +550,22 @@ export default function AnalyticsPage() {
       {/* Metrics Header with Export Actions */}
       <div className="relative z-30 flex items-center justify-between bg-surface backdrop-blur-md border border-subtle rounded-2xl p-4 shadow-md">
         <div>
-          <h2 className="text-xs font-black uppercase tracking-wider text-[#00272b] dark:text-[#e0ff4f]">Key Metrics View</h2>
-          <p className="text-[9px] text-muted font-medium">Returns, growth, and total market value</p>
+          <h2 className="text-xs font-black uppercase tracking-wider text-[#00272b] dark:text-[#e0ff4f]">
+            {selectedStockId === 'portfolio' || !selectedStock
+              ? 'Key Metrics View (Entire Portfolio)'
+              : `Key Metrics View: ${selectedStock.symbol} (${selectedStock.name})`}
+          </h2>
+          <p className="text-[9px] text-muted font-medium">
+            {selectedStockId === 'portfolio' || !selectedStock
+              ? 'Returns, growth, and total market value'
+              : 'Stock-specific return, CAGR, volatility, and active valuation'}
+          </p>
         </div>
         <ExportActionsDropdown 
           reportType="analytics" 
           stockId={selectedStockId === 'portfolio' ? undefined : selectedStockId} 
-          startDate={startDate} 
-          endDate={endDate} 
+          startDate={startDate || undefined} 
+          endDate={endDate || undefined} 
         />
       </div>
 
@@ -474,7 +589,11 @@ export default function AnalyticsPage() {
               `${(metrics?.totalReturnPercent ?? 0) >= 0 ? '+' : ''}${(metrics?.totalReturnPercent ?? 0).toFixed(2)}%`
             )}
           </h3>
-          <p className="text-[10px] text-muted mt-2 font-medium">Total gain or loss on your money put in</p>
+          <p className="text-[10px] text-muted mt-2 font-medium">
+            {selectedStockId === 'portfolio'
+              ? 'Total gain or loss on your money put in'
+              : `Total return on capital invested in ${selectedStock?.symbol ?? 'this stock'}`}
+          </p>
         </div>
 
         {/* Annualized Return Card */}
@@ -495,7 +614,11 @@ export default function AnalyticsPage() {
               `${(metrics?.annualizedReturnPercent ?? 0) >= 0 ? '+' : ''}${(metrics?.annualizedReturnPercent ?? 0).toFixed(2)}%`
             )}
           </h3>
-          <p className="text-[10px] text-muted mt-2 font-medium">Compounded annual growth rate</p>
+          <p className="text-[10px] text-muted mt-2 font-medium">
+            {selectedStockId === 'portfolio'
+              ? 'Compounded annual growth rate'
+              : 'Annualized return over holding period'}
+          </p>
         </div>
 
         {/* Volatility Index Card */}
@@ -514,7 +637,11 @@ export default function AnalyticsPage() {
               `${(metrics?.volatility ?? 0).toFixed(3)}%`
             )}
           </h3>
-          <p className="text-[10px] text-muted mt-2 font-medium">Price stability of your active shares</p>
+          <p className="text-[10px] text-muted mt-2 font-medium">
+            {selectedStockId === 'portfolio'
+              ? 'Price stability of your active shares'
+              : 'Price volatility over selected period'}
+          </p>
         </div>
 
         {/* Total Assets Valuation Card */}
@@ -530,10 +657,16 @@ export default function AnalyticsPage() {
             {loading ? (
               <span className="inline-block w-24 h-9 bg-surface-elevated animate-pulse rounded" />
             ) : (
-              `$${(metrics?.totalPortfolioValue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+              formatMoney(metrics?.totalPortfolioValue ?? 0, baseCurrency)
             )}
           </h3>
-          <p className="text-[10px] text-muted mt-2 font-medium">Market value of your active shares</p>
+          <p className="text-[10px] text-muted mt-2 font-medium">
+            {selectedStockId === 'portfolio'
+              ? 'Market value of your active shares'
+              : (metrics?.totalPortfolioValue ?? 0) === 0
+                ? '$0 (no active shares currently held)'
+                : `Market value of active ${selectedStock?.symbol ?? ''} shares`}
+          </p>
         </div>
       </div>
 
@@ -543,10 +676,12 @@ export default function AnalyticsPage() {
           <div>
             <h2 className="text-lg font-bold text-main flex items-center gap-2">
               <BarChart2 className="text-[#00272b] dark:text-[#e0ff4f] h-5 w-5" />
-              Portfolio Value Over Time
+              {selectedStockId === 'portfolio' || !selectedStock
+                ? 'Portfolio Value Over Time'
+                : `${selectedStock.symbol} - ${selectedStock.name} Price & Performance`}
             </h2>
             <p className="text-xs text-muted">
-              Interactive visualizations plotting your {selectedStockId === 'portfolio' ? 'cumulative portfolio performance' : 'stock price history'}.
+              Interactive visualizations plotting your {selectedStockId === 'portfolio' ? 'cumulative portfolio performance' : `${selectedStock?.symbol ?? 'stock'} price and performance history`}.
             </p>
           </div>
 
@@ -587,11 +722,17 @@ export default function AnalyticsPage() {
 
         {/* Charts Container */}
         <div className="h-[360px] w-full relative">
+          {activeChartTab === 'price' && chartData && chartData.priceTrend.length === 1 && (
+            <div className="absolute top-2 right-2 z-10 bg-surface-elevated/95 backdrop-blur border border-subtle rounded-lg px-2.5 py-1 text-[11px] font-medium text-muted flex items-center gap-1.5 shadow-sm">
+              <AlertCircle className="h-3.5 w-3.5 text-amber-500" />
+              <span>Single price record on {chartData.priceTrend[0].date}. Add more daily prices to plot price trends.</span>
+            </div>
+          )}
           {loading ? (
             <div className="absolute inset-0 flex items-center justify-center bg-surface-elevated/50 rounded-xl border border-dashed border-subtle">
               <div className="flex flex-col items-center gap-2">
                 <svg className="animate-spin h-8 w-8 text-[#00272b] dark:text-[#e0ff4f]" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth={4} />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                 </svg>
                 <span className="text-xs font-semibold text-muted">Loading charts, plotting data...</span>
@@ -623,30 +764,35 @@ export default function AnalyticsPage() {
                   <Legend wrapperStyle={{ fontSize: '10px' }} />
                   <Area
                     type="monotone"
-                    name="Total Gains/Losses ($)"
+                    name={`Total Gains/Losses (${symbol})`}
                     dataKey="totalPL"
                     stroke={isDark ? "#e0ff4f" : "#00272b"}
                     strokeWidth={2.5}
                     fillOpacity={1}
                     fill="url(#gradTotalPL)"
+                    connectNulls={true}
+                    dot={{ stroke: isDark ? '#e0ff4f' : '#00272b', strokeWidth: 2, r: 4 }}
+                    activeDot={{ r: 6, strokeWidth: 0 }}
                   />
                   <Area
                     type="monotone"
-                    name="Current Value ($)"
+                    name={`Current Value (${symbol})`}
                     dataKey="portfolioValue"
                     stroke={isDark ? "#38bdf8" : "#0284c7"}
                     strokeWidth={1.5}
                     strokeDasharray="4 4"
                     fill="transparent"
+                    connectNulls={true}
                   />
                   <Area
                     type="monotone"
-                    name="Money Put In ($)"
+                    name={`Money Put In (${symbol})`}
                     dataKey="investedCapital"
                     stroke={isDark ? "#f43f5e" : "#e11d48"}
                     strokeWidth={1.5}
                     strokeDasharray="4 4"
                     fill="transparent"
+                    connectNulls={true}
                   />
                 </AreaChart>
               ) : activeChartTab === 'price' ? (
@@ -663,14 +809,15 @@ export default function AnalyticsPage() {
                   <Tooltip contentStyle={tooltipStyle} />
                   <Area
                     type="monotone"
-                    name="Closing Price ($)"
+                    name={`Closing Price (${symbol})`}
                     dataKey="price"
                     stroke={isDark ? "#e0ff4f" : "#00272b"}
                     strokeWidth={2.5}
                     fillOpacity={1}
                     fill="url(#gradPrice)"
-                    dot={{ stroke: isDark ? '#e0ff4f' : '#00272b', strokeWidth: 1.5, r: 2 }}
-                    activeDot={{ r: 5, strokeWidth: 0 }}
+                    connectNulls={true}
+                    dot={{ stroke: isDark ? '#e0ff4f' : '#00272b', strokeWidth: 2, r: 4 }}
+                    activeDot={{ r: 6, strokeWidth: 0 }}
                   />
                 </AreaChart>
               ) : (
@@ -729,7 +876,7 @@ export default function AnalyticsPage() {
                       ))}
                     </Pie>
                     <Tooltip
-                      formatter={(value: unknown) => [`$${Number(value).toLocaleString()}`, 'Valuation']}
+                      formatter={(value: unknown) => [formatMoney(Number(value), baseCurrency), 'Valuation']}
                       contentStyle={tooltipStyle}
                     />
                   </PieChart>
@@ -738,7 +885,7 @@ export default function AnalyticsPage() {
                 <div className="absolute flex flex-col items-center justify-center">
                   <span className="text-[10px] font-bold text-muted uppercase tracking-wider">Total Value</span>
                   <span className="text-sm font-black text-main mt-0.5">
-                    ${(metrics?.totalPortfolioValue ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    {formatMoney(metrics?.totalPortfolioValue ?? 0, baseCurrency, 0)}
                   </span>
                 </div>
               </div>
@@ -759,7 +906,7 @@ export default function AnalyticsPage() {
                     <span className="text-muted truncate max-w-[120px]">{item.name}</span>
                   </div>
                   <div className="text-right">
-                    <span className="font-bold text-secondary font-mono">${item.marketValue.toLocaleString()}</span>
+                    <span className="font-bold text-secondary font-mono">{formatMoney(item.marketValue, baseCurrency)}</span>
                     <span className="text-[10px] text-muted font-semibold ml-2 font-mono">{item.percentage}%</span>
                   </div>
                 </div>
@@ -808,18 +955,24 @@ export default function AnalyticsPage() {
                           </div>
                         </td>
                         <td className="px-4 py-3 text-right font-mono text-muted">
-                          {item.startPrice !== null ? `$${item.startPrice.toFixed(2)}` : 'N/A'}
+                          {item.startPrice !== null ? formatMoney(item.startPrice, baseCurrency) : 'N/A'}
                         </td>
                         <td className="px-4 py-3 text-right font-mono text-muted">
-                          {item.endPrice !== null ? `$${item.endPrice.toFixed(2)}` : 'N/A'}
+                          {item.endPrice !== null ? formatMoney(item.endPrice, baseCurrency) : 'N/A'}
                         </td>
                         <td className={`px-4 py-3 text-right font-mono font-extrabold ${
-                          isPositive ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                          item.insufficientHistory && item.startPrice !== null && item.startPrice === item.endPrice
+                            ? 'text-muted'
+                            : isPositive ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
                         }`}>
-                          {item.startPrice !== null && item.endPrice !== null ? (
+                          {item.insufficientHistory && item.startPrice !== null && item.startPrice === item.endPrice ? (
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-surface-elevated text-muted border border-subtle">
+                              1 price record (Baseline)
+                            </span>
+                          ) : item.startPrice !== null && item.endPrice !== null ? (
                             `${isPositive ? '+' : ''}${item.performanceGain.toFixed(2)}%`
                           ) : (
-                            '0.00%'
+                            'N/A'
                           )}
                         </td>
                       </tr>
@@ -912,7 +1065,7 @@ export default function AnalyticsPage() {
                       <span className="text-muted font-medium">
                         Current:{' '}
                         {t.targetType === 'portfolio_value'
-                          ? `$${t.currentValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                          ? formatMoney(t.currentValue, baseCurrency)
                           : `${t.currentValue >= 0 ? '+' : ''}${t.currentValue.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })}%`}
                       </span>
                       <span className="text-main font-bold">
@@ -920,9 +1073,18 @@ export default function AnalyticsPage() {
                       </span>
                       <span className="text-muted font-medium font-mono">
                         Goal:{' '}
-                        {t.targetType === 'portfolio_value'
-                          ? `$${t.targetValue.toLocaleString()}`
-                          : `${t.targetValue.toLocaleString()}%`}
+                        {t.targetType === 'portfolio_value' ? (
+                          <span>
+                            {formatMoney(t.normalizedTargetValue ?? t.targetValue, baseCurrency)}
+                            {t.currency && t.currency !== baseCurrency && (
+                              <span className="text-[9px] text-muted ml-1 font-normal">
+                                ({formatMoney(t.targetValue, t.currency)})
+                              </span>
+                            )}
+                          </span>
+                        ) : (
+                          `${t.targetValue.toLocaleString()}%`
+                        )}
                       </span>
                     </div>
 
@@ -978,63 +1140,81 @@ export default function AnalyticsPage() {
                   onChange={(e) => setNewTargetType(e.target.value as 'portfolio_value' | 'total_return' | 'annualized_return')}
                   className="w-full bg-surface-elevated border border-subtle rounded-lg px-3 py-2 text-xs text-main focus:outline-none focus:border-[#e0ff4f] font-semibold"
                 >
-                  <option value="portfolio_value">Portfolio Value ($)</option>
+                  <option value="portfolio_value">Portfolio Value ({newTargetCurrency === 'KES' ? 'KSh' : '$'})</option>
                   <option value="total_return">Total Return (%)</option>
                   <option value="annualized_return">Annual CAGR (%)</option>
                 </select>
               </div>
 
-              <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-muted mb-1.5">
-                  {newTargetType === 'portfolio_value'
-                    ? 'Target Amount ($)'
-                    : newTargetType === 'total_return'
-                    ? 'Target Return (%)'
-                    : 'Target Annual CAGR (%)'}
-                </label>
-                <div className="relative">
-                  {newTargetType === 'portfolio_value' && (
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono text-muted select-none pointer-events-none">
-                      $
-                    </span>
-                  )}
-                  <input
-                    type="number"
-                    required
-                    min="0.01"
-                    step="any"
-                    value={newTargetValue}
-                    onChange={(e) => setNewTargetValue(e.target.value)}
-                    placeholder={
-                      newTargetType === 'portfolio_value'
-                        ? 'e.g. 50000'
-                        : newTargetType === 'total_return'
-                        ? 'e.g. 25.0'
-                        : 'e.g. 12.0'
-                    }
-                    className={`w-full bg-surface-elevated border border-subtle rounded-lg py-2 text-xs text-main focus:outline-none focus:border-[#e0ff4f] font-mono ${
-                      newTargetType === 'portfolio_value' ? 'pl-7 pr-3' : 'pl-3 pr-7'
-                    }`}
-                  />
-                  {newTargetType !== 'portfolio_value' && (
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-mono text-muted select-none pointer-events-none">
-                      %
-                    </span>
-                  )}
+              {newTargetType === 'portfolio_value' ? (
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-muted mb-1.5">
+                    Target Currency
+                  </label>
+                  <select
+                    value={newTargetCurrency}
+                    onChange={(e) => setNewTargetCurrency(e.target.value as 'USD' | 'KES')}
+                    className="w-full bg-surface-elevated border border-subtle rounded-lg px-3 py-2 text-xs text-main focus:outline-none focus:border-[#e0ff4f] font-semibold"
+                  >
+                    <option value="USD">USD ($)</option>
+                    <option value="KES">KES (KSh)</option>
+                  </select>
                 </div>
-                <p className="text-[10px] text-muted mt-1">
-                  {newTargetType === 'portfolio_value'
-                    ? 'Total portfolio market value in USD'
-                    : 'Enter whole percentage (e.g. 20 for 20%)'}
-                </p>
-                {newTargetType !== 'portfolio_value' &&
-                  Number(newTargetValue) > 0 &&
-                  Number(newTargetValue) < 1 && (
-                    <p className="text-[10px] text-amber-500 dark:text-amber-400 font-semibold mt-1">
-                      Tip: Enter {Number(newTargetValue) * 100} for {Number(newTargetValue) * 100}%, not {newTargetValue}.
-                    </p>
-                  )}
+              ) : (
+                <div />
+              )}
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-muted mb-1.5">
+                {newTargetType === 'portfolio_value'
+                  ? `Target Amount (${newTargetCurrency === 'KES' ? 'KSh' : '$'})`
+                  : newTargetType === 'total_return'
+                  ? 'Target Return (%)'
+                  : 'Target Annual CAGR (%)'}
+              </label>
+              <div className="relative">
+                {newTargetType === 'portfolio_value' && (
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono text-muted select-none pointer-events-none">
+                    {newTargetCurrency === 'KES' ? 'KSh' : '$'}
+                  </span>
+                )}
+                <input
+                  type="number"
+                  required
+                  min="0.01"
+                  step="any"
+                  value={newTargetValue}
+                  onChange={(e) => setNewTargetValue(e.target.value)}
+                  placeholder={
+                    newTargetType === 'portfolio_value'
+                      ? 'e.g. 50000'
+                      : newTargetType === 'total_return'
+                      ? 'e.g. 25.0'
+                      : 'e.g. 12.0'
+                  }
+                  className={`w-full bg-surface-elevated border border-subtle rounded-lg py-2 text-xs text-main focus:outline-none focus:border-[#e0ff4f] font-mono ${
+                    newTargetType === 'portfolio_value' ? 'pl-11 pr-3' : 'pl-3 pr-7'
+                  }`}
+                />
+                {newTargetType !== 'portfolio_value' && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-mono text-muted select-none pointer-events-none">
+                    %
+                  </span>
+                )}
               </div>
+              <p className="text-[10px] text-muted mt-1">
+                {newTargetType === 'portfolio_value'
+                  ? `Total portfolio market value in ${newTargetCurrency}`
+                  : 'Enter whole percentage (e.g. 20 for 20%)'}
+              </p>
+              {newTargetType !== 'portfolio_value' &&
+                Number(newTargetValue) > 0 &&
+                Number(newTargetValue) < 1 && (
+                  <p className="text-[10px] text-amber-500 dark:text-amber-400 font-semibold mt-1">
+                    Tip: Enter {Number(newTargetValue) * 100} for {Number(newTargetValue) * 100}%, not {newTargetValue}.
+                  </p>
+                )}
             </div>
 
             <div>
@@ -1112,16 +1292,32 @@ export default function AnalyticsPage() {
                   onChange={(e) => setEditTargetType(e.target.value as 'portfolio_value' | 'total_return' | 'annualized_return')}
                   className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-3.5 py-2 text-xs text-main focus:outline-none cursor-pointer font-semibold"
                 >
-                  <option value="portfolio_value">Portfolio Value ($)</option>
+                  <option value="portfolio_value">Portfolio Value ({editTargetCurrency === 'KES' ? 'KSh' : '$'})</option>
                   <option value="total_return">Total Return (%)</option>
                   <option value="annualized_return">Annual CAGR (%)</option>
                 </select>
               </div>
 
+              {editTargetType === 'portfolio_value' && (
+                <div>
+                  <label className="block text-[10px] font-bold text-muted uppercase tracking-wider mb-1">
+                    Target Currency
+                  </label>
+                  <select
+                    value={editTargetCurrency}
+                    onChange={(e) => setEditTargetCurrency(e.target.value as 'USD' | 'KES')}
+                    className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-3.5 py-2 text-xs text-main focus:outline-none cursor-pointer font-semibold"
+                  >
+                    <option value="USD">USD ($)</option>
+                    <option value="KES">KES (KSh)</option>
+                  </select>
+                </div>
+              )}
+
               <div>
                 <label className="block text-[10px] font-bold text-muted uppercase tracking-wider mb-1">
                   {editTargetType === 'portfolio_value'
-                    ? 'Target Amount ($)'
+                    ? `Target Amount (${editTargetCurrency === 'KES' ? 'KSh' : '$'})`
                     : editTargetType === 'total_return'
                     ? 'Target Return (%)'
                     : 'Target Annual CAGR (%)'}
@@ -1129,7 +1325,7 @@ export default function AnalyticsPage() {
                 <div className="relative">
                   {editTargetType === 'portfolio_value' && (
                     <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-mono text-muted select-none pointer-events-none">
-                      $
+                      {editTargetCurrency === 'KES' ? 'KSh' : '$'}
                     </span>
                   )}
                   <input
@@ -1147,7 +1343,7 @@ export default function AnalyticsPage() {
                         : 'e.g. 12.0'
                     }
                     className={`w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl py-2 text-xs text-main focus:outline-none font-mono ${
-                      editTargetType === 'portfolio_value' ? 'pl-7 pr-3.5' : 'pl-3.5 pr-7'
+                      editTargetType === 'portfolio_value' ? 'pl-11 pr-3.5' : 'pl-3.5 pr-7'
                     }`}
                   />
                   {editTargetType !== 'portfolio_value' && (
@@ -1158,7 +1354,7 @@ export default function AnalyticsPage() {
                 </div>
                 <p className="text-[10px] text-muted mt-1">
                   {editTargetType === 'portfolio_value'
-                    ? 'Total portfolio market value in USD'
+                    ? `Total portfolio market value in ${editTargetCurrency}`
                     : 'Enter whole percentage (e.g. 20 for 20%)'}
                 </p>
                 {editTargetType !== 'portfolio_value' &&

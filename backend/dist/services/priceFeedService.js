@@ -21,6 +21,7 @@ exports.stopPriceSyncPoller = stopPriceSyncPoller;
 exports.initializeAllPollers = initializeAllPollers;
 const models_1 = require("../models");
 const recalculate_1 = require("../utils/recalculate");
+const nseScraperService_1 = require("./nseScraperService");
 // Multi-user scheduler maps
 const timersByUser = new Map();
 const intervalByUser = new Map();
@@ -168,6 +169,27 @@ async function resolveProviderCredentials(userId) {
 async function getOrUpdateApiStatus(userId) {
     const creds = await resolveProviderCredentials(userId);
     const now = new Date();
+    if (creds.primaryProvider === 'nse') {
+        return {
+            provider: 'nse',
+            connected: true,
+            statusText: 'Connected',
+            message: 'Connected to Nairobi Securities Exchange live feed (Free Scraper).',
+            callsRemainingText: 'Free & Unlimited (Cached snapshot)',
+            activeProvider: 'nse',
+            isFailoverActive: false,
+            failoverMessage: '',
+            primaryStatus: {
+                provider: 'nse',
+                inCooldown: false,
+            },
+            backupStatus: {
+                provider: 'none',
+                inCooldown: false,
+                configured: false,
+            },
+        };
+    }
     if (creds.primaryProvider === 'manual' || (!creds.primaryKey && !creds.backupKey)) {
         return {
             provider: creds.primaryProvider,
@@ -505,6 +527,14 @@ async function fetchFromPolygon(symbol, apiKey) {
  */
 async function fetchWithFailover(symbol, userId) {
     const creds = await resolveProviderCredentials(userId);
+    if (creds.primaryProvider === 'nse' || (0, nseScraperService_1.isNseSymbol)(symbol)) {
+        const tickerData = await (0, nseScraperService_1.fetchNseStockQuote)(symbol);
+        return {
+            tickerData,
+            provider: 'nse',
+            isFailover: false,
+        };
+    }
     if (creds.primaryProvider === 'manual') {
         throw new Error('Real-time API key not configured or set to manual mode.');
     }
@@ -621,7 +651,9 @@ async function fetchWithFailover(symbol, userId) {
  */
 async function getLivePriceForStock(stock, userId) {
     const creds = await resolveProviderCredentials(userId);
-    if (creds.primaryProvider === 'manual' || (!creds.primaryKey && !creds.backupKey)) {
+    if ((creds.primaryProvider === 'manual' || (!creds.primaryKey && !creds.backupKey)) &&
+        creds.primaryProvider !== 'nse' &&
+        !(0, nseScraperService_1.isNseSymbol)(stock.symbol)) {
         return fetchLocalFallback(stock, 'manual fallback');
     }
     const todayStr = new Date().toISOString().split('T')[0];
@@ -641,6 +673,34 @@ async function getLivePriceForStock(stock, userId) {
             });
             // Recalculate stock price history to correct day-over-day price change columns
             await (0, recalculate_1.recalculateStockPriceHistory)(stock.id, userId);
+            // If NSE stock and few history records exist, opportunistically backfill history
+            if (activeProvider === 'nse') {
+                const historyCount = await models_1.DailyPrice.count({ where: { stockId: stock.id, userId } });
+                if (historyCount <= 1) {
+                    try {
+                        const hist = await (0, nseScraperService_1.fetchNseStockHistory)(stock.symbol);
+                        for (const h of hist) {
+                            await models_1.DailyPrice.findOrCreate({
+                                where: { userId, stockId: stock.id, date: h.date },
+                                defaults: {
+                                    userId,
+                                    stockId: stock.id,
+                                    date: h.date,
+                                    price: h.close,
+                                    volume: h.volume,
+                                    source: 'api',
+                                    change: h.change,
+                                    changePercent: h.changePercent,
+                                },
+                            });
+                        }
+                        await (0, recalculate_1.recalculateStockPriceHistory)(stock.id, userId);
+                    }
+                    catch (histErr) {
+                        console.warn(`[PriceFeedService] Could not backfill history for ${stock.symbol}:`, histErr?.message);
+                    }
+                }
+            }
         }
         catch (dbError) {
             console.error(`[PriceFeedService] Failed to cache live price for ${stock.symbol} to database:`, dbError);
@@ -649,17 +709,30 @@ async function getLivePriceForStock(stock, userId) {
         const fetchedPrice = await models_1.DailyPrice.findOne({
             where: { stockId: stock.id, date: todayStr, userId },
         });
-        const primaryLabel = creds.primaryProvider === 'alphavantage' ? 'Alpha Vantage' : 'Polygon.io';
-        const activeLabel = activeProvider === 'alphavantage' ? 'Alpha Vantage' : 'Polygon.io';
+        const primaryLabel = creds.primaryProvider === 'alphavantage'
+            ? 'Alpha Vantage'
+            : creds.primaryProvider === 'polygon'
+                ? 'Polygon.io'
+                : creds.primaryProvider === 'nse'
+                    ? 'NSE Kenya'
+                    : 'Manual';
+        const activeLabel = activeProvider === 'alphavantage'
+            ? 'Alpha Vantage'
+            : activeProvider === 'polygon'
+                ? 'Polygon.io'
+                : 'NSE Kenya';
+        const callsRemainingText = activeProvider === 'alphavantage'
+            ? 'Daily limit: 25 requests (Standard Free Tier)'
+            : activeProvider === 'polygon'
+                ? 'Minute limit: 5 requests (Standard Free Tier)'
+                : 'Free Scraper (No API key required)';
         apiStatusByUser.set(userId, {
             connected: true,
             statusText: isFailover ? 'Failover Active' : 'Connected',
             message: isFailover
                 ? `${primaryLabel} rate limited. Live via ${activeLabel} (Failover Active).`
                 : `Last price updated successfully at ${new Date().toLocaleTimeString()}`,
-            callsRemainingText: activeProvider === 'alphavantage'
-                ? 'Daily limit: 25 requests (Standard Free Tier)'
-                : 'Minute limit: 5 requests (Standard Free Tier)',
+            callsRemainingText,
             activeProvider,
             isFailoverActive: isFailover,
             failoverMessage: isFailover
@@ -837,7 +910,7 @@ async function initializeAllPollers() {
         const settings = await models_1.UserSetting.scope('withApiKey').findAll();
         for (const setting of settings) {
             if (setting.provider !== 'manual' &&
-                (setting.apiKey || setting.alphaVantageApiKey || setting.polygonApiKey)) {
+                (setting.provider === 'nse' || setting.apiKey || setting.alphaVantageApiKey || setting.polygonApiKey)) {
                 startPriceSyncPoller(setting.userId, setting.refreshInterval);
             }
         }

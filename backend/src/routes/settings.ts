@@ -12,6 +12,8 @@ import {
   clearCooldown,
   isRateLimitError,
 } from '../services/priceFeedService';
+import { fetchAllNseStocks } from '../services/nseScraperService';
+import { getUsdToKesRate, refreshLiveExchangeRate } from '../services/currencyService';
 import { recalculateAllUserSales } from './transactions';
 import { handleTickerPriceQuery } from './stocks';
 
@@ -48,6 +50,13 @@ router.get('/feed', requireAuth, async (req: AuthenticatedRequest, res: Response
         autoSwitchOnRateLimit: settings!.autoSwitchOnRateLimit ?? true,
         refreshInterval: settings!.refreshInterval,
         costBasisMethod: settings!.costBasisMethod || 'average',
+        baseCurrency: settings!.baseCurrency || 'USD',
+        exchangeRate: settings!.exchangeRate ? Number(settings!.exchangeRate) : 130.0,
+        customExchangeRate:
+          settings!.customExchangeRate !== null && settings!.customExchangeRate !== undefined
+            ? Number(settings!.customExchangeRate)
+            : null,
+        exchangeRateUpdatedAt: settings!.exchangeRateUpdatedAt || null,
       },
     });
   } catch (error: any) {
@@ -65,9 +74,10 @@ router.post(
   requireAuth,
   [
     body('provider')
+      .optional()
       .trim()
-      .isIn(['alphavantage', 'polygon', 'manual'])
-      .withMessage('Provider must be alphavantage, polygon, or manual.'),
+      .isIn(['alphavantage', 'polygon', 'nse', 'manual'])
+      .withMessage('Provider must be alphavantage, polygon, nse, or manual.'),
     body('apiKey')
       .optional({ nullable: true, checkFalsy: true })
       .trim(),
@@ -82,6 +92,7 @@ router.post(
       .isBoolean()
       .withMessage('autoSwitchOnRateLimit must be a boolean.'),
     body('refreshInterval')
+      .optional()
       .isInt({ min: 10, max: 86400 })
       .withMessage('Refresh interval must be an integer between 10 seconds and 24 hours.'),
     body('costBasisMethod')
@@ -89,6 +100,21 @@ router.post(
       .trim()
       .isIn(['average', 'fifo'])
       .withMessage('costBasisMethod must be either average or fifo.'),
+    body('baseCurrency')
+      .optional()
+      .trim()
+      .isIn(['USD', 'KES'])
+      .withMessage('baseCurrency must be either USD or KES.'),
+    body('customExchangeRate')
+      .optional({ nullable: true })
+      .custom((val) => {
+        if (val === null || val === '' || val === undefined) return true;
+        const num = Number(val);
+        if (isNaN(num) || num <= 0) {
+          throw new Error('customExchangeRate must be a positive number.');
+        }
+        return true;
+      }),
   ],
   handleValidationErrors,
   async (req: AuthenticatedRequest, res: Response) => {
@@ -102,6 +128,8 @@ router.post(
         autoSwitchOnRateLimit,
         refreshInterval,
         costBasisMethod,
+        baseCurrency,
+        customExchangeRate,
       } = req.body;
 
       const existing = await UserSetting.scope('withApiKey').findByPk(userId);
@@ -140,22 +168,25 @@ router.post(
         }
       }
 
+      const targetProvider = provider !== undefined ? provider : (existing?.provider || 'alphavantage');
+      const targetInterval = refreshInterval !== undefined ? Number(refreshInterval) : (existing?.refreshInterval || 60);
+
       // Check key requirement for active primary provider
       const primaryKey =
-        provider === 'alphavantage'
+        targetProvider === 'alphavantage'
           ? updatedAlphaVantageApiKey
-          : provider === 'polygon'
+          : targetProvider === 'polygon'
           ? updatedPolygonApiKey
           : null;
 
-      if (provider !== 'manual' && !primaryKey) {
+      if (provider !== undefined && targetProvider !== 'manual' && targetProvider !== 'nse' && !primaryKey) {
         return res.status(400).json({
           success: false,
           errors: [
             {
-              field: provider === 'alphavantage' ? 'alphaVantageApiKey' : 'polygonApiKey',
+              field: targetProvider === 'alphavantage' ? 'alphaVantageApiKey' : 'polygonApiKey',
               message: `API Key is required when ${
-                provider === 'alphavantage' ? 'Alpha Vantage' : 'Polygon.io'
+                targetProvider === 'alphavantage' ? 'Alpha Vantage' : 'Polygon.io'
               } is active.`,
             },
           ],
@@ -164,7 +195,7 @@ router.post(
 
       // Proactive connection test if a new key was entered for active provider
       let saveWarning: string | undefined = undefined;
-      const isProviderChanged = !existing || existing.provider !== provider;
+      const isProviderChanged = !existing || (provider !== undefined && existing.provider !== targetProvider);
       const isAlphaVantageKeyChanged =
         alphaVantageApiKey !== undefined &&
         alphaVantageApiKey !== '••••••••••••••••' &&
@@ -175,18 +206,18 @@ router.post(
         (!existing || existing.polygonApiKey !== updatedPolygonApiKey);
 
       if (
-        provider !== 'manual' &&
+        targetProvider !== 'manual' &&
         primaryKey &&
         (isProviderChanged ||
-          (provider === 'alphavantage' ? isAlphaVantageKeyChanged : isPolygonKeyChanged))
+          (targetProvider === 'alphavantage' ? isAlphaVantageKeyChanged : isPolygonKeyChanged))
       ) {
         try {
-          if (provider === 'alphavantage') {
+          if (targetProvider === 'alphavantage') {
             await fetchFromAlphaVantage('AAPL', primaryKey);
-          } else if (provider === 'polygon') {
+          } else if (targetProvider === 'polygon') {
             await fetchFromPolygon('AAPL', primaryKey);
           }
-          clearCooldown(userId, provider);
+          clearCooldown(userId, targetProvider);
         } catch (testErr: any) {
           if (isRateLimitError(testErr)) {
             saveWarning = `Settings saved successfully, but the provider is currently rate limited: ${testErr.message}`;
@@ -197,7 +228,7 @@ router.post(
               success: false,
               errors: [
                 {
-                  field: provider === 'alphavantage' ? 'alphaVantageApiKey' : 'polygonApiKey',
+                  field: targetProvider === 'alphavantage' ? 'alphaVantageApiKey' : 'polygonApiKey',
                   message: `API Connection verification failed: ${testErr.message}`,
                 },
               ],
@@ -211,16 +242,34 @@ router.post(
         autoSwitchOnRateLimit !== undefined
           ? Boolean(autoSwitchOnRateLimit)
           : existing?.autoSwitchOnRateLimit ?? true;
+      const updatedBaseCurrency = baseCurrency || existing?.baseCurrency || 'USD';
+
+      let updatedCustomRate =
+        existing?.customExchangeRate !== null && existing?.customExchangeRate !== undefined
+          ? Number(existing.customExchangeRate)
+          : null;
+      let rateUpdatedAt = existing?.exchangeRateUpdatedAt || null;
+      if (customExchangeRate !== undefined) {
+        if (customExchangeRate === null || customExchangeRate === '' || Number(customExchangeRate) <= 0) {
+          updatedCustomRate = null;
+        } else {
+          updatedCustomRate = Number(Number(customExchangeRate).toFixed(4));
+          rateUpdatedAt = new Date();
+        }
+      }
 
       const [settings] = await UserSetting.upsert({
         userId,
-        provider,
+        provider: targetProvider,
         apiKey: primaryKey,
         alphaVantageApiKey: updatedAlphaVantageApiKey,
         polygonApiKey: updatedPolygonApiKey,
         autoSwitchOnRateLimit: updatedAutoSwitch,
-        refreshInterval,
+        refreshInterval: targetInterval,
         costBasisMethod: updatedCostBasisMethod,
+        baseCurrency: updatedBaseCurrency,
+        customExchangeRate: updatedCustomRate,
+        exchangeRateUpdatedAt: rateUpdatedAt,
       });
 
       // Recalculate historical sales if user changed cost-basis accounting methodology
@@ -230,7 +279,7 @@ router.post(
       }
 
       console.log(
-        `[SettingsRouter] Saved configurations for ${userId}. Provider: ${provider}, Interval: ${refreshInterval}s, Method: ${updatedCostBasisMethod}, AutoSwitch: ${updatedAutoSwitch}`
+        `[SettingsRouter] Saved configurations for ${userId}. Provider: ${targetProvider}, Interval: ${targetInterval}s, Method: ${updatedCostBasisMethod}, AutoSwitch: ${updatedAutoSwitch}, BaseCurrency: ${updatedBaseCurrency}`
       );
 
       // Proactively restart poller if live sync is active
@@ -253,6 +302,13 @@ router.post(
           autoSwitchOnRateLimit: settings.autoSwitchOnRateLimit,
           refreshInterval: settings.refreshInterval,
           costBasisMethod: settings.costBasisMethod || 'average',
+          baseCurrency: settings.baseCurrency,
+          exchangeRate: settings.exchangeRate ? Number(settings.exchangeRate) : 130.0,
+          customExchangeRate:
+            settings.customExchangeRate !== null && settings.customExchangeRate !== undefined
+              ? Number(settings.customExchangeRate)
+              : null,
+          exchangeRateUpdatedAt: settings.exchangeRateUpdatedAt,
         },
       });
     } catch (error: any) {
@@ -273,9 +329,10 @@ router.post(
   [
     body('provider')
       .trim()
-      .isIn(['alphavantage', 'polygon'])
-      .withMessage('Provider must be alphavantage or polygon.'),
+      .isIn(['alphavantage', 'polygon', 'nse'])
+      .withMessage('Provider must be alphavantage, polygon, or nse.'),
     body('apiKey')
+      .if(body('provider').not().equals('nse'))
       .trim()
       .notEmpty()
       .withMessage('API Key is required to test connection.'),
@@ -285,6 +342,14 @@ router.post(
     try {
       const userId = req.user!.id;
       const { provider, apiKey } = req.body;
+
+      if (provider === 'nse') {
+        const stockMap = await fetchAllNseStocks(true);
+        return res.status(200).json({
+          success: true,
+          message: `Successfully connected to Nairobi Securities Exchange live feed. ${stockMap.size} active counters discovered.`,
+        });
+      }
 
       let keyToTest = apiKey;
       if (apiKey === '••••••••••••••••') {
@@ -356,6 +421,63 @@ router.get('/price/:symbol', requireAuth, async (req: AuthenticatedRequest, res:
   const userId = req.user!.id;
   const { symbol } = req.params;
   return handleTickerPriceQuery(symbol, userId, res);
+});
+
+// GET /api/settings/exchange-rate -> Return active USD/KES rate, inverse rate, source, and timestamp
+router.get('/exchange-rate', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const userSetting = await UserSetting.findByPk(userId);
+    const rateInfo = await getUsdToKesRate(userId);
+    const inverseRate = rateInfo.rate > 0 ? Number((1 / rateInfo.rate).toFixed(6)) : 0;
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        rate: rateInfo.rate,
+        inverseRate,
+        source: rateInfo.source,
+        updatedAt: rateInfo.updatedAt,
+        baseCurrency: userSetting?.baseCurrency || 'USD',
+        customExchangeRate:
+          userSetting?.customExchangeRate !== null && userSetting?.customExchangeRate !== undefined
+            ? Number(userSetting.customExchangeRate)
+            : null,
+      },
+    });
+  } catch (error: any) {
+    console.error('Error fetching exchange rate:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve exchange rate.',
+    });
+  }
+});
+
+// POST /api/settings/exchange-rate/refresh -> Force clear cache, re-fetch live rate from API
+router.post('/exchange-rate/refresh', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const freshRateInfo = await refreshLiveExchangeRate(userId);
+    const inverseRate = freshRateInfo.rate > 0 ? Number((1 / freshRateInfo.rate).toFixed(6)) : 0;
+
+    return res.status(200).json({
+      success: true,
+      message: 'Exchange rate refreshed successfully.',
+      data: {
+        rate: freshRateInfo.rate,
+        inverseRate,
+        source: freshRateInfo.source,
+        updatedAt: freshRateInfo.updatedAt,
+      },
+    });
+  } catch (error: any) {
+    console.error('Error refreshing exchange rate:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to refresh exchange rate.',
+    });
+  }
 });
 
 export default router;

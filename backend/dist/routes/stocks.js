@@ -8,6 +8,8 @@ const models_1 = require("../models");
 const auth_1 = require("../middleware/auth");
 const validate_1 = require("../middleware/validate");
 const priceFeedService_1 = require("../services/priceFeedService");
+const nseScraperService_1 = require("../services/nseScraperService");
+const currencyService_1 = require("../services/currencyService");
 /**
  * Zero-dependency concurrency-limiting runner that executes items using Promise.allSettled
  */
@@ -39,40 +41,60 @@ async function handleTickerPriceQuery(symbol, userId, res) {
         });
     }
     const upperSymbol = symbol.trim().toUpperCase();
+    const { baseCurrency, exchangeRate } = await (0, currencyService_1.getUserCurrencyContext)(userId);
+    const existingStock = await models_1.Stock.findOne({
+        where: { userId, symbol: upperSymbol },
+    });
+    const nativeCurrency = existingStock?.currency || ((0, nseScraperService_1.isNseSymbol)(upperSymbol) ? 'KES' : 'USD');
     try {
         const result = await (0, priceFeedService_1.fetchWithFailover)(upperSymbol, userId);
+        const convertedPrice = (0, currencyService_1.convertPrice)(result.tickerData.price, nativeCurrency, baseCurrency, exchangeRate);
+        const convertedChange = (0, currencyService_1.convertPrice)(result.tickerData.change, nativeCurrency, baseCurrency, exchangeRate);
         return res.status(200).json({
             success: true,
             data: {
                 symbol: upperSymbol,
-                price: result.tickerData.price,
-                change: result.tickerData.change,
+                price: Number(convertedPrice.toFixed(2)),
+                change: Number(convertedChange.toFixed(2)),
                 changePercent: result.tickerData.changePercent,
                 volume: result.tickerData.volume,
                 provider: result.provider,
                 isFailover: result.isFailover,
+                nativePrice: result.tickerData.price,
+                nativeChange: result.tickerData.change,
+                nativeCurrency,
+                currency: baseCurrency,
+                exchangeRate,
             },
         });
     }
     catch (error) {
         console.error(`Error querying ticker price for ${upperSymbol}:`, error);
         // If failover failed or provider not configured, check for previously recorded price
-        const stock = await models_1.Stock.findOne({
+        const stock = existingStock || (await models_1.Stock.findOne({
             where: { userId, symbol: upperSymbol },
-        });
+        }));
         if (stock) {
             const cached = await (0, priceFeedService_1.getLocalCachedPriceForStock)(stock, userId);
             if (cached && cached.price > 0) {
+                const stockCurrency = stock.currency || nativeCurrency;
+                const convertedPrice = (0, currencyService_1.convertPrice)(cached.price, stockCurrency, baseCurrency, exchangeRate);
+                const convertedChange = (0, currencyService_1.convertPrice)(cached.change, stockCurrency, baseCurrency, exchangeRate);
                 return res.status(200).json({
                     success: true,
                     data: {
                         symbol: upperSymbol,
-                        price: cached.price,
-                        change: cached.change,
+                        price: Number(convertedPrice.toFixed(2)),
+                        change: Number(convertedChange.toFixed(2)),
                         changePercent: cached.changePercent,
                         volume: 0,
                         provider: 'manual fallback',
                         isFailover: false,
+                        nativePrice: cached.price,
+                        nativeChange: cached.change,
+                        nativeCurrency: stockCurrency,
+                        currency: baseCurrency,
+                        exchangeRate,
                     },
                 });
             }
@@ -93,13 +115,29 @@ async function handleTickerPriceQuery(symbol, userId, res) {
 router.get('/live-prices', auth_1.requireAuth, async (req, res) => {
     try {
         const userId = req.user.id;
+        const { baseCurrency, exchangeRate } = await (0, currencyService_1.getUserCurrencyContext)(userId);
         // Fetch all stock counters registered for this user
         const stocks = await models_1.Stock.findAll({
             where: { userId },
             order: [['symbol', 'ASC']],
         });
         // Resolve current cached prices in parallel from local DB logs
-        const livePrices = await Promise.all(stocks.map((stock) => (0, priceFeedService_1.getLocalCachedPriceForStock)(stock, userId)));
+        const livePrices = await Promise.all(stocks.map(async (stock) => {
+            const cached = await (0, priceFeedService_1.getLocalCachedPriceForStock)(stock, userId);
+            const stockCurrency = stock.currency || 'USD';
+            const convertedPrice = (0, currencyService_1.convertPrice)(cached.price, stockCurrency, baseCurrency, exchangeRate);
+            const convertedChange = (0, currencyService_1.convertPrice)(cached.change, stockCurrency, baseCurrency, exchangeRate);
+            return {
+                ...cached,
+                price: Number(convertedPrice.toFixed(2)),
+                change: Number(convertedChange.toFixed(2)),
+                nativePrice: cached.price,
+                nativeChange: cached.change,
+                nativeCurrency: stockCurrency,
+                currency: baseCurrency,
+                exchangeRate,
+            };
+        }));
         return res.status(200).json({
             success: true,
             data: livePrices,
@@ -125,10 +163,53 @@ router.get('/search-price', auth_1.requireAuth, async (req, res) => {
     const symbol = req.query.symbol;
     return handleTickerPriceQuery(symbol, userId, res);
 });
+// GET /api/stocks/nse-catalog -> View directory of NSE Kenya listed equities with current prices
+router.get('/nse-catalog', auth_1.requireAuth, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { baseCurrency, exchangeRate } = await (0, currencyService_1.getUserCurrencyContext)(userId);
+        let liveMap = null;
+        try {
+            liveMap = await (0, nseScraperService_1.fetchAllNseStocks)(false);
+        }
+        catch (err) {
+            console.warn('[StocksRouter] Could not fetch live NSE snapshot for catalog:', err.message);
+        }
+        const catalog = nseScraperService_1.NSE_CATALOG.map((item) => {
+            const live = liveMap?.get(item.symbol.toUpperCase());
+            const nativePrice = live ? live.price : null;
+            const convertedPrice = nativePrice !== null
+                ? Number((0, currencyService_1.convertPrice)(nativePrice, 'KES', baseCurrency, exchangeRate).toFixed(2))
+                : null;
+            return {
+                ...item,
+                price: nativePrice,
+                convertedPrice,
+                currency: 'KES',
+                baseCurrency,
+                change: live ? live.change : null,
+                changePercent: live ? live.changePercent : null,
+                volume: live ? live.volume : null,
+            };
+        });
+        return res.status(200).json({
+            success: true,
+            data: catalog,
+        });
+    }
+    catch (error) {
+        console.error('Error fetching NSE catalog:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to retrieve NSE catalog.',
+        });
+    }
+});
 // GET /api/stocks -> View all registered stocks with aggregated summary data
 router.get('/', auth_1.requireAuth, async (req, res) => {
     try {
         const userId = req.user.id;
+        const { baseCurrency, exchangeRate } = await (0, currencyService_1.getUserCurrencyContext)(userId);
         // Fetch all stocks for the authenticated user
         const stocks = await models_1.Stock.findAll({
             where: { userId },
@@ -141,43 +222,57 @@ router.get('/', auth_1.requireAuth, async (req, res) => {
                 order: [['date', 'DESC']],
             });
             const totalRecords = prices.length;
-            let latestPrice = 0;
+            let nativeLatestPrice = 0;
             let latestPriceDate = '';
-            let averagePrice = 0;
-            let highestPrice = 0;
-            let lowestPrice = 0;
-            let priceChange = 0;
+            let nativeAveragePrice = 0;
+            let nativeHighestPrice = 0;
+            let nativeLowestPrice = 0;
+            let nativePriceChange = 0;
             let priceChangePercent = 0;
             if (totalRecords > 0) {
-                latestPrice = Number(prices[0].price);
+                nativeLatestPrice = Number(prices[0].price);
                 latestPriceDate = prices[0].date;
                 const numericPrices = prices.map((p) => Number(p.price));
                 const sum = numericPrices.reduce((acc, curr) => acc + curr, 0);
-                averagePrice = sum / totalRecords;
-                highestPrice = Math.max(...numericPrices);
-                lowestPrice = Math.min(...numericPrices);
+                nativeAveragePrice = sum / totalRecords;
+                nativeHighestPrice = Math.max(...numericPrices);
+                nativeLowestPrice = Math.min(...numericPrices);
                 // Calculate change from first log (oldest) to latest log (newest)
                 const firstPrice = Number(prices[totalRecords - 1].price);
-                priceChange = latestPrice - firstPrice;
-                priceChangePercent = firstPrice !== 0 ? (priceChange / firstPrice) * 100 : 0;
+                nativePriceChange = nativeLatestPrice - firstPrice;
+                priceChangePercent = firstPrice !== 0 ? (nativePriceChange / firstPrice) * 100 : 0;
             }
+            const stockCurrency = stock.currency || 'USD';
+            const latestPrice = (0, currencyService_1.convertPrice)(nativeLatestPrice, stockCurrency, baseCurrency, exchangeRate);
+            const averagePrice = (0, currencyService_1.convertPrice)(nativeAveragePrice, stockCurrency, baseCurrency, exchangeRate);
+            const highestPrice = (0, currencyService_1.convertPrice)(nativeHighestPrice, stockCurrency, baseCurrency, exchangeRate);
+            const lowestPrice = (0, currencyService_1.convertPrice)(nativeLowestPrice, stockCurrency, baseCurrency, exchangeRate);
+            const priceChange = (0, currencyService_1.convertPrice)(nativePriceChange, stockCurrency, baseCurrency, exchangeRate);
             return {
                 id: stock.id,
                 name: stock.name,
                 symbol: stock.symbol,
                 description: stock.description,
                 category: stock.category,
+                currency: stock.currency,
                 createdAt: stock.createdAt,
                 updatedAt: stock.updatedAt,
                 summary: {
                     totalPriceRecords: totalRecords,
                     latestPrice: Number(latestPrice.toFixed(2)),
+                    nativeLatestPrice: Number(nativeLatestPrice.toFixed(2)),
                     latestPriceDate,
                     averagePrice: Number(averagePrice.toFixed(2)),
+                    nativeAveragePrice: Number(nativeAveragePrice.toFixed(2)),
                     highestPrice: Number(highestPrice.toFixed(2)),
+                    nativeHighestPrice: Number(nativeHighestPrice.toFixed(2)),
                     lowestPrice: Number(lowestPrice.toFixed(2)),
+                    nativeLowestPrice: Number(nativeLowestPrice.toFixed(2)),
                     priceChange: Number(priceChange.toFixed(2)),
+                    nativePriceChange: Number(nativePriceChange.toFixed(2)),
                     priceChangePercent: Number(priceChangePercent.toFixed(2)),
+                    currency: baseCurrency,
+                    nativeCurrency: stockCurrency,
                     source: prices[0]?.source === 'api' ? 'live' : 'manual fallback',
                     lastUpdated: prices[0]?.updatedAt ? prices[0].updatedAt.toISOString() : null,
                 },
@@ -203,15 +298,20 @@ router.post('/', auth_1.requireAuth, [
         .trim()
         .notEmpty()
         .withMessage('Symbol is required.')
-        .isAlphanumeric()
+        .isAlphanumeric('en-US', { ignore: '.-' })
         .withMessage('Symbol must be alphanumeric.')
         .toUpperCase(),
     (0, express_validator_1.body)('description').optional().trim(),
     (0, express_validator_1.body)('category').optional().trim(),
+    (0, express_validator_1.body)('currency')
+        .optional()
+        .trim()
+        .isIn(['USD', 'KES'])
+        .withMessage('Currency must be USD or KES.'),
 ], validate_1.handleValidationErrors, async (req, res) => {
     try {
         const userId = req.user.id;
-        const { name, symbol, description, category } = req.body;
+        const { name, symbol, description, category, currency } = req.body;
         // Check symbol uniqueness for this specific user
         const existingStock = await models_1.Stock.findOne({
             where: {
@@ -230,12 +330,14 @@ router.post('/', auth_1.requireAuth, [
                 ],
             });
         }
+        const stockCurrency = currency || ((0, nseScraperService_1.isNseSymbol)(symbol) ? 'KES' : 'USD');
         const newStock = await models_1.Stock.create({
             userId,
             name,
             symbol,
             description: description || null,
             category: category || 'Other',
+            currency: stockCurrency,
         });
         // Fetch and record the initial live price immediately so the stock has price data immediately
         try {
@@ -253,6 +355,7 @@ router.post('/', auth_1.requireAuth, [
                 symbol: newStock.symbol,
                 description: newStock.description,
                 category: newStock.category,
+                currency: newStock.currency,
             },
         });
     }
@@ -272,16 +375,21 @@ router.put('/:id', auth_1.requireAuth, [
         .trim()
         .notEmpty()
         .withMessage('Symbol is required.')
-        .isAlphanumeric()
+        .isAlphanumeric('en-US', { ignore: '.-' })
         .withMessage('Symbol must be alphanumeric.')
         .toUpperCase(),
     (0, express_validator_1.body)('description').optional().trim(),
     (0, express_validator_1.body)('category').optional().trim(),
+    (0, express_validator_1.body)('currency')
+        .optional()
+        .trim()
+        .isIn(['USD', 'KES'])
+        .withMessage('Currency must be USD or KES.'),
 ], validate_1.handleValidationErrors, async (req, res) => {
     try {
         const userId = req.user.id;
         const { id } = req.params;
-        const { name, symbol, description, category } = req.body;
+        const { name, symbol, description, category, currency } = req.body;
         // Find the stock
         const stock = await models_1.Stock.findOne({
             where: { id, userId },
@@ -313,6 +421,25 @@ router.put('/:id', auth_1.requireAuth, [
                 });
             }
         }
+        // Check if currency has changed and if transactions/prices exist
+        if (currency && currency !== stock.currency) {
+            const purchasesCount = await models_1.Purchase.count({ where: { stockId: id, userId } });
+            const salesCount = await models_1.Sales.count({ where: { stockId: id, userId } });
+            const pricesCount = await models_1.DailyPrice.count({ where: { stockId: id, userId } });
+            if (purchasesCount > 0 || salesCount > 0 || pricesCount > 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Cannot change stock currency because transactions or daily price records already exist for this counter.',
+                    errors: [
+                        {
+                            field: 'currency',
+                            message: 'Cannot change stock currency because transactions or daily price records already exist for this counter.',
+                        },
+                    ],
+                });
+            }
+            stock.currency = currency;
+        }
         // Update fields
         stock.name = name;
         stock.symbol = symbol;
@@ -328,6 +455,7 @@ router.put('/:id', auth_1.requireAuth, [
                 symbol: stock.symbol,
                 description: stock.description,
                 category: stock.category,
+                currency: stock.currency,
             },
         });
     }

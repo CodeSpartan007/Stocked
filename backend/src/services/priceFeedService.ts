@@ -1,5 +1,10 @@
 import { Stock, DailyPrice, UserSetting } from '../models';
 import { recalculateStockPriceHistory } from '../utils/recalculate';
+import {
+  isNseSymbol,
+  fetchNseStockQuote,
+  fetchNseStockHistory,
+} from './nseScraperService';
 
 // Multi-user scheduler maps
 const timersByUser = new Map<string, NodeJS.Timeout>();
@@ -110,7 +115,7 @@ export function shouldFailover(error: any): boolean {
 }
 
 export interface ApiStatusResponse {
-  provider: 'alphavantage' | 'polygon' | 'manual';
+  provider: 'alphavantage' | 'polygon' | 'nse' | 'manual';
   connected: boolean;
   statusText: string;
   message: string;
@@ -146,7 +151,7 @@ const apiStatusByUser = new Map<
 >();
 
 export interface ResolvedCredentials {
-  primaryProvider: 'alphavantage' | 'polygon' | 'manual';
+  primaryProvider: 'alphavantage' | 'polygon' | 'nse' | 'manual';
   backupProvider: 'alphavantage' | 'polygon' | null;
   autoSwitchOnRateLimit: boolean;
   alphaVantageKey: string | null;
@@ -156,7 +161,7 @@ export interface ResolvedCredentials {
 }
 
 export async function resolveProviderCredentials(userId: string): Promise<ResolvedCredentials> {
-  let primaryProvider: 'alphavantage' | 'polygon' | 'manual' =
+  let primaryProvider: 'alphavantage' | 'polygon' | 'nse' | 'manual' =
     (process.env.PRICE_FEED_PROVIDER as any) || 'manual';
   let autoSwitchOnRateLimit = true;
   let alphaVantageKey =
@@ -221,6 +226,28 @@ export async function resolveProviderCredentials(userId: string): Promise<Resolv
 export async function getOrUpdateApiStatus(userId: string): Promise<ApiStatusResponse> {
   const creds = await resolveProviderCredentials(userId);
   const now = new Date();
+
+  if (creds.primaryProvider === 'nse') {
+    return {
+      provider: 'nse',
+      connected: true,
+      statusText: 'Connected',
+      message: 'Connected to Nairobi Securities Exchange live feed (Free Scraper).',
+      callsRemainingText: 'Free & Unlimited (Cached snapshot)',
+      activeProvider: 'nse',
+      isFailoverActive: false,
+      failoverMessage: '',
+      primaryStatus: {
+        provider: 'nse',
+        inCooldown: false,
+      },
+      backupStatus: {
+        provider: 'none',
+        inCooldown: false,
+        configured: false,
+      },
+    };
+  }
 
   if (creds.primaryProvider === 'manual' || (!creds.primaryKey && !creds.backupKey)) {
     return {
@@ -602,7 +629,7 @@ export async function fetchFromPolygon(symbol: string, apiKey: string): Promise<
 
 export interface FetchWithFailoverResult {
   tickerData: TickerData;
-  provider: 'alphavantage' | 'polygon';
+  provider: 'alphavantage' | 'polygon' | 'nse';
   isFailover: boolean;
   failoverReason?: string;
 }
@@ -615,6 +642,15 @@ export async function fetchWithFailover(
   userId: string
 ): Promise<FetchWithFailoverResult> {
   const creds = await resolveProviderCredentials(userId);
+
+  if (creds.primaryProvider === 'nse' || isNseSymbol(symbol)) {
+    const tickerData = await fetchNseStockQuote(symbol);
+    return {
+      tickerData,
+      provider: 'nse',
+      isFailover: false,
+    };
+  }
 
   if (creds.primaryProvider === 'manual') {
     throw new Error('Real-time API key not configured or set to manual mode.');
@@ -770,7 +806,11 @@ export async function getLivePriceForStock(
 }> {
   const creds = await resolveProviderCredentials(userId);
 
-  if (creds.primaryProvider === 'manual' || (!creds.primaryKey && !creds.backupKey)) {
+  if (
+    (creds.primaryProvider === 'manual' || (!creds.primaryKey && !creds.backupKey)) &&
+    creds.primaryProvider !== 'nse' &&
+    !isNseSymbol(stock.symbol)
+  ) {
     return fetchLocalFallback(stock, 'manual fallback');
   }
 
@@ -794,6 +834,34 @@ export async function getLivePriceForStock(
 
       // Recalculate stock price history to correct day-over-day price change columns
       await recalculateStockPriceHistory(stock.id, userId);
+
+      // If NSE stock and few history records exist, opportunistically backfill history
+      if (activeProvider === 'nse') {
+        const historyCount = await DailyPrice.count({ where: { stockId: stock.id, userId } });
+        if (historyCount <= 1) {
+          try {
+            const hist = await fetchNseStockHistory(stock.symbol);
+            for (const h of hist) {
+              await DailyPrice.findOrCreate({
+                where: { userId, stockId: stock.id, date: h.date },
+                defaults: {
+                  userId,
+                  stockId: stock.id,
+                  date: h.date,
+                  price: h.close,
+                  volume: h.volume,
+                  source: 'api',
+                  change: h.change,
+                  changePercent: h.changePercent,
+                },
+              });
+            }
+            await recalculateStockPriceHistory(stock.id, userId);
+          } catch (histErr: any) {
+            console.warn(`[PriceFeedService] Could not backfill history for ${stock.symbol}:`, histErr?.message);
+          }
+        }
+      }
     } catch (dbError: any) {
       console.error(`[PriceFeedService] Failed to cache live price for ${stock.symbol} to database:`, dbError);
     }
@@ -808,8 +876,27 @@ export async function getLivePriceForStock(
       where: { stockId: stock.id, date: todayStr, userId },
     });
 
-    const primaryLabel = creds.primaryProvider === 'alphavantage' ? 'Alpha Vantage' : 'Polygon.io';
-    const activeLabel = activeProvider === 'alphavantage' ? 'Alpha Vantage' : 'Polygon.io';
+    const primaryLabel =
+      creds.primaryProvider === 'alphavantage'
+        ? 'Alpha Vantage'
+        : creds.primaryProvider === 'polygon'
+        ? 'Polygon.io'
+        : creds.primaryProvider === 'nse'
+        ? 'NSE Kenya'
+        : 'Manual';
+    const activeLabel =
+      activeProvider === 'alphavantage'
+        ? 'Alpha Vantage'
+        : activeProvider === 'polygon'
+        ? 'Polygon.io'
+        : 'NSE Kenya';
+
+    const callsRemainingText =
+      activeProvider === 'alphavantage'
+        ? 'Daily limit: 25 requests (Standard Free Tier)'
+        : activeProvider === 'polygon'
+        ? 'Minute limit: 5 requests (Standard Free Tier)'
+        : 'Free Scraper (No API key required)';
 
     apiStatusByUser.set(userId, {
       connected: true,
@@ -817,10 +904,7 @@ export async function getLivePriceForStock(
       message: isFailover
         ? `${primaryLabel} rate limited. Live via ${activeLabel} (Failover Active).`
         : `Last price updated successfully at ${new Date().toLocaleTimeString()}`,
-      callsRemainingText:
-        activeProvider === 'alphavantage'
-          ? 'Daily limit: 25 requests (Standard Free Tier)'
-          : 'Minute limit: 5 requests (Standard Free Tier)',
+      callsRemainingText,
       activeProvider,
       isFailoverActive: isFailover,
       failoverMessage: isFailover
@@ -1047,7 +1131,7 @@ export async function initializeAllPollers() {
     for (const setting of settings) {
       if (
         setting.provider !== 'manual' &&
-        (setting.apiKey || setting.alphaVantageApiKey || setting.polygonApiKey)
+        (setting.provider === 'nse' || setting.apiKey || setting.alphaVantageApiKey || setting.polygonApiKey)
       ) {
         startPriceSyncPoller(setting.userId, setting.refreshInterval);
       }

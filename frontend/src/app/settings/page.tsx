@@ -5,7 +5,8 @@ import { API_BASE } from '../../lib/api';
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/app/context/AuthContext';
 import { useTheme } from '@/app/context/ThemeContext';
-import { Sun, Moon, Monitor, CheckCircle2, Sliders, Scale } from 'lucide-react';
+import { useCurrency, BaseCurrency } from '@/app/context/CurrencyContext';
+import { Sun, Moon, Monitor, CheckCircle2, Sliders, Scale, ArrowRightLeft, RefreshCw, Coins } from 'lucide-react';
 
 interface UserItem {
   id: string;
@@ -27,7 +28,36 @@ interface ToastState {
 export default function FeedSettings() {
   const { user } = useAuth();
   const { theme, resolvedTheme, setTheme } = useTheme();
-  const [activeTab, setActiveTab] = useState<'appearance' | 'feed' | 'accounting' | 'admin'>('appearance');
+  const {
+    baseCurrency,
+    exchangeRate,
+    customExchangeRate,
+    rateSource,
+    rateUpdatedAt,
+    inverseRate,
+    setBaseCurrency,
+    setCustomRate,
+    refreshExchangeRate,
+  } = useCurrency();
+
+  const [activeTab, setActiveTab] = useState<'appearance' | 'feed' | 'currency' | 'accounting' | 'admin'>('appearance');
+
+  // Currency Tab State
+  const [currencySaving, setCurrencySaving] = useState(false);
+  const [currencyRefreshing, setCurrencyRefreshing] = useState(false);
+  const [rateMode, setRateMode] = useState<'auto' | 'custom'>(customExchangeRate ? 'custom' : 'auto');
+  const [customRateInput, setCustomRateInput] = useState(customExchangeRate ? String(customExchangeRate) : '130.00');
+  const [prevCustomExchangeRate, setPrevCustomExchangeRate] = useState(customExchangeRate);
+
+  if (customExchangeRate !== prevCustomExchangeRate) {
+    setPrevCustomExchangeRate(customExchangeRate);
+    if (customExchangeRate) {
+      setRateMode('custom');
+      setCustomRateInput(String(customExchangeRate));
+    } else {
+      setRateMode('auto');
+    }
+  }
 
   // Price Feed Configurations State
   const [provider, setProvider] = useState<'alphavantage' | 'polygon' | 'manual'>('manual');
@@ -42,6 +72,9 @@ export default function FeedSettings() {
   const [showPolygonKey, setShowPolygonKey] = useState(false);
   const [polygonConnectionStatus, setPolygonConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'failed'>('idle');
   const [polygonConnectionMessage, setPolygonConnectionMessage] = useState('');
+
+  const [nseConnectionStatus, setNseConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'failed'>('idle');
+  const [nseConnectionMessage, setNseConnectionMessage] = useState('');
 
   const [autoSwitchOnRateLimit, setAutoSwitchOnRateLimit] = useState(true);
   const [refreshInterval, setRefreshInterval] = useState(60);
@@ -70,6 +103,57 @@ export default function FeedSettings() {
     setProvider(newProvider);
   };
 
+  const handleToggleBaseCurrency = async (curr: BaseCurrency) => {
+    if (curr === baseCurrency) return;
+    setCurrencySaving(true);
+    const ok = await setBaseCurrency(curr);
+    setCurrencySaving(false);
+    if (ok) {
+      triggerToast(`Base currency switched to ${curr === 'KES' ? 'Kenyan Shilling (KES)' : 'US Dollar (USD)'}.`, 'success');
+    } else {
+      triggerToast('Failed to switch base currency.', 'error');
+    }
+  };
+
+  const handleSaveCustomRate = async () => {
+    const num = parseFloat(customRateInput);
+    if (isNaN(num) || num < 50 || num > 300) {
+      triggerToast('Custom USD/KES rate must be a valid number between 50.00 and 300.00.', 'error');
+      return;
+    }
+    setCurrencySaving(true);
+    const ok = await setCustomRate(num);
+    setCurrencySaving(false);
+    if (ok) {
+      triggerToast(`Custom exchange rate fixed at 1 USD = ${num.toFixed(2)} KES.`, 'success');
+    } else {
+      triggerToast('Failed to save custom exchange rate.', 'error');
+    }
+  };
+
+  const handleResetToAuto = async () => {
+    setCurrencySaving(true);
+    const ok = await setCustomRate(null);
+    setCurrencySaving(false);
+    if (ok) {
+      setRateMode('auto');
+      triggerToast('Reverted to automatic live market exchange rate.', 'success');
+    } else {
+      triggerToast('Failed to reset to live market exchange rate.', 'error');
+    }
+  };
+
+  const handleManualRefreshRate = async () => {
+    setCurrencyRefreshing(true);
+    const ok = await refreshExchangeRate();
+    setCurrencyRefreshing(false);
+    if (ok) {
+      triggerToast('Live exchange rate refreshed successfully from market feed.', 'success');
+    } else {
+      triggerToast('Could not refresh live exchange rate from feed. Retaining cached rate.', 'error');
+    }
+  };
+
   // Fetch current feed config
   useEffect(() => {
     async function fetchSettings() {
@@ -84,7 +168,11 @@ export default function FeedSettings() {
         }
         const json = await response.json();
         if (json.success && json.data) {
-          setProvider(json.data.provider);
+          if (json.data.provider === 'nse') {
+            setProvider(json.data.alphaVantageApiKey ? 'alphavantage' : json.data.polygonApiKey ? 'polygon' : 'manual');
+          } else {
+            setProvider(json.data.provider);
+          }
           setAlphaVantageApiKey(json.data.alphaVantageApiKey || '');
           setAlphaVantageDirty(false);
           setPolygonApiKey(json.data.polygonApiKey || '');
@@ -116,11 +204,21 @@ export default function FeedSettings() {
     fetchSettings();
   }, []);
 
-  const handleTestConnection = async (targetProvider: 'alphavantage' | 'polygon') => {
-    const keyToTest = targetProvider === 'alphavantage' ? alphaVantageApiKey : polygonApiKey;
-    const providerLabel = targetProvider === 'alphavantage' ? 'Alpha Vantage' : 'Polygon.io';
+  const handleTestConnection = async (targetProvider: 'alphavantage' | 'polygon' | 'nse') => {
+    const keyToTest =
+      targetProvider === 'alphavantage'
+        ? alphaVantageApiKey
+        : targetProvider === 'polygon'
+        ? polygonApiKey
+        : '';
+    const providerLabel =
+      targetProvider === 'alphavantage'
+        ? 'Alpha Vantage'
+        : targetProvider === 'polygon'
+        ? 'Polygon.io'
+        : 'NSE Kenya';
 
-    if (!keyToTest) {
+    if (targetProvider !== 'nse' && !keyToTest) {
       triggerToast(`API Key is required to test ${providerLabel} connection.`, 'error');
       return;
     }
@@ -128,9 +226,12 @@ export default function FeedSettings() {
     if (targetProvider === 'alphavantage') {
       setAvConnectionStatus('testing');
       setAvConnectionMessage('');
-    } else {
+    } else if (targetProvider === 'polygon') {
       setPolygonConnectionStatus('testing');
       setPolygonConnectionMessage('');
+    } else {
+      setNseConnectionStatus('testing');
+      setNseConnectionMessage('');
     }
 
     try {
@@ -139,7 +240,7 @@ export default function FeedSettings() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           provider: targetProvider,
-          apiKey: keyToTest,
+          apiKey: targetProvider === 'nse' ? undefined : keyToTest,
         }),
         credentials: 'include',
       });
@@ -148,9 +249,12 @@ export default function FeedSettings() {
         if (targetProvider === 'alphavantage') {
           setAvConnectionStatus('success');
           setAvConnectionMessage(json.message);
-        } else {
+        } else if (targetProvider === 'polygon') {
           setPolygonConnectionStatus('success');
           setPolygonConnectionMessage(json.message);
+        } else {
+          setNseConnectionStatus('success');
+          setNseConnectionMessage(json.message);
         }
         triggerToast(json.message, 'success');
       } else {
@@ -158,9 +262,12 @@ export default function FeedSettings() {
         if (targetProvider === 'alphavantage') {
           setAvConnectionStatus('failed');
           setAvConnectionMessage(errorMsg);
-        } else {
+        } else if (targetProvider === 'polygon') {
           setPolygonConnectionStatus('failed');
           setPolygonConnectionMessage(errorMsg);
+        } else {
+          setNseConnectionStatus('failed');
+          setNseConnectionMessage(errorMsg);
         }
         triggerToast(errorMsg, 'error');
       }
@@ -170,9 +277,12 @@ export default function FeedSettings() {
       if (targetProvider === 'alphavantage') {
         setAvConnectionStatus('failed');
         setAvConnectionMessage(msg);
-      } else {
+      } else if (targetProvider === 'polygon') {
         setPolygonConnectionStatus('failed');
         setPolygonConnectionMessage(msg);
+      } else {
+        setNseConnectionStatus('failed');
+        setNseConnectionMessage(msg);
       }
       triggerToast(msg, 'error');
     }
@@ -483,6 +593,16 @@ export default function FeedSettings() {
             🔌 API Integrations
           </button>
           <button
+            onClick={() => setActiveTab('currency')}
+            className={`pb-4 text-xs font-bold tracking-wider uppercase transition-all duration-200 border-b-2 focus:outline-none cursor-pointer flex items-center gap-2 ${
+              activeTab === 'currency'
+                ? 'border-[#e0ff4f] text-main font-black'
+                : 'border-transparent text-muted hover:text-main'
+            }`}
+          >
+            💱 Currency
+          </button>
+          <button
             onClick={() => setActiveTab('accounting')}
             className={`pb-4 text-xs font-bold tracking-wider uppercase transition-all duration-200 border-b-2 focus:outline-none cursor-pointer flex items-center gap-2 ${
               activeTab === 'accounting'
@@ -645,7 +765,7 @@ export default function FeedSettings() {
                   </div>
 
                   <div 
-                    className="grid grid-cols-1 md:grid-cols-3 gap-4" 
+                    className="grid grid-cols-1 sm:grid-cols-3 gap-4" 
                     role="radiogroup" 
                     aria-label="Pricing Provider Selection"
                   >
@@ -685,7 +805,7 @@ export default function FeedSettings() {
                         </div>
                       </div>
                       <p className="text-[11px] text-muted leading-relaxed mt-2 pointer-events-none">
-                        Global stock market queries via high-resolution quote payloads. Free tier: 25 requests/day.
+                        Global stock market queries via quote payloads. Free tier: 25 requests/day.
                       </p>
                     </div>
 
@@ -725,7 +845,7 @@ export default function FeedSettings() {
                         </div>
                       </div>
                       <p className="text-[11px] text-muted leading-relaxed mt-2 pointer-events-none">
-                        Highly scalable REST responses using historic prev-close aggregates. Free tier: 5 requests/min.
+                        Scalable REST responses using historic aggregates. Free tier: 5 requests/min.
                       </p>
                     </div>
 
@@ -765,8 +885,65 @@ export default function FeedSettings() {
                         </div>
                       </div>
                       <p className="text-[11px] text-muted leading-relaxed mt-2 pointer-events-none">
-                        Local pricing only. Keeps transactions linked exclusively to your manually logged and seeded price logs.
+                        Local pricing only. Keeps transactions linked exclusively to manually logged price logs.
                       </p>
+                    </div>
+                  </div>
+
+                  {/* Nairobi Securities Exchange (NSE) Built-in Market Info Card */}
+                  <div className="bg-surface-elevated/80 border border-subtle rounded-2xl p-5 space-y-3 relative overflow-hidden">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <div className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                        <span className="text-xs font-black text-main tracking-wider font-mono uppercase">
+                          Nairobi Securities Exchange (NSE Kenya)
+                        </span>
+                        <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                          BUILT-IN &bull; ALWAYS ACTIVE
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">
+                        100% Free &bull; No API Key Required
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-muted leading-relaxed">
+                      The Nairobi Securities Exchange market is natively supported and active by default. Live quotes and historical prices for all 71 listed NSE counters (e.g., Safaricom, Equity Bank, KCB Group, EABL) are synced automatically via Stocked&apos;s integrated web scraper without consuming external API rate limits.
+                    </p>
+
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-subtle">
+                      <div className="flex-1">
+                        {nseConnectionStatus === 'idle' && (
+                          <span className="text-[11px] text-muted font-medium">Status: Feed available &amp; ready</span>
+                        )}
+                        {nseConnectionStatus === 'testing' && (
+                          <span className="text-[11px] text-[#00272b] dark:text-[#e0ff4f] font-semibold flex items-center gap-1.5">
+                            <svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth={4} />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                            </svg>
+                            Testing connection to NSE market scraper...
+                          </span>
+                        )}
+                        {nseConnectionStatus === 'success' && (
+                          <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
+                            ✓ {nseConnectionMessage || 'Connected to Nairobi Securities Exchange feed'}
+                          </span>
+                        )}
+                        {nseConnectionStatus === 'failed' && (
+                          <span className="text-[11px] text-rose-500 font-semibold block leading-relaxed max-w-md">
+                            ✗ Connection Failed: {nseConnectionMessage}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        disabled={nseConnectionStatus === 'testing'}
+                        onClick={() => handleTestConnection('nse')}
+                        className="px-3.5 py-1.5 text-xs font-bold text-[#00272b] dark:text-[#e0ff4f] bg-[#e0ff4f]/20 border border-[#e0ff4f]/40 hover:bg-[#e0ff4f]/30 rounded-xl transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                      >
+                        Test NSE Feed
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -1062,6 +1239,256 @@ export default function FeedSettings() {
               </div>
             </form>
           )
+        )}
+
+        {/* Tab: Currency & Exchange Rate Engine */}
+        {activeTab === 'currency' && (
+          <div className="space-y-6">
+            {/* Base Currency Selection */}
+            <div className="bg-surface backdrop-blur-xl border border-subtle rounded-3xl p-6 sm:p-8 shadow-xl space-y-6 relative overflow-hidden">
+              <div>
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black tracking-widest uppercase bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 mb-3">
+                  <Coins className="w-3.5 h-3.5" />
+                  Global Accounting Standard
+                </div>
+                <h3 className="text-xl font-black text-main">Active Base Currency</h3>
+                <p className="text-xs text-muted mt-1 leading-relaxed max-w-2xl">
+                  Choose the dominant currency for aggregating portfolio net worth, invested capital, asset allocation charts, and generated reports. Counter holdings and trade ledgers always retain their original trading currency.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* USD Card */}
+                <div
+                  onClick={() => handleToggleBaseCurrency('USD')}
+                  className={`p-5 rounded-2xl border transition-all cursor-pointer relative flex flex-col justify-between ${
+                    baseCurrency === 'USD'
+                      ? 'bg-[#e0ff4f]/5 border-[#e0ff4f] shadow-lg shadow-[#e0ff4f]/5'
+                      : 'bg-surface-elevated/40 border-subtle hover:border-slate-500/40'
+                  }`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 text-lg font-black">
+                        $
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-black text-main flex items-center gap-2">
+                          US Dollar (USD)
+                          {baseCurrency === 'USD' && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black tracking-wider uppercase bg-[#e0ff4f] text-black">
+                              ACTIVE
+                            </span>
+                          )}
+                        </h4>
+                        <p className="text-xs text-muted mt-0.5">Global Benchmark &amp; US Markets</p>
+                      </div>
+                    </div>
+                    {baseCurrency === 'USD' && (
+                      <CheckCircle2 className="w-5 h-5 text-[#e0ff4f]" />
+                    )}
+                  </div>
+                  <p className="text-xs text-muted mt-4 leading-relaxed">
+                    Standard for international equities, Alpha Vantage, and Polygon.io market data feeds.
+                  </p>
+                </div>
+
+                {/* KES Card */}
+                <div
+                  onClick={() => handleToggleBaseCurrency('KES')}
+                  className={`p-5 rounded-2xl border transition-all cursor-pointer relative flex flex-col justify-between ${
+                    baseCurrency === 'KES'
+                      ? 'bg-[#e0ff4f]/5 border-[#e0ff4f] shadow-lg shadow-[#e0ff4f]/5'
+                      : 'bg-surface-elevated/40 border-subtle hover:border-slate-500/40'
+                  }`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 text-sm font-black">
+                        KSh
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-black text-main flex items-center gap-2">
+                          Kenyan Shilling (KES)
+                          {baseCurrency === 'KES' && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black tracking-wider uppercase bg-[#e0ff4f] text-black">
+                              ACTIVE
+                            </span>
+                          )}
+                        </h4>
+                        <p className="text-xs text-muted mt-0.5">Nairobi Securities Exchange (NSE)</p>
+                      </div>
+                    </div>
+                    {baseCurrency === 'KES' && (
+                      <CheckCircle2 className="w-5 h-5 text-[#e0ff4f]" />
+                    )}
+                  </div>
+                  <p className="text-xs text-muted mt-4 leading-relaxed">
+                    Native currency for NSE-listed equities. All USD assets are converted into KES using live market rates.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Live Exchange Rate & Conversion Engine Card */}
+            <div className="bg-surface backdrop-blur-xl border border-subtle rounded-3xl p-6 sm:p-8 shadow-xl space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black tracking-widest uppercase bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 mb-3">
+                    <ArrowRightLeft className="w-3.5 h-3.5" />
+                    Conversion Engine
+                  </div>
+                  <h3 className="text-xl font-black text-main">USD / KES Market Rate</h3>
+                  <p className="text-xs text-muted mt-1">
+                    Real-time market rate engine with in-memory caching and failover protection.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleManualRefreshRate}
+                    disabled={currencyRefreshing || rateMode === 'custom'}
+                    className="px-4 py-2.5 rounded-xl border border-subtle hover:border-slate-500/50 bg-surface-elevated/40 text-xs font-bold text-main transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${currencyRefreshing ? 'animate-spin' : ''}`} />
+                    {currencyRefreshing ? 'Refreshing...' : 'Refresh Rate'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Rate Stats Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="p-4 rounded-2xl bg-surface-elevated/30 border border-subtle">
+                  <p className="text-[10px] font-bold tracking-wider uppercase text-muted">Exchange Rate</p>
+                  <p className="text-2xl font-black text-main mt-1">
+                    1 USD = <span className="text-[#e0ff4f]">{exchangeRate.toFixed(2)}</span> KES
+                  </p>
+                  <p className="text-[11px] text-muted mt-1">
+                    1 KES ≈ ${inverseRate.toFixed(4)} USD
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-surface-elevated/30 border border-subtle">
+                  <p className="text-[10px] font-bold tracking-wider uppercase text-muted">Rate Mode &amp; Source</p>
+                  <div className="mt-2 flex items-center gap-2">
+                    {rateSource === 'custom' ? (
+                      <span className="px-2.5 py-1 rounded-md text-xs font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        CUSTOM FIXED
+                      </span>
+                    ) : rateSource === 'live' || rateSource === 'cache' ? (
+                      <span className="px-2.5 py-1 rounded-md text-xs font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        LIVE MARKET
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-1 rounded-md text-xs font-black bg-slate-500/20 text-slate-300 border border-slate-500/30">
+                        STORED CACHE
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted mt-2">
+                    {rateSource === 'custom' ? 'User-defined override' : 'Open Exchange Rates API'}
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-surface-elevated/30 border border-subtle">
+                  <p className="text-[10px] font-bold tracking-wider uppercase text-muted">Last Updated</p>
+                  <p className="text-sm font-bold text-main mt-2">
+                    {rateUpdatedAt ? new Date(rateUpdatedAt).toLocaleString() : 'Recent cache'}
+                  </p>
+                  <p className="text-[11px] text-muted mt-1">1-hour automated cache TTL</p>
+                </div>
+              </div>
+
+              {/* Rate Policy: Automatic vs Custom Override */}
+              <div className="pt-4 border-t border-subtle space-y-4">
+                <h4 className="text-xs font-black tracking-wider uppercase text-main">Exchange Rate Policy</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div
+                    onClick={handleResetToAuto}
+                    className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 ${
+                      rateMode === 'auto'
+                        ? 'bg-emerald-500/10 border-emerald-500/40'
+                        : 'bg-surface-elevated/20 border-subtle hover:border-slate-500/40'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="ratePolicy"
+                      checked={rateMode === 'auto'}
+                      onChange={() => {}}
+                      className="mt-1"
+                    />
+                    <div>
+                      <p className="text-xs font-black text-main">Automatic Live Market Rate</p>
+                      <p className="text-[11px] text-muted mt-0.5">
+                        Fetches live exchange rates automatically from Open Exchange Rates and updates every hour.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div
+                    onClick={() => setRateMode('custom')}
+                    className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 ${
+                      rateMode === 'custom'
+                        ? 'bg-amber-500/10 border-amber-500/40'
+                        : 'bg-surface-elevated/20 border-subtle hover:border-slate-500/40'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="ratePolicy"
+                      checked={rateMode === 'custom'}
+                      onChange={() => {}}
+                      className="mt-1"
+                    />
+                    <div>
+                      <p className="text-xs font-black text-main">Fixed Custom Rate Override</p>
+                      <p className="text-[11px] text-muted mt-0.5">
+                        Lock in a fixed exchange rate for statutory audits, personal tax accounting, or custom scenarios.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {rateMode === 'custom' && (
+                  <div className="p-4 rounded-2xl bg-surface-elevated/40 border border-amber-500/20 space-y-3">
+                    <label className="block text-xs font-bold text-main">
+                      Custom 1 USD to KES Exchange Rate
+                    </label>
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                      <div className="relative flex-1 max-w-xs">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted">
+                          KSh
+                        </span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="50"
+                          max="300"
+                          value={customRateInput}
+                          onChange={(e) => setCustomRateInput(e.target.value)}
+                          className="w-full bg-surface border border-subtle rounded-xl pl-12 pr-4 py-2 text-xs font-bold text-main focus:outline-none focus:border-[#e0ff4f]"
+                          placeholder="130.00"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleSaveCustomRate}
+                        disabled={currencySaving}
+                        className="px-5 py-2 rounded-xl bg-[#e0ff4f] text-black font-black text-xs hover:bg-[#d0ef3f] transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        {currencySaving ? 'Saving...' : 'Lock Custom Rate'}
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-muted">
+                      Must be between 50.00 and 300.00 KES per USD.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Tab 3: Cost-Basis & Portfolio Accounting */}

@@ -20,7 +20,7 @@ UserSetting.init({
         onDelete: 'CASCADE',
     },
     provider: {
-        type: sequelize_1.DataTypes.ENUM('alphavantage', 'polygon', 'manual'),
+        type: sequelize_1.DataTypes.ENUM('alphavantage', 'polygon', 'nse', 'manual'),
         allowNull: false,
         defaultValue: 'manual',
     },
@@ -118,6 +118,26 @@ UserSetting.init({
         type: sequelize_1.DataTypes.ENUM('average', 'fifo'),
         allowNull: false,
         defaultValue: 'average',
+    },
+    baseCurrency: {
+        type: sequelize_1.DataTypes.STRING(10),
+        allowNull: false,
+        defaultValue: 'USD',
+    },
+    exchangeRate: {
+        type: sequelize_1.DataTypes.DECIMAL(12, 4),
+        allowNull: false,
+        defaultValue: 130.00,
+    },
+    customExchangeRate: {
+        type: sequelize_1.DataTypes.DECIMAL(12, 4),
+        allowNull: true,
+        defaultValue: null,
+    },
+    exchangeRateUpdatedAt: {
+        type: sequelize_1.DataTypes.DATE,
+        allowNull: true,
+        defaultValue: null,
     },
 }, {
     sequelize: database_1.sequelize,

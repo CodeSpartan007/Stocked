@@ -7,6 +7,7 @@ const express_1 = require("express");
 const sequelize_1 = require("sequelize");
 const auth_1 = require("../middleware/auth");
 const models_1 = require("../models");
+const currencyService_1 = require("../services/currencyService");
 const router = (0, express_1.Router)();
 function parseOptionalDate(dateStr) {
     if (!dateStr)
@@ -188,18 +189,22 @@ function calculateTwrVolatility(dailyValPoints) {
 router.get('/charts/:stockId', auth_1.requireAuth, async (req, res) => {
     try {
         const userId = req.user.id;
+        const { baseCurrency, exchangeRate } = await (0, currencyService_1.getUserCurrencyContext)(userId);
         const { stockId } = req.params;
         const { startDate, endDate } = req.query;
-        try {
-            if (startDate && (typeof startDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(startDate))) {
-                throw new Error('Invalid startDate format. Must be YYYY-MM-DD.');
+        let sDate;
+        let eDate;
+        if (startDate && typeof startDate === 'string' && startDate.trim() !== '') {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate.trim())) {
+                return res.status(400).json({ success: false, message: 'Invalid startDate format. Must be YYYY-MM-DD.' });
             }
-            if (endDate && (typeof endDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(endDate))) {
-                throw new Error('Invalid endDate format. Must be YYYY-MM-DD.');
-            }
+            sDate = startDate.trim();
         }
-        catch (err) {
-            return res.status(400).json({ success: false, message: err.message });
+        if (endDate && typeof endDate === 'string' && endDate.trim() !== '') {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(endDate.trim())) {
+                return res.status(400).json({ success: false, message: 'Invalid endDate format. Must be YYYY-MM-DD.' });
+            }
+            eDate = endDate.trim();
         }
         // 1. Fetch user's stocks
         const userStocks = await models_1.Stock.findAll({ where: { userId } });
@@ -221,12 +226,12 @@ router.get('/charts/:stockId', auth_1.requireAuth, async (req, res) => {
         const targetStockIds = targetStocks.map((s) => s.id);
         // Date range filtering
         const priceWhereClause = { stockId: targetStockIds };
-        if (startDate || endDate) {
+        if (sDate || eDate) {
             priceWhereClause.date = {};
-            if (startDate)
-                priceWhereClause.date[sequelize_1.Op.gte] = startDate;
-            if (endDate)
-                priceWhereClause.date[sequelize_1.Op.lte] = endDate;
+            if (sDate)
+                priceWhereClause.date[sequelize_1.Op.gte] = sDate;
+            if (eDate)
+                priceWhereClause.date[sequelize_1.Op.lte] = eDate;
         }
         // 2. Extract historical closing prices & volume
         const dailyPrices = await models_1.DailyPrice.findAll({
@@ -246,6 +251,35 @@ router.get('/charts/:stockId', auth_1.requireAuth, async (req, res) => {
             priceTrendMap[dStr].count += 1;
             priceTrendMap[dStr].volumeSum += volume;
         });
+        // For an individual stock, if no prices exist in the selected window, check for latest prior price to carry forward
+        if (stockId !== 'portfolio' && stockId !== 'all') {
+            if (dailyPrices.length === 0 && sDate) {
+                const priorPrice = await models_1.DailyPrice.findOne({
+                    where: {
+                        stockId: targetStockIds,
+                        userId,
+                        date: { [sequelize_1.Op.lt]: sDate },
+                    },
+                    order: [['date', 'DESC']],
+                });
+                if (priorPrice) {
+                    priceTrendMap[sDate] = {
+                        date: sDate,
+                        priceSum: Number(priorPrice.price),
+                        count: 1,
+                        volumeSum: 0,
+                    };
+                    if (eDate && eDate !== sDate) {
+                        priceTrendMap[eDate] = {
+                            date: eDate,
+                            priceSum: Number(priorPrice.price),
+                            count: 1,
+                            volumeSum: 0,
+                        };
+                    }
+                }
+            }
+        }
         const volumeTrend = Object.values(priceTrendMap)
             .map((item) => ({
             date: item.date,
@@ -309,13 +343,33 @@ router.get('/charts/:stockId', auth_1.requireAuth, async (req, res) => {
         allDailyPrices.forEach((dp) => allUniqueDatesSet.add(dp.date));
         purchases.forEach((p) => allUniqueDatesSet.add(p.purchaseDate));
         sales.forEach((s) => allUniqueDatesSet.add(s.saleDate));
+        // Carry-forward resolution for date ranges:
+        // If history exists on or before sDate, include sDate in the timeline
+        if (sDate && Array.from(allUniqueDatesSet).some((d) => d <= sDate)) {
+            allUniqueDatesSet.add(sDate);
+        }
+        // If history exists on or before eDate, include eDate in the timeline
+        if (eDate && Array.from(allUniqueDatesSet).some((d) => d <= eDate)) {
+            allUniqueDatesSet.add(eDate);
+        }
         let allUniqueDates = Array.from(allUniqueDatesSet).sort();
         // Apply range filters if provided
-        if (startDate) {
-            allUniqueDates = allUniqueDates.filter((d) => d >= startDate);
+        if (sDate) {
+            allUniqueDates = allUniqueDates.filter((d) => d >= sDate);
         }
-        if (endDate) {
-            allUniqueDates = allUniqueDates.filter((d) => d <= endDate);
+        if (eDate) {
+            allUniqueDates = allUniqueDates.filter((d) => d <= eDate);
+        }
+        // If only 1 cumulative point exists in history, duplicate across boundary to today/endDate
+        // so Recharts does not collapse line/area visualizations
+        const todayStr = new Date().toISOString().split('T')[0];
+        if (allUniqueDates.length === 1) {
+            if (allUniqueDates[0] < todayStr && (!eDate || eDate >= todayStr)) {
+                allUniqueDates.push(todayStr);
+            }
+            else if (eDate && eDate > allUniqueDates[0]) {
+                allUniqueDates.push(eDate);
+            }
         }
         // Build the cumulative points
         const cumulativePerformance = allUniqueDates.map((dStr) => {
@@ -325,13 +379,18 @@ router.get('/charts/:stockId', auth_1.requireAuth, async (req, res) => {
             targetStocks.forEach((stock) => {
                 const hTimeline = stockTimelines[stock.id] || [];
                 const holdingState = getHoldingStateAt(hTimeline, dStr);
+                const stockCurrency = stock.currency || 'USD';
                 // Get price of this stock at this date
                 const price = getStockPriceAt(stock.id, dStr, holdingState.averageCost);
-                const marketValue = holdingState.remainingShares * price;
-                const costBasis = holdingState.remainingShares * holdingState.averageCost;
+                const rawMarketValue = holdingState.remainingShares * price;
+                const rawCostBasis = holdingState.remainingShares * holdingState.averageCost;
+                const rawRealizedPL = holdingState.cumulativeRealizedPL;
+                const marketValue = (0, currencyService_1.convertPrice)(rawMarketValue, stockCurrency, baseCurrency, exchangeRate);
+                const costBasis = (0, currencyService_1.convertPrice)(rawCostBasis, stockCurrency, baseCurrency, exchangeRate);
+                const realizedPL = (0, currencyService_1.convertPrice)(rawRealizedPL, stockCurrency, baseCurrency, exchangeRate);
                 dailyPortfolioValue += marketValue;
                 dailyInvestedCapital += costBasis;
-                dailyCumulativeRealizedPL += holdingState.cumulativeRealizedPL;
+                dailyCumulativeRealizedPL += realizedPL;
             });
             const dailyUnrealizedPL = dailyPortfolioValue - dailyInvestedCapital;
             const totalPL = dailyUnrealizedPL + dailyCumulativeRealizedPL;
@@ -348,16 +407,21 @@ router.get('/charts/:stockId', auth_1.requireAuth, async (req, res) => {
         // When viewing portfolio/all, plot total portfolio valuation curve over time to replace
         // the unweighted average of nominal share prices. For individual stocks, plot specific price history.
         const isPortfolio = stockId === 'portfolio' || stockId === 'all';
+        const targetStockCurrency = targetStocks[0]?.currency || 'USD';
         const priceTrend = isPortfolio
             ? cumulativePerformance.map((item) => ({
                 date: item.date,
                 price: item.portfolioValue,
             }))
             : Object.values(priceTrendMap)
-                .map((item) => ({
-                date: item.date,
-                price: Number((item.priceSum / item.count).toFixed(2)),
-            }))
+                .map((item) => {
+                const rawPrice = item.priceSum / item.count;
+                const convertedPrice = (0, currencyService_1.convertPrice)(rawPrice, targetStockCurrency, baseCurrency, exchangeRate);
+                return {
+                    date: item.date,
+                    price: Number(convertedPrice.toFixed(2)),
+                };
+            })
                 .sort((a, b) => (a.date < b.date ? -1 : 1));
         return res.status(200).json({
             success: true,
@@ -365,6 +429,8 @@ router.get('/charts/:stockId', auth_1.requireAuth, async (req, res) => {
                 priceTrend,
                 volumeTrend,
                 cumulativePerformance,
+                currency: baseCurrency,
+                exchangeRate,
             },
         });
     }
@@ -380,22 +446,25 @@ router.get('/charts/:stockId', auth_1.requireAuth, async (req, res) => {
 router.get('/advanced', auth_1.requireAuth, async (req, res) => {
     try {
         const userId = req.user.id;
-        const { startDate, endDate } = req.query;
-        try {
-            if (startDate && (typeof startDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(startDate))) {
-                throw new Error('Invalid startDate format. Must be YYYY-MM-DD.');
+        const { baseCurrency, exchangeRate } = await (0, currencyService_1.getUserCurrencyContext)(userId);
+        const { stockId, startDate, endDate } = req.query;
+        let sDate;
+        let eDate;
+        if (startDate && typeof startDate === 'string' && startDate.trim() !== '') {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate.trim())) {
+                return res.status(400).json({ success: false, message: 'Invalid startDate format. Must be YYYY-MM-DD.' });
             }
-            if (endDate && (typeof endDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(endDate))) {
-                throw new Error('Invalid endDate format. Must be YYYY-MM-DD.');
-            }
+            sDate = startDate.trim();
         }
-        catch (err) {
-            return res.status(400).json({ success: false, message: err.message });
+        if (endDate && typeof endDate === 'string' && endDate.trim() !== '') {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(endDate.trim())) {
+                return res.status(400).json({ success: false, message: 'Invalid endDate format. Must be YYYY-MM-DD.' });
+            }
+            eDate = endDate.trim();
         }
         // 1. Fetch user's stocks
         const userStocks = await models_1.Stock.findAll({ where: { userId } });
-        const stockIds = userStocks.map((s) => s.id);
-        if (stockIds.length === 0) {
+        if (userStocks.length === 0) {
             return res.status(200).json({
                 success: true,
                 data: {
@@ -405,23 +474,42 @@ router.get('/advanced', auth_1.requireAuth, async (req, res) => {
                     assetAllocation: [],
                     totalPortfolioValue: 0,
                     totalInvestedCapital: 0,
+                    scopedStock: null,
+                    currency: baseCurrency,
+                    exchangeRate,
                 },
             });
         }
-        // Fetch all purchases & sales
-        const purchases = await models_1.Purchase.findAll({ where: { stockId: stockIds, userId }, order: [['purchaseDate', 'ASC']] });
-        const sales = await models_1.Sales.findAll({ where: { stockId: stockIds, userId }, order: [['saleDate', 'ASC']] });
+        // Stock Scoping: if stockId is specified and not 'portfolio'/'all', scope metrics to that stock
+        let targetStocks = userStocks;
+        let scopedStock = null;
+        if (stockId && stockId !== 'portfolio' && stockId !== 'all') {
+            const found = userStocks.find((s) => s.id === stockId);
+            if (!found) {
+                return res.status(404).json({ success: false, message: 'Stock not found or unauthorized.' });
+            }
+            targetStocks = [found];
+            scopedStock = {
+                id: found.id,
+                symbol: found.symbol,
+                name: found.name,
+            };
+        }
+        const targetStockIds = targetStocks.map((s) => s.id);
+        // Fetch all purchases & sales for target stocks
+        const purchases = await models_1.Purchase.findAll({ where: { stockId: targetStockIds, userId }, order: [['purchaseDate', 'ASC']] });
+        const sales = await models_1.Sales.findAll({ where: { stockId: targetStockIds, userId }, order: [['saleDate', 'ASC']] });
         // Compute in-memory holdings timelines per stock
         const userSetting = await models_1.UserSetting.findByPk(userId);
         const costBasisMethod = userSetting?.costBasisMethod === 'fifo' ? 'fifo' : 'average';
         const stockTimelines = {};
-        userStocks.forEach((stock) => {
+        targetStocks.forEach((stock) => {
             const stockPurchases = purchases.filter((p) => p.stockId === stock.id);
             const stockSales = sales.filter((s) => s.stockId === stock.id);
             stockTimelines[stock.id] = computeStockHoldingsTimeline(stockPurchases, stockSales, costBasisMethod);
         });
-        // Query latest price records for asset allocation
-        const latestPrices = await Promise.all(userStocks.map(async (stock) => {
+        // Query latest price records for valuation & asset allocation
+        const latestPrices = await Promise.all(targetStocks.map(async (stock) => {
             const lp = await models_1.DailyPrice.findOne({
                 where: { stockId: stock.id, userId },
                 order: [['date', 'DESC'], ['createdAt', 'DESC']],
@@ -432,17 +520,20 @@ router.get('/advanced', auth_1.requireAuth, async (req, res) => {
             acc[cur.stockId] = cur.price;
             return acc;
         }, {});
-        // 2. Compute current Portfolio Valuation
+        // 2. Compute current Valuation
         let totalPortfolioValue = 0;
         let totalInvestedCapital = 0;
         const activeHoldings = [];
-        userStocks.forEach((stock) => {
+        targetStocks.forEach((stock) => {
             const timeline = stockTimelines[stock.id] || [];
             const currentHolding = timeline[timeline.length - 1] || { remainingShares: 0, averageCost: 0, cumulativeRealizedPL: 0 };
             if (currentHolding.remainingShares > 0) {
+                const stockCurrency = stock.currency || 'USD';
                 const currentPrice = latestPriceMap[stock.id] || currentHolding.averageCost;
-                const marketValue = currentHolding.remainingShares * currentPrice;
-                const costBasis = currentHolding.remainingShares * currentHolding.averageCost;
+                const rawMarketValue = currentHolding.remainingShares * currentPrice;
+                const rawCostBasis = currentHolding.remainingShares * currentHolding.averageCost;
+                const marketValue = (0, currencyService_1.convertPrice)(rawMarketValue, stockCurrency, baseCurrency, exchangeRate);
+                const costBasis = (0, currencyService_1.convertPrice)(rawCostBasis, stockCurrency, baseCurrency, exchangeRate);
                 totalPortfolioValue += marketValue;
                 totalInvestedCapital += costBasis;
                 activeHoldings.push({
@@ -465,7 +556,7 @@ router.get('/advanced', auth_1.requireAuth, async (req, res) => {
             percentage: totalPortfolioValue > 0 ? Number(((h.marketValue / totalPortfolioValue) * 100).toFixed(2)) : 0,
         }));
         // 4. Calculate Total Return (%)
-        // Formula: ((Current Portfolio Value - Total Invested Capital) / Total Invested Capital) * 100
+        // Formula: ((Current Valuation - Total Invested Capital) / Total Invested Capital) * 100
         let totalReturnPercent = 0;
         if (totalInvestedCapital > 0) {
             totalReturnPercent = ((totalPortfolioValue - totalInvestedCapital) / totalInvestedCapital) * 100;
@@ -481,15 +572,14 @@ router.get('/advanced', auth_1.requireAuth, async (req, res) => {
             annualizedReturnPercent = calculateAnnualizedReturn(totalReturnPercent, daysHeld, totalInvestedCapital);
         }
         // 6. Calculate Volatility (Sample Standard Deviation of Cash-Flow Adjusted TWR Daily Returns) [FR8.1]
-        // We build a chronological timeline of portfolio values and external capital flows to isolate market volatility.
         const allDailyPrices = await models_1.DailyPrice.findAll({
-            where: { stockId: stockIds, userId },
+            where: { stockId: targetStockIds, userId },
             order: [['date', 'ASC']],
         });
         // Group prices by stock and date
         const stockPriceMap = {};
         const stockPriceDates = {};
-        stockIds.forEach((id) => {
+        targetStockIds.forEach((id) => {
             stockPriceMap[id] = {};
             stockPriceDates[id] = [];
         });
@@ -519,29 +609,34 @@ router.get('/advanced', auth_1.requireAuth, async (req, res) => {
         sales.forEach((s) => uniquePriceDatesSet.add(s.saleDate));
         let uniquePriceDates = Array.from(uniquePriceDatesSet).sort();
         // Filter by date range if provided
-        if (startDate)
-            uniquePriceDates = uniquePriceDates.filter((d) => d >= startDate);
-        if (endDate)
-            uniquePriceDates = uniquePriceDates.filter((d) => d <= endDate);
+        if (sDate)
+            uniquePriceDates = uniquePriceDates.filter((d) => d >= sDate);
+        if (eDate)
+            uniquePriceDates = uniquePriceDates.filter((d) => d <= eDate);
+        const stockCurrencyMap = new Map(targetStocks.map((s) => [s.id, s.currency || 'USD']));
         const dailyValPoints = [];
         uniquePriceDates.forEach((dStr) => {
             let dayVal = 0;
-            userStocks.forEach((stock) => {
+            targetStocks.forEach((stock) => {
                 const hTimeline = stockTimelines[stock.id] || [];
                 const holdingState = getHoldingStateAt(hTimeline, dStr);
                 const price = getStockPriceAt(stock.id, dStr, holdingState.averageCost);
-                dayVal += holdingState.remainingShares * price;
+                const stockCurrency = stockCurrencyMap.get(stock.id) || 'USD';
+                const rawVal = holdingState.remainingShares * price;
+                dayVal += (0, currencyService_1.convertPrice)(rawVal, stockCurrency, baseCurrency, exchangeRate);
             });
             // External capital cash flows Ct = Purchases_t - Sales_t executed on day t
             let dayCashFlow = 0;
             purchases.forEach((p) => {
                 if (p.purchaseDate === dStr) {
-                    dayCashFlow += Number(p.quantity) * Number(p.purchasePrice);
+                    const curr = stockCurrencyMap.get(p.stockId) || 'USD';
+                    dayCashFlow += (0, currencyService_1.convertPrice)(Number(p.quantity) * Number(p.purchasePrice), curr, baseCurrency, exchangeRate);
                 }
             });
             sales.forEach((s) => {
                 if (s.saleDate === dStr) {
-                    dayCashFlow -= Number(s.quantity) * Number(s.sellPrice);
+                    const curr = stockCurrencyMap.get(s.stockId) || 'USD';
+                    dayCashFlow -= (0, currencyService_1.convertPrice)(Number(s.quantity) * Number(s.sellPrice), curr, baseCurrency, exchangeRate);
                 }
             });
             if (dayVal > 0 || dayCashFlow > 0) {
@@ -562,6 +657,9 @@ router.get('/advanced', auth_1.requireAuth, async (req, res) => {
                 assetAllocation,
                 totalPortfolioValue: Number(totalPortfolioValue.toFixed(2)),
                 totalInvestedCapital: Number(totalInvestedCapital.toFixed(2)),
+                scopedStock,
+                currency: baseCurrency,
+                exchangeRate,
             },
         });
     }
@@ -577,28 +675,56 @@ router.get('/advanced', auth_1.requireAuth, async (req, res) => {
 router.get('/benchmark', auth_1.requireAuth, async (req, res) => {
     try {
         const userId = req.user.id;
+        const { baseCurrency, exchangeRate } = await (0, currencyService_1.getUserCurrencyContext)(userId);
         const { startDate, endDate } = req.query;
-        if (!startDate || !endDate) {
-            return res.status(400).json({ success: false, message: 'Both startDate and endDate query parameters are required for benchmarking.' });
+        let sDate = typeof startDate === 'string' && startDate.trim() !== '' ? startDate.trim() : null;
+        let eDate = typeof endDate === 'string' && endDate.trim() !== '' ? endDate.trim() : null;
+        if (sDate && !/^\d{4}-\d{2}-\d{2}$/.test(sDate)) {
+            return res.status(400).json({ success: false, message: 'Invalid startDate format. Must be YYYY-MM-DD.' });
         }
-        try {
-            if (typeof startDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(startDate) ||
-                typeof endDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
-                throw new Error('Invalid date format. Must be YYYY-MM-DD.');
+        if (eDate && !/^\d{4}-\d{2}-\d{2}$/.test(eDate)) {
+            return res.status(400).json({ success: false, message: 'Invalid endDate format. Must be YYYY-MM-DD.' });
+        }
+        // If either date is omitted, default sDate to user's earliest price/purchase date and eDate to today
+        if (!sDate) {
+            const earliestPrice = await models_1.DailyPrice.findOne({
+                where: { userId },
+                order: [['date', 'ASC']],
+            });
+            const earliestPurchase = await models_1.Purchase.findOne({
+                where: { userId },
+                order: [['purchaseDate', 'ASC']],
+            });
+            const candidates = [];
+            if (earliestPrice?.date)
+                candidates.push(earliestPrice.date);
+            if (earliestPurchase?.purchaseDate)
+                candidates.push(earliestPurchase.purchaseDate);
+            if (candidates.length > 0) {
+                candidates.sort();
+                sDate = candidates[0];
+            }
+            else {
+                sDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
             }
         }
-        catch (err) {
-            return res.status(400).json({ success: false, message: err.message });
+        if (!eDate) {
+            eDate = new Date().toISOString().split('T')[0];
         }
         const userStocks = await models_1.Stock.findAll({ where: { userId } });
         const benchmarks = [];
         for (const stock of userStocks) {
-            // Find price at or latest before startDate
+            const stockCurrency = stock.currency || 'USD';
+            // Count total daily price records for this stock to detect single-point baselines
+            const totalDailyPriceCount = await models_1.DailyPrice.count({
+                where: { stockId: stock.id, userId },
+            });
+            // Find price at or latest before sDate
             let startPriceRecord = await models_1.DailyPrice.findOne({
                 where: {
                     stockId: stock.id,
                     date: {
-                        [sequelize_1.Op.lte]: startDate,
+                        [sequelize_1.Op.lte]: sDate,
                     },
                     userId,
                 },
@@ -610,21 +736,21 @@ router.get('/benchmark', auth_1.requireAuth, async (req, res) => {
                     where: {
                         stockId: stock.id,
                         date: {
-                            [sequelize_1.Op.gte]: startDate,
-                            [sequelize_1.Op.lte]: endDate,
+                            [sequelize_1.Op.gte]: sDate,
+                            [sequelize_1.Op.lte]: eDate,
                         },
                         userId,
                     },
                     order: [['date', 'ASC']],
                 });
             }
-            // Find price at or latest before endDate and on or after startDate
+            // Find price at or latest before eDate and on or after sDate
             const endPriceRecord = await models_1.DailyPrice.findOne({
                 where: {
                     stockId: stock.id,
                     date: {
-                        [sequelize_1.Op.gte]: startDate,
-                        [sequelize_1.Op.lte]: endDate,
+                        [sequelize_1.Op.gte]: sDate,
+                        [sequelize_1.Op.lte]: eDate,
                     },
                     userId,
                 },
@@ -633,14 +759,22 @@ router.get('/benchmark', auth_1.requireAuth, async (req, res) => {
             if (startPriceRecord && endPriceRecord) {
                 const pStart = Number(startPriceRecord.price);
                 const pEnd = Number(endPriceRecord.price);
+                const isSinglePrice = totalDailyPriceCount <= 1 || startPriceRecord.date === endPriceRecord.date;
                 const performanceGain = pStart > 0 ? ((pEnd - pStart) / pStart) * 100 : 0;
+                const convertedStart = Number((0, currencyService_1.convertPrice)(pStart, stockCurrency, baseCurrency, exchangeRate).toFixed(2));
+                const convertedEnd = Number((0, currencyService_1.convertPrice)(pEnd, stockCurrency, baseCurrency, exchangeRate).toFixed(2));
                 benchmarks.push({
                     stockId: stock.id,
                     symbol: stock.symbol,
                     name: stock.name,
-                    startPrice: pStart,
-                    endPrice: pEnd,
+                    currency: stockCurrency,
+                    baseCurrency,
+                    startPrice: convertedStart,
+                    endPrice: convertedEnd,
+                    nativeStartPrice: pStart,
+                    nativeEndPrice: pEnd,
                     performanceGain: Number(performanceGain.toFixed(2)),
+                    insufficientHistory: isSinglePrice,
                 });
             }
             else {
@@ -648,9 +782,14 @@ router.get('/benchmark', auth_1.requireAuth, async (req, res) => {
                     stockId: stock.id,
                     symbol: stock.symbol,
                     name: stock.name,
+                    currency: stockCurrency,
+                    baseCurrency,
                     startPrice: null,
                     endPrice: null,
+                    nativeStartPrice: null,
+                    nativeEndPrice: null,
                     performanceGain: 0,
+                    insufficientHistory: true,
                 });
             }
         }
@@ -685,6 +824,7 @@ router.get('/targets', auth_1.requireAuth, async (req, res) => {
         let totalInvestedCapital = 0;
         let totalReturnPercent = 0;
         let annualizedReturnPercent = 0;
+        const { baseCurrency, exchangeRate } = await (0, currencyService_1.getUserCurrencyContext)(userId);
         if (stockIds.length > 0) {
             const purchases = await models_1.Purchase.findAll({ where: { stockId: stockIds, userId }, order: [['purchaseDate', 'ASC']] });
             const sales = await models_1.Sales.findAll({ where: { stockId: stockIds, userId }, order: [['saleDate', 'ASC']] });
@@ -711,9 +851,12 @@ router.get('/targets', auth_1.requireAuth, async (req, res) => {
                 const timeline = stockTimelines[stock.id] || [];
                 const currentHolding = timeline[timeline.length - 1] || { remainingShares: 0, averageCost: 0, cumulativeRealizedPL: 0 };
                 if (currentHolding.remainingShares > 0) {
+                    const stockCurrency = stock.currency || 'USD';
                     const currentPrice = latestPriceMap[stock.id] || currentHolding.averageCost;
-                    totalPortfolioValue += currentHolding.remainingShares * currentPrice;
-                    totalInvestedCapital += currentHolding.remainingShares * currentHolding.averageCost;
+                    const rawMarketValue = currentHolding.remainingShares * currentPrice;
+                    const rawCostBasis = currentHolding.remainingShares * currentHolding.averageCost;
+                    totalPortfolioValue += (0, currencyService_1.convertPrice)(rawMarketValue, stockCurrency, baseCurrency, exchangeRate);
+                    totalInvestedCapital += (0, currencyService_1.convertPrice)(rawCostBasis, stockCurrency, baseCurrency, exchangeRate);
                 }
             });
             if (totalInvestedCapital > 0) {
@@ -732,8 +875,12 @@ router.get('/targets', auth_1.requireAuth, async (req, res) => {
         const targetsWithProgress = await Promise.all(targets.map(async (t) => {
             let currentMetric = 0;
             let progressPercent = 0;
+            const targetCurrency = t.currency || 'USD';
+            const targetVal = Number(t.targetValue);
+            let normalizedTargetVal = targetVal;
             if (t.targetType === 'portfolio_value') {
                 currentMetric = totalPortfolioValue;
+                normalizedTargetVal = (0, currencyService_1.convertPrice)(targetVal, targetCurrency, baseCurrency, exchangeRate);
             }
             else if (t.targetType === 'total_return') {
                 currentMetric = totalReturnPercent;
@@ -741,9 +888,8 @@ router.get('/targets', auth_1.requireAuth, async (req, res) => {
             else if (t.targetType === 'annualized_return') {
                 currentMetric = annualizedReturnPercent;
             }
-            const targetVal = Number(t.targetValue);
-            if (targetVal > 0) {
-                progressPercent = Math.max(0, Math.min(100, (currentMetric / targetVal) * 100));
+            if (normalizedTargetVal > 0) {
+                progressPercent = Math.max(0, Math.min(100, (currentMetric / normalizedTargetVal) * 100));
             }
             const achieved = progressPercent >= 100;
             // If target achieves milestone now and was not marked achieved, update DB silently
@@ -756,6 +902,9 @@ router.get('/targets', auth_1.requireAuth, async (req, res) => {
                 targetName: t.targetName,
                 targetType: t.targetType,
                 targetValue: targetVal,
+                currency: targetCurrency,
+                baseCurrency,
+                normalizedTargetValue: Number(normalizedTargetVal.toFixed(2)),
                 targetDate: t.targetDate,
                 isAchieved: t.isAchieved,
                 currentValue: Number(currentMetric.toFixed(2)),
@@ -779,7 +928,9 @@ router.get('/targets', auth_1.requireAuth, async (req, res) => {
 router.post('/targets', auth_1.requireAuth, async (req, res) => {
     try {
         const userId = req.user.id;
-        const { targetName, targetType, targetValue, targetDate } = req.body;
+        const { targetName, targetType, targetValue, targetDate, currency } = req.body;
+        const { baseCurrency } = await (0, currencyService_1.getUserCurrencyContext)(userId);
+        const targetCurrency = (currency === 'KES' || currency === 'USD') ? currency : baseCurrency;
         // Manual request validation
         if (!targetName || typeof targetName !== 'string' || targetName.trim().length === 0) {
             return res.status(400).json({ success: false, message: 'Target name is required.' });
@@ -801,6 +952,7 @@ router.post('/targets', auth_1.requireAuth, async (req, res) => {
             targetType,
             targetValue: tValue,
             targetDate,
+            currency: targetCurrency,
             isAchieved: false,
         });
         return res.status(201).json({
@@ -822,7 +974,7 @@ router.put('/targets/:id', auth_1.requireAuth, async (req, res) => {
     try {
         const userId = req.user.id;
         const { id } = req.params;
-        const { targetName, targetType, targetValue, targetDate, isAchieved } = req.body;
+        const { targetName, targetType, targetValue, targetDate, isAchieved, currency } = req.body;
         const target = await models_1.PerformanceTarget.findOne({
             where: { id, userId },
         });
@@ -831,6 +983,9 @@ router.put('/targets/:id', auth_1.requireAuth, async (req, res) => {
                 success: false,
                 message: 'Performance target not found or unauthorized.',
             });
+        }
+        if (currency !== undefined && (currency === 'USD' || currency === 'KES')) {
+            target.currency = currency;
         }
         if (targetName !== undefined) {
             if (typeof targetName !== 'string' || targetName.trim().length === 0) {

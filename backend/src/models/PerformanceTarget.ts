@@ -10,6 +10,7 @@ export class PerformanceTarget extends Model {
   declare targetValue: number;
   declare targetDate: string; // YYYY-MM-DD format
   declare isAchieved: boolean;
+  declare currency: 'USD' | 'KES';
 
   declare readonly createdAt: Date;
   declare readonly updatedAt: Date;
@@ -62,6 +63,11 @@ PerformanceTarget.init(
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: false,
+    },
+    currency: {
+      type: DataTypes.STRING(10),
+      allowNull: false,
+      defaultValue: 'USD',
     },
   },
   {

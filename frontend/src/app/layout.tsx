@@ -4,6 +4,7 @@ import "./globals.css";
 import SidebarLayout from "@/components/SidebarLayout";
 import { AuthProvider } from "@/app/context/AuthContext";
 import { ThemeProvider } from "@/app/context/ThemeContext";
+import { CurrencyProvider } from "@/app/context/CurrencyContext";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -44,9 +45,11 @@ export default function RootLayout({
       </head>
       <body className={`${inter.className} h-full overflow-hidden flex bg-app text-main antialiased`}>
         <AuthProvider>
-          <ThemeProvider>
-            <SidebarLayout>{children}</SidebarLayout>
-          </ThemeProvider>
+          <CurrencyProvider>
+            <ThemeProvider>
+              <SidebarLayout>{children}</SidebarLayout>
+            </ThemeProvider>
+          </CurrencyProvider>
         </AuthProvider>
       </body>
     </html>

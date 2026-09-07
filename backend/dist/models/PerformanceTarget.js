@@ -54,6 +54,11 @@ PerformanceTarget.init({
         allowNull: false,
         defaultValue: false,
     },
+    currency: {
+        type: sequelize_1.DataTypes.STRING(10),
+        allowNull: false,
+        defaultValue: 'USD',
+    },
 }, {
     sequelize: database_1.sequelize,
     modelName: 'PerformanceTarget',

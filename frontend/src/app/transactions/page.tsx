@@ -5,12 +5,14 @@ import { API_BASE } from '../../lib/api';
 import React, { useState, useEffect, useCallback } from 'react';
 import ExportActionsDropdown from '../../components/ExportActionsDropdown';
 import { Pencil, Trash2, X, AlertCircle } from 'lucide-react';
+import { useCurrency } from '@/app/context/CurrencyContext';
 
 interface StockOption {
   id: string;
   name: string;
   symbol: string;
   category: string;
+  currency?: 'USD' | 'KES';
 }
 
 interface Transaction {
@@ -23,6 +25,11 @@ interface Transaction {
   price: number;
   date: string;
   profitLoss: number | null;
+  currency?: 'USD' | 'KES';
+  nativePrice?: number;
+  convertedPrice?: number;
+  nativeProfitLoss?: number | null;
+  convertedProfitLoss?: number | null;
 }
 
 function getTodayString() {
@@ -34,6 +41,7 @@ function getTodayString() {
 }
 
 export default function TransactionsPage() {
+  const { baseCurrency, convert, formatMoney } = useCurrency();
   const [activeTab, setActiveTab] = useState<'BUY' | 'SELL'>('BUY');
   const [stocks, setStocks] = useState<StockOption[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -50,6 +58,9 @@ export default function TransactionsPage() {
   const [quantity, setQuantity] = useState('');
   const [price, setPrice] = useState('');
   const [txDate, setTxDate] = useState(getTodayString);
+
+  const selectedStock = stocks.find((s) => s.id === selectedStockId);
+  const stockCurr = selectedStock?.currency || 'USD';
 
   // Notifications
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -426,9 +437,16 @@ export default function TransactionsPage() {
 
               {/* Purchase/Sell Price */}
               <div>
-                <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-2">
-                  Price per Share ($)
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-bold text-muted uppercase tracking-wider">
+                    Price per Share ({stockCurr === 'KES' ? 'KSh' : '$'} - {stockCurr})
+                  </label>
+                  {stockCurr !== baseCurrency && Number(price) > 0 && (
+                    <span className="text-[11px] font-mono text-muted">
+                      ≈ {formatMoney(convert(Number(price), stockCurr, baseCurrency), baseCurrency)}
+                    </span>
+                  )}
+                </div>
                 <input
                   type="number"
                   step="any"
@@ -601,7 +619,12 @@ export default function TransactionsPage() {
                           </td>
                           {/* Stock symbol */}
                           <td className="px-4 py-3.5 font-semibold text-main">
-                            <div className="font-mono">{tx.symbol}</div>
+                            <div className="flex items-center gap-1.5 font-mono">
+                              <span>{tx.symbol}</span>
+                              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-surface-elevated border border-subtle text-muted uppercase">
+                                {tx.currency || 'USD'}
+                              </span>
+                            </div>
                             <div className="text-[10px] font-normal text-muted truncate max-w-[120px]">
                               {tx.name}
                             </div>
@@ -615,7 +638,12 @@ export default function TransactionsPage() {
                           </td>
                           {/* Price */}
                           <td className="px-4 py-3.5 text-right text-secondary font-mono font-medium">
-                            ${tx.price.toFixed(2)}
+                            <div>{formatMoney(tx.nativePrice ?? tx.price, tx.currency || 'USD')}</div>
+                            {tx.currency && tx.currency !== baseCurrency && (
+                              <div className="text-[10px] text-muted font-normal">
+                                ≈ {formatMoney(tx.convertedPrice ?? convert(tx.price, tx.currency, baseCurrency), baseCurrency)}
+                              </div>
+                            )}
                           </td>
                           {/* Date */}
                           <td className="px-4 py-3.5 text-right text-muted font-medium">
@@ -624,12 +652,25 @@ export default function TransactionsPage() {
                           {/* P&L */}
                           <td className="px-4 py-3.5 text-right font-mono font-bold">
                             {tx.profitLoss !== null ? (
-                              <span
-                                className={tx.profitLoss >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}
-                              >
-                                {tx.profitLoss >= 0 ? '+' : ''}
-                                ${tx.profitLoss.toFixed(2)}
-                              </span>
+                              (() => {
+                                const displayPL = tx.convertedProfitLoss ?? (tx.currency ? convert(tx.profitLoss, tx.currency, baseCurrency) : tx.profitLoss);
+                                const isPos = displayPL >= 0;
+                                return (
+                                  <div>
+                                    <span
+                                      className={isPos ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}
+                                    >
+                                      {isPos ? '+' : ''}
+                                      {formatMoney(displayPL, baseCurrency)}
+                                    </span>
+                                    {tx.currency && tx.currency !== baseCurrency && tx.nativeProfitLoss !== null && tx.nativeProfitLoss !== undefined && (
+                                      <div className="text-[10px] text-muted font-normal">
+                                        Native: {tx.nativeProfitLoss >= 0 ? '+' : ''}{formatMoney(tx.nativeProfitLoss, tx.currency)}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })()
                             ) : (
                               <span className="text-muted">—</span>
                             )}
@@ -719,7 +760,7 @@ export default function TransactionsPage() {
 
               <div>
                 <label className="block text-[10px] font-bold text-muted uppercase tracking-wider mb-1">
-                  Price ($)
+                  Price ({editingTx.currency === 'KES' ? 'KSh' : '$'} - {editingTx.currency || 'USD'})
                 </label>
                 <input
                   type="number"

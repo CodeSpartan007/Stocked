@@ -159,12 +159,13 @@ describe('Phase 5: Database Concurrency & Migrations', () => {
 
     it('should execute pending migrations up and create all core tables and evolution columns', async () => {
       const applied = await testMigrator.up();
-      expect(applied.length).toBe(4);
+      expect(applied.length).toBe(5);
       expect(applied.map(m => m.name)).toEqual([
         '0001_initial_schema',
         '0002_add_change_and_cost_basis',
         '0003_add_multi_provider_api_keys',
         '0004_fix_unique_constraints_and_indexes',
+        '0005_add_currency_and_exchange_rates',
       ]);
 
       // Verify all tables were created
@@ -191,9 +192,15 @@ describe('Phase 5: Database Concurrency & Migrations', () => {
       expect(userSettingsDesc.alphaVantageApiKey).toBeDefined();
       expect(userSettingsDesc.polygonApiKey).toBeDefined();
       expect(userSettingsDesc.autoSwitchOnRateLimit).toBeDefined();
+      expect(userSettingsDesc.baseCurrency).toBeDefined();
+      expect(userSettingsDesc.exchangeRate).toBeDefined();
     });
 
     it('should correctly revert migrations (down) and remove added columns', async () => {
+      const reverted0005 = await testMigrator.down();
+      expect(reverted0005.length).toBe(1);
+      expect(reverted0005[0].name).toBe('0005_add_currency_and_exchange_rates');
+
       const reverted0004 = await testMigrator.down();
       expect(reverted0004.length).toBe(1);
       expect(reverted0004[0].name).toBe('0004_fix_unique_constraints_and_indexes');
@@ -211,10 +218,11 @@ describe('Phase 5: Database Concurrency & Migrations', () => {
 
     it('should re-apply migration up and restore columns', async () => {
       const applied = await testMigrator.up();
-      expect(applied.length).toBe(2);
+      expect(applied.length).toBe(3);
       expect(applied.map(m => m.name)).toEqual([
         '0003_add_multi_provider_api_keys',
         '0004_fix_unique_constraints_and_indexes',
+        '0005_add_currency_and_exchange_rates',
       ]);
 
       const queryInterface = migrationDb.getQueryInterface();
@@ -222,6 +230,7 @@ describe('Phase 5: Database Concurrency & Migrations', () => {
       expect(userSettingsDesc.alphaVantageApiKey).toBeDefined();
       expect(userSettingsDesc.polygonApiKey).toBeDefined();
       expect(userSettingsDesc.autoSwitchOnRateLimit).toBeDefined();
+      expect(userSettingsDesc.baseCurrency).toBeDefined();
     });
 
     it('should integrate with initDb() seamlessly', async () => {

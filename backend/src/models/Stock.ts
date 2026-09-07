@@ -9,6 +9,7 @@ export class Stock extends Model {
   declare symbol: string;
   declare description: string | null;
   declare category: string | null;
+  declare currency: 'USD' | 'KES';
 
   declare readonly createdAt: Date;
   declare readonly updatedAt: Date;
@@ -46,6 +47,11 @@ Stock.init(
     category: {
       type: DataTypes.STRING,
       allowNull: true,
+    },
+    currency: {
+      type: DataTypes.STRING(10),
+      allowNull: false,
+      defaultValue: 'USD',
     },
   },
   {

@@ -548,22 +548,60 @@ describe('Phase 6: Analytics, Performance Engine & Target Tracking Suite', () =>
       expect(data).toHaveProperty('volatility');
       expect(data).toHaveProperty('assetAllocation');
       expect(Array.isArray(data.assetAllocation)).toBe(true);
+      expect(data.scopedStock).toBeNull();
 
       // Asset allocation should sum to approximately 100%
       const totalAlloc = data.assetAllocation.reduce((sum: number, item: any) => sum + item.percentage, 0);
       expect(totalAlloc).toBeCloseTo(100, 0);
     });
 
-    it('GET /api/analytics/benchmark returns market benchmark rankings and performers', async () => {
-      // Rejects missing date parameters
-      const missingDatesRes = await request(app)
-        .get('/api/analytics/benchmark')
-        .set('Authorization', `Bearer ${tokenA}`);
-      expect(missingDatesRes.status).toBe(400);
-
-      // Valid request with startDate and endDate
+    it('GET /api/analytics/advanced?stockId=<id> returns scoped metrics for the requested stock', async () => {
       const res = await request(app)
-        .get('/api/analytics/benchmark?startDate=2026-01-01&endDate=2026-01-05')
+        .get(`/api/analytics/advanced?stockId=${stockA1.id}`)
+        .set('Authorization', `Bearer ${tokenA}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      const data = res.body.data;
+
+      expect(data.scopedStock).toEqual({
+        id: stockA1.id,
+        symbol: 'ALFA',
+        name: 'Alfa Corp',
+      });
+      expect(data.assetAllocation.length).toBe(1);
+      expect(data.assetAllocation[0].stockId).toBe(stockA1.id);
+      expect(data.assetAllocation[0].percentage).toBe(100);
+      expect(data.totalPortfolioValue).toBeGreaterThan(0);
+
+      // Returns 404 for nonexistent stock
+      const notFoundRes = await request(app)
+        .get('/api/analytics/advanced?stockId=00000000-0000-0000-0000-000000000000')
+        .set('Authorization', `Bearer ${tokenA}`);
+      expect(notFoundRes.status).toBe(404);
+    });
+
+    it('GET /api/analytics/charts/:stockId carries forward holdings and prices into subsequent date windows', async () => {
+      // Stock was purchased and priced in Jan 2026. Query Feb 2026 window.
+      const res = await request(app)
+        .get(`/api/analytics/charts/${stockA1.id}?startDate=2026-02-01&endDate=2026-02-28`)
+        .set('Authorization', `Bearer ${tokenA}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      const data = res.body.data;
+
+      expect(data.cumulativePerformance.length).toBeGreaterThanOrEqual(2);
+      expect(data.cumulativePerformance[0].date).toBe('2026-02-01');
+      expect(data.cumulativePerformance[0].portfolioValue).toBeGreaterThan(0);
+      expect(data.priceTrend.length).toBeGreaterThanOrEqual(1);
+      expect(data.priceTrend[0].price).toBeGreaterThan(0);
+    });
+
+    it('GET /api/analytics/benchmark defaults cleanly to all-time without requiring dates', async () => {
+      // Without dates: defaults cleanly without 400
+      const res = await request(app)
+        .get('/api/analytics/benchmark')
         .set('Authorization', `Bearer ${tokenA}`);
 
       expect(res.status).toBe(200);
@@ -574,6 +612,21 @@ describe('Phase 6: Analytics, Performance Engine & Target Tracking Suite', () =>
       expect(data.length).toBeGreaterThanOrEqual(2);
       expect(data[0]).toHaveProperty('symbol');
       expect(data[0]).toHaveProperty('performanceGain');
+      expect(data[0]).toHaveProperty('insufficientHistory');
+
+      // Rejects invalid date format
+      const badDateRes = await request(app)
+        .get('/api/analytics/benchmark?startDate=invalid-date')
+        .set('Authorization', `Bearer ${tokenA}`);
+      expect(badDateRes.status).toBe(400);
+
+      // Valid request with startDate and endDate
+      const filteredRes = await request(app)
+        .get('/api/analytics/benchmark?startDate=2026-01-01&endDate=2026-01-05')
+        .set('Authorization', `Bearer ${tokenA}`);
+
+      expect(filteredRes.status).toBe(200);
+      expect(filteredRes.body.success).toBe(true);
     });
 
     it('GET /api/portfolio/summary returns accurate valuation KPIs and realized/unrealized P&L', async () => {

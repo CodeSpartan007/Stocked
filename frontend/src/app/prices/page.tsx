@@ -3,11 +3,13 @@
 import { API_BASE } from '../../lib/api';
 
 import React, { useEffect, useState } from 'react';
+import { useCurrency } from '@/app/context/CurrencyContext';
 
 interface StockOption {
   id: string;
   name: string;
   symbol: string;
+  currency?: 'USD' | 'KES';
 }
 
 interface PriceRecord {
@@ -28,6 +30,7 @@ interface PaginationInfo {
 }
 
 export default function DailyPricesRecording() {
+  const { baseCurrency, convert, formatMoney } = useCurrency();
   const [stocks, setStocks] = useState<StockOption[]>([]);
   const [selectedStockId, setSelectedStockId] = useState<string>('');
   const [priceHistory, setPriceHistory] = useState<PriceRecord[]>([]);
@@ -48,6 +51,9 @@ export default function DailyPricesRecording() {
   const [formVolume, setFormVolume] = useState<string>('');
   const [formErrors, setFormErrors] = useState<{ field: string; message: string }[]>([]);
   const [formSuccessMessage, setFormSuccessMessage] = useState<string | null>(null);
+
+  const selectedStock = stocks.find((s) => s.id === selectedStockId);
+  const stockCurr = selectedStock?.currency || 'USD';
 
   // Edit states
   const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
@@ -351,9 +357,16 @@ export default function DailyPricesRecording() {
 
               {/* Price field */}
               <div>
-                <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-2">
-                  Price per Share ($)
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-bold text-muted uppercase tracking-wider">
+                    Price per Share ({stockCurr === 'KES' ? 'KSh' : '$'} - {stockCurr})
+                  </label>
+                  {stockCurr !== baseCurrency && parseFloat(formPrice) > 0 && (
+                    <span className="text-[11px] font-mono text-muted">
+                      ≈ {formatMoney(convert(parseFloat(formPrice), stockCurr, baseCurrency), baseCurrency)}
+                    </span>
+                  )}
+                </div>
                 <input
                   type="number"
                   step="0.01"
@@ -534,7 +547,12 @@ export default function DailyPricesRecording() {
                             {record.date}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-main font-mono">
-                            ${Number(record.price).toFixed(2)}
+                            <div>{formatMoney(Number(record.price), stockCurr)}</div>
+                            {stockCurr !== baseCurrency && (
+                              <div className="text-[10px] text-muted font-normal">
+                                ≈ {formatMoney(convert(Number(record.price), stockCurr, baseCurrency), baseCurrency)}
+                              </div>
+                            )}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-secondary font-mono">
                             {Number(record.volume).toLocaleString()} shares

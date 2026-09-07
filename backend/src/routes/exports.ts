@@ -6,6 +6,7 @@ import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
 import { Stock, DailyPrice, Purchase, Sales, ExportLogs, PerformanceTarget, UserSetting } from '../models';
 import { computeStockHoldings } from './transactions';
 import { calculateAnnualizedReturn, calculateTwrVolatility, DayValPoint } from './analytics';
+import { getUserCurrencyContext, convertPrice, formatCurrency } from '../services/currencyService';
 
 const router = Router();
 
@@ -149,6 +150,8 @@ router.post(
     let auditLog: ExportLogs | null = null;
     try {
       const userId = req.user!.id;
+      const { baseCurrency, exchangeRate } = await getUserCurrencyContext(userId);
+      const currSymbol = baseCurrency === 'KES' ? 'KSh ' : '$';
       const { reportType, format, stockId, startDate, endDate } = req.body;
 
       // Validate inputs
@@ -197,13 +200,17 @@ router.post(
         let totalUnrealizedPL = 0;
         let totalPortfolioValue = 0;
 
-        // Realized P&L: Sum of all profitLoss in Sales
+        // Realized P&L: Multi-currency conversion of all sales
         const activeIds = targetStock ? [targetStock.id] : userStockIds;
         if (activeIds.length > 0) {
-          const salesSum = await Sales.sum('profitLoss', {
+          const userSales = await Sales.findAll({
             where: { stockId: activeIds, userId },
+            include: [{ model: Stock, as: 'Stock', attributes: ['currency'] }],
           });
-          totalRealizedPL = Number(salesSum || 0);
+          totalRealizedPL = userSales.reduce((sum, s) => {
+            const stockCurrency = (s.Stock?.currency as 'USD' | 'KES') || 'USD';
+            return sum + convertPrice(Number(s.profitLoss), stockCurrency, baseCurrency, exchangeRate);
+          }, 0);
         }
 
         const activeHoldings: any[] = [];
@@ -225,13 +232,19 @@ router.post(
         for (const item of holdingsAndPrices) {
           if (!item) continue;
           const { stock, holdings, latestPriceRecord } = item;
+          const stockCurrency = (stock.currency as 'USD' | 'KES') || 'USD';
 
-          const currentPrice = latestPriceRecord ? Number(latestPriceRecord.price) : holdings.averageCost;
+          const nativeCurrentPrice = latestPriceRecord ? Number(latestPriceRecord.price) : holdings.averageCost;
           const remainingShares = holdings.remainingShares;
-          const averageCost = holdings.averageCost;
+          const nativeAverageCost = holdings.averageCost;
 
-          const costBasis = remainingShares * averageCost;
-          const marketValue = remainingShares * currentPrice;
+          const nativeCostBasis = remainingShares * nativeAverageCost;
+          const nativeMarketValue = remainingShares * nativeCurrentPrice;
+
+          const averageCost = convertPrice(nativeAverageCost, stockCurrency, baseCurrency, exchangeRate);
+          const currentPrice = convertPrice(nativeCurrentPrice, stockCurrency, baseCurrency, exchangeRate);
+          const costBasis = convertPrice(nativeCostBasis, stockCurrency, baseCurrency, exchangeRate);
+          const marketValue = convertPrice(nativeMarketValue, stockCurrency, baseCurrency, exchangeRate);
           const unrealizedPL = marketValue - costBasis;
 
           totalInvestedCapital += costBasis;
@@ -263,37 +276,50 @@ router.post(
 
         const purchases = await Purchase.findAll({
           where: { stockId: activeIds, userId },
-          include: [{ model: Stock, as: 'Stock', attributes: ['symbol', 'name'] }],
+          include: [{ model: Stock, as: 'Stock', attributes: ['symbol', 'name', 'currency'] }],
         });
 
         const sales = await Sales.findAll({
           where: { stockId: activeIds, userId },
-          include: [{ model: Stock, as: 'Stock', attributes: ['symbol', 'name'] }],
+          include: [{ model: Stock, as: 'Stock', attributes: ['symbol', 'name', 'currency'] }],
         });
 
         let combined: any[] = [
-          ...purchases.map((p) => ({
-            id: p.id,
-            type: 'BUY',
-            symbol: p.Stock?.symbol || 'UNKNOWN',
-            name: p.Stock?.name || 'Unknown',
-            quantity: Number(p.quantity),
-            price: Number(p.purchasePrice),
-            date: p.purchaseDate,
-            profitLoss: null,
-            createdAt: p.createdAt,
-          })),
-          ...sales.map((s) => ({
-            id: s.id,
-            type: 'SELL',
-            symbol: s.Stock?.symbol || 'UNKNOWN',
-            name: s.Stock?.name || 'Unknown',
-            quantity: Number(s.quantity),
-            price: Number(s.sellPrice),
-            date: s.saleDate,
-            profitLoss: Number(s.profitLoss),
-            createdAt: s.createdAt,
-          })),
+          ...purchases.map((p) => {
+            const stockCurrency = (p.Stock?.currency as 'USD' | 'KES') || 'USD';
+            const convertedPrice = convertPrice(Number(p.purchasePrice), stockCurrency, baseCurrency, exchangeRate);
+            return {
+              id: p.id,
+              type: 'BUY',
+              symbol: p.Stock?.symbol || 'UNKNOWN',
+              name: p.Stock?.name || 'Unknown',
+              currency: stockCurrency,
+              quantity: Number(p.quantity),
+              nativePrice: Number(p.purchasePrice),
+              price: convertedPrice,
+              date: p.purchaseDate,
+              profitLoss: null,
+              createdAt: p.createdAt,
+            };
+          }),
+          ...sales.map((s) => {
+            const stockCurrency = (s.Stock?.currency as 'USD' | 'KES') || 'USD';
+            const convertedPrice = convertPrice(Number(s.sellPrice), stockCurrency, baseCurrency, exchangeRate);
+            const convertedPL = s.profitLoss !== null ? convertPrice(Number(s.profitLoss), stockCurrency, baseCurrency, exchangeRate) : null;
+            return {
+              id: s.id,
+              type: 'SELL',
+              symbol: s.Stock?.symbol || 'UNKNOWN',
+              name: s.Stock?.name || 'Unknown',
+              currency: stockCurrency,
+              quantity: Number(s.quantity),
+              nativePrice: Number(s.sellPrice),
+              price: convertedPrice,
+              date: s.saleDate,
+              profitLoss: convertedPL,
+              createdAt: s.createdAt,
+            };
+          }),
         ];
 
         if (parsedStartDate) {
@@ -353,9 +379,13 @@ router.post(
             const currentHolding = timeline[timeline.length - 1] || { remainingShares: 0, averageCost: 0, cumulativeRealizedPL: 0 };
 
             if (currentHolding.remainingShares > 0) {
-              const currentPrice = latestPriceMap[stock.id] || currentHolding.averageCost;
-              const marketValue = currentHolding.remainingShares * currentPrice;
-              const costBasis = currentHolding.remainingShares * currentHolding.averageCost;
+              const stockCurrency = (stock.currency as 'USD' | 'KES') || 'USD';
+              const nativeCurrentPrice = latestPriceMap[stock.id] || currentHolding.averageCost;
+              const nativeMarketValue = currentHolding.remainingShares * nativeCurrentPrice;
+              const nativeCostBasis = currentHolding.remainingShares * currentHolding.averageCost;
+
+              const marketValue = convertPrice(nativeMarketValue, stockCurrency, baseCurrency, exchangeRate);
+              const costBasis = convertPrice(nativeCostBasis, stockCurrency, baseCurrency, exchangeRate);
 
               totalPortfolioValue += marketValue;
               totalInvestedCapital += costBasis;
@@ -439,26 +469,34 @@ router.post(
           uniquePriceDates.forEach((dStr) => {
             let dayVal = 0;
             stocksToProcess.forEach((stock) => {
+              const stockCurrency = (stock.currency as 'USD' | 'KES') || 'USD';
               const hTimeline = stockTimelines[stock.id] || [];
               const holdingState = getHoldingStateAt(hTimeline, dStr);
               const price = getStockPriceAt(stock.id, dStr, holdingState.averageCost);
-              dayVal += holdingState.remainingShares * price;
+              const nativeVal = holdingState.remainingShares * price;
+              dayVal += convertPrice(nativeVal, stockCurrency, baseCurrency, exchangeRate);
             });
 
             // Net external capital cash flows Ct = Purchases_t - Sales_t executed on day t
             let dayCashFlow = 0;
             purchases.forEach((p) => {
               if (p.purchaseDate === dStr) {
-                dayCashFlow += Number(p.quantity) * Number(p.purchasePrice);
+                const stock = stocksToProcess.find((st) => st.id === p.stockId);
+                const stockCurrency = (stock?.currency as 'USD' | 'KES') || 'USD';
+                const nativeFlow = Number(p.quantity) * Number(p.purchasePrice);
+                dayCashFlow += convertPrice(nativeFlow, stockCurrency, baseCurrency, exchangeRate);
               }
             });
             sales.forEach((s) => {
               if (s.saleDate === dStr) {
-                dayCashFlow -= Number(s.quantity) * Number(s.sellPrice);
+                const stock = stocksToProcess.find((st) => st.id === s.stockId);
+                const stockCurrency = (stock?.currency as 'USD' | 'KES') || 'USD';
+                const nativeFlow = Number(s.quantity) * Number(s.sellPrice);
+                dayCashFlow -= convertPrice(nativeFlow, stockCurrency, baseCurrency, exchangeRate);
               }
             });
 
-            if (dayVal > 0 || dayCashFlow > 0) {
+            if (dayVal > 0 || dayCashFlow !== 0) {
               dailyValPoints.push({
                 date: dStr,
                 value: dayVal,
@@ -484,9 +522,12 @@ router.post(
                 order: [['date', 'DESC']],
               });
               if (startPriceRecord && endPriceRecord) {
-                const pStart = Number(startPriceRecord.price);
-                const pEnd = Number(endPriceRecord.price);
-                const gain = pStart > 0 ? ((pEnd - pStart) / pStart) * 100 : 0;
+                const stockCurrency = (stock.currency as 'USD' | 'KES') || 'USD';
+                const nativeStart = Number(startPriceRecord.price);
+                const nativeEnd = Number(endPriceRecord.price);
+                const pStart = convertPrice(nativeStart, stockCurrency, baseCurrency, exchangeRate);
+                const pEnd = convertPrice(nativeEnd, stockCurrency, baseCurrency, exchangeRate);
+                const gain = nativeStart > 0 ? ((nativeEnd - nativeStart) / nativeStart) * 100 : 0;
                 benchmarks.push({ symbol: stock.symbol, name: stock.name, startPrice: pStart, endPrice: pEnd, gain: Number(gain.toFixed(2)) });
               } else {
                 benchmarks.push({ symbol: stock.symbol, name: stock.name, startPrice: null, endPrice: null, gain: 0 });
@@ -499,16 +540,22 @@ router.post(
           const dbTargets = await PerformanceTarget.findAll({ where: { userId }, order: [['targetDate', 'ASC']] });
           const targets = dbTargets.map((t) => {
             let currentMetric = 0;
-            if (t.targetType === 'portfolio_value') currentMetric = totalPortfolioValue;
-            else if (t.targetType === 'total_return') currentMetric = totalReturnPercent;
-            else if (t.targetType === 'annualized_return') currentMetric = annualizedReturnPercent;
+            let targetVal = Number(t.targetValue);
+            if (t.targetType === 'portfolio_value') {
+              currentMetric = totalPortfolioValue;
+              const targetCurrency = (t.currency as 'USD' | 'KES') || 'USD';
+              targetVal = convertPrice(targetVal, targetCurrency, baseCurrency, exchangeRate);
+            } else if (t.targetType === 'total_return') {
+              currentMetric = totalReturnPercent;
+            } else if (t.targetType === 'annualized_return') {
+              currentMetric = annualizedReturnPercent;
+            }
 
-            const targetVal = Number(t.targetValue);
             const progress = targetVal > 0 ? Math.max(0, Math.min(100, (currentMetric / targetVal) * 100)) : 0;
             return {
               name: t.targetName,
               type: t.targetType,
-              targetValue: targetVal,
+              targetValue: Number(targetVal.toFixed(2)),
               currentValue: Number(currentMetric.toFixed(2)),
               progressPercent: Number(progress.toFixed(2)),
               isAchieved: progress >= 100,
@@ -581,10 +628,10 @@ router.post(
           // Display Valuation summary KPIs
           doc.fontSize(11).font('Helvetica-Bold').fillColor('#1e1b4b').text('PORTFOLIO KPI SUMMARY:');
           doc.fontSize(9).font('Helvetica').fillColor('#334155');
-          doc.text(`Total Portfolio Market Value: $${summaryData.totalPortfolioValue.toLocaleString()}`);
-          doc.text(`Total Invested Capital Cost: $${summaryData.totalInvestedCapital.toLocaleString()}`);
-          doc.text(`Total Realized P&L Earnings: $${summaryData.realizedPL.toLocaleString()}`);
-          doc.text(`Total Unrealized Paper P&L: $${summaryData.unrealizedPL.toLocaleString()}`);
+          doc.text(`Total Portfolio Market Value: ${currSymbol}${summaryData.totalPortfolioValue.toLocaleString()}`);
+          doc.text(`Total Invested Capital Cost: ${currSymbol}${summaryData.totalInvestedCapital.toLocaleString()}`);
+          doc.text(`Total Realized P&L Earnings: ${currSymbol}${summaryData.realizedPL.toLocaleString()}`);
+          doc.text(`Total Unrealized Paper P&L: ${currSymbol}${summaryData.unrealizedPL.toLocaleString()}`);
           doc.moveDown(2);
 
           // Grid active assets list header
@@ -598,9 +645,9 @@ router.post(
           doc.text('Shares', 100, startY);
           doc.text('Avg Cost', 160, startY);
           doc.text('Live Price', 220, startY);
-          doc.text('Net Cost ($)', 280, startY);
-          doc.text('Market Val ($)', 350, startY);
-          doc.text('Unrealized P&L ($)', 430, startY);
+          doc.text(`Net Cost (${currSymbol.trim()})`, 280, startY);
+          doc.text(`Market Val (${currSymbol.trim()})`, 350, startY);
+          doc.text(`Unrealized P&L (${currSymbol.trim()})`, 430, startY);
 
           // Horizontal rule
           doc.moveTo(50, startY + 12).lineTo(550, startY + 12).strokeColor('#cbd5e1').lineWidth(1).stroke();
@@ -618,9 +665,9 @@ router.post(
               doc.text('Shares', 100, newY);
               doc.text('Avg Cost', 160, newY);
               doc.text('Live Price', 220, newY);
-              doc.text('Net Cost ($)', 280, newY);
-              doc.text('Market Val ($)', 350, newY);
-              doc.text('Unrealized P&L ($)', 430, newY);
+              doc.text(`Net Cost (${currSymbol.trim()})`, 280, newY);
+              doc.text(`Market Val (${currSymbol.trim()})`, 350, newY);
+              doc.text(`Unrealized P&L (${currSymbol.trim()})`, 430, newY);
               doc.moveTo(50, newY + 12).lineTo(550, newY + 12).strokeColor('#cbd5e1').stroke();
               doc.fontSize(8).font('Helvetica').fillColor('#334155');
               doc.moveDown(0.8);
@@ -629,12 +676,12 @@ router.post(
             const curY = doc.y;
             doc.text(h.symbol, 50, curY);
             doc.text(h.remainingShares.toLocaleString(), 100, curY);
-            doc.text(`$${h.averageCost.toFixed(2)}`, 160, curY);
-            doc.text(`$${h.currentPrice.toFixed(2)}`, 220, curY);
-            doc.text(`$${h.costBasis.toLocaleString()}`, 280, curY);
-            doc.text(`$${h.marketValue.toLocaleString()}`, 350, curY);
+            doc.text(`${currSymbol}${h.averageCost.toFixed(2)}`, 160, curY);
+            doc.text(`${currSymbol}${h.currentPrice.toFixed(2)}`, 220, curY);
+            doc.text(`${currSymbol}${h.costBasis.toLocaleString()}`, 280, curY);
+            doc.text(`${currSymbol}${h.marketValue.toLocaleString()}`, 350, curY);
             
-            const plText = `${h.unrealizedPL >= 0 ? '+' : ''}$${h.unrealizedPL.toLocaleString()}`;
+            const plText = `${h.unrealizedPL >= 0 ? '+' : ''}${currSymbol}${h.unrealizedPL.toLocaleString()}`;
             const plColor = h.unrealizedPL >= 0 ? '#10b981' : '#f43f5e';
             doc.fillColor(plColor).text(plText, 430, curY).fillColor('#334155');
             doc.moveDown(1.2);
@@ -649,8 +696,8 @@ router.post(
           doc.text('Type', 110, startY);
           doc.text('Ticker', 160, startY);
           doc.text('Quantity', 220, startY);
-          doc.text('Price ($)', 300, startY);
-          doc.text('Realized P&L ($)', 380, startY);
+          doc.text(`Price (${currSymbol.trim()})`, 300, startY);
+          doc.text(`Realized P&L (${currSymbol.trim()})`, 380, startY);
 
           doc.moveTo(50, startY + 12).lineTo(550, startY + 12).strokeColor('#cbd5e1').lineWidth(1).stroke();
           doc.moveDown(0.8);
@@ -666,8 +713,8 @@ router.post(
               doc.text('Type', 110, newY);
               doc.text('Ticker', 160, newY);
               doc.text('Quantity', 220, newY);
-              doc.text('Price ($)', 300, newY);
-              doc.text('Realized P&L ($)', 380, newY);
+              doc.text(`Price (${currSymbol.trim()})`, 300, newY);
+              doc.text(`Realized P&L (${currSymbol.trim()})`, 380, newY);
               doc.moveTo(50, newY + 12).lineTo(550, newY + 12).strokeColor('#cbd5e1').stroke();
               doc.fontSize(8).font('Helvetica').fillColor('#334155');
               doc.moveDown(0.8);
@@ -680,10 +727,10 @@ router.post(
             doc.fillColor(isBuy ? '#10b981' : '#f43f5e').text(tx.type, 110, curY).fillColor('#334155');
             doc.text(tx.symbol, 160, curY);
             doc.text(tx.quantity.toLocaleString(), 220, curY);
-            doc.text(`$${tx.price.toFixed(2)}`, 300, curY);
+            doc.text(`${currSymbol}${tx.price.toFixed(2)}`, 300, curY);
             
             if (tx.profitLoss !== null) {
-              const plText = `${tx.profitLoss >= 0 ? '+' : ''}$${tx.profitLoss.toFixed(2)}`;
+              const plText = `${tx.profitLoss >= 0 ? '+' : ''}${currSymbol}${tx.profitLoss.toFixed(2)}`;
               doc.fillColor(tx.profitLoss >= 0 ? '#10b981' : '#f43f5e').text(plText, 380, curY).fillColor('#334155');
             } else {
               doc.text('—', 380, curY);
@@ -696,8 +743,8 @@ router.post(
           doc.text(`Total Period Return (%): ${analyticsData.totalReturnPercent.toFixed(2)}%`);
           doc.text(`Annualized CAGR Return (%): ${analyticsData.annualizedReturnPercent.toFixed(2)}%`);
           doc.text(`Portfolio Daily Volatility (σ): ${analyticsData.volatility.toFixed(4)}%`);
-          doc.text(`Total Valuation: $${analyticsData.totalPortfolioValue.toLocaleString()}`);
-          doc.text(`Net Invested Capital: $${analyticsData.totalInvestedCapital.toLocaleString()}`);
+          doc.text(`Total Valuation: ${currSymbol}${analyticsData.totalPortfolioValue.toLocaleString()}`);
+          doc.text(`Net Invested Capital: ${currSymbol}${analyticsData.totalInvestedCapital.toLocaleString()}`);
           doc.moveDown(1.5);
 
           // Allocation Grid
@@ -709,7 +756,7 @@ router.post(
           doc.text('Symbol', 50, startY);
           doc.text('Asset Name', 110, startY);
           doc.text('Category', 250, startY);
-          doc.text('Market Valuation ($)', 370, startY);
+          doc.text(`Market Valuation (${currSymbol.trim()})`, 370, startY);
           doc.text('Portfolio Weight (%)', 480, startY);
 
           doc.moveTo(50, startY + 12).lineTo(550, startY + 12).strokeColor('#cbd5e1').stroke();
@@ -721,7 +768,7 @@ router.post(
             doc.text(alloc.symbol, 50, curY);
             doc.text(alloc.name, 110, curY);
             doc.text(alloc.category || 'N/A', 250, curY);
-            doc.text(`$${alloc.marketValue.toLocaleString()}`, 370, curY);
+            doc.text(`${currSymbol}${alloc.marketValue.toLocaleString()}`, 370, curY);
             doc.text(`${alloc.percentage.toFixed(2)}%`, 480, curY);
             doc.moveDown(1.2);
           });
@@ -735,8 +782,8 @@ router.post(
             let bY = doc.y;
             doc.fontSize(8).font('Helvetica-Bold').fillColor('#1e1b4b');
             doc.text('Symbol', 50, bY);
-            doc.text('Start Price ($)', 120, bY);
-            doc.text('End Price ($)', 220, bY);
+            doc.text(`Start Price (${currSymbol.trim()})`, 120, bY);
+            doc.text(`End Price (${currSymbol.trim()})`, 220, bY);
             doc.text('Comparative Yield (%)', 320, bY);
 
             doc.moveTo(50, bY + 12).lineTo(550, bY + 12).strokeColor('#cbd5e1').stroke();
@@ -746,8 +793,8 @@ router.post(
             analyticsData.benchmarks.forEach((bench: any) => {
               const curY = doc.y;
               doc.text(bench.symbol, 50, curY);
-              doc.text(bench.startPrice !== null ? `$${bench.startPrice.toFixed(2)}` : 'N/A', 120, curY);
-              doc.text(bench.endPrice !== null ? `$${bench.endPrice.toFixed(2)}` : 'N/A', 220, curY);
+              doc.text(bench.startPrice !== null ? `${currSymbol}${bench.startPrice.toFixed(2)}` : 'N/A', 120, curY);
+              doc.text(bench.endPrice !== null ? `${currSymbol}${bench.endPrice.toFixed(2)}` : 'N/A', 220, curY);
               
               const gText = `${bench.gain >= 0 ? '+' : ''}${bench.gain.toFixed(2)}%`;
               doc.fillColor(bench.gain >= 0 ? '#10b981' : '#f43f5e').text(gText, 320, curY).fillColor('#334155');
@@ -776,10 +823,14 @@ router.post(
             doc.fontSize(8).font('Helvetica').fillColor('#334155');
             analyticsData.targets.forEach((target: any) => {
               const curY = doc.y;
+              const isValueType = target.type === 'portfolio_value';
+              const targetValStr = isValueType ? `${currSymbol}${target.targetValue.toLocaleString()}` : `${target.targetValue}%`;
+              const currentValStr = isValueType ? `${currSymbol}${target.currentValue.toLocaleString()}` : `${target.currentValue}%`;
+
               doc.text(target.name, 50, curY);
               doc.text(target.type.replace('_', ' '), 180, curY);
-              doc.text(target.targetValue.toLocaleString(), 280, curY);
-              doc.text(target.currentValue.toLocaleString(), 360, curY);
+              doc.text(targetValStr, 280, curY);
+              doc.text(currentValStr, 360, curY);
               doc.text(`${target.progressPercent}%`, 440, curY);
               
               doc.fillColor(target.isAchieved ? '#10b981' : '#3b82f6')
@@ -835,6 +886,9 @@ router.post(
           alignment: { horizontal: 'left', vertical: 'middle' },
         };
 
+        const currencyNumFmt = baseCurrency === 'KES' ? '"KSh "#,##0.00;("KSh "#,##0.00);"-"' : '$#,##0.00;($#,##0.00);"-"';
+        const currencyNumFmtPlain = baseCurrency === 'KES' ? '"KSh "#,##0.00' : '$#,##0.00';
+
         if (reportType === 'summary' && summaryData) {
           // Define Columns - Fix 'Ticker Ticker' typo to 'Ticker Symbol' (Issue 3)
           worksheet.columns = [
@@ -844,9 +898,9 @@ router.post(
             { header: 'Remaining Quantity', key: 'shares', width: 20 },
             { header: 'Average Buy Price', key: 'avgCost', width: 20 },
             { header: 'Current Active Price', key: 'curPrice', width: 20 },
-            { header: 'Net Cost Basis ($)', key: 'costBasis', width: 20 },
-            { header: 'Market Valuation ($)', key: 'marketValue', width: 20 },
-            { header: 'Unrealized Paper P&L ($)', key: 'unrealizedPL', width: 22 },
+            { header: `Net Cost Basis (${currSymbol.trim()})`, key: 'costBasis', width: 20 },
+            { header: `Market Valuation (${currSymbol.trim()})`, key: 'marketValue', width: 20 },
+            { header: `Unrealized Paper P&L (${currSymbol.trim()})`, key: 'unrealizedPL', width: 22 },
           ];
 
           summaryData.holdings.forEach((h: any) => {
@@ -873,11 +927,11 @@ router.post(
           worksheet.eachRow((row, rowNum) => {
             if (rowNum > 1) {
               row.getCell('shares').numFmt = '#,##0.0000';
-              row.getCell('avgCost').numFmt = '$#,##0.00';
-              row.getCell('curPrice').numFmt = '$#,##0.00';
-              row.getCell('costBasis').numFmt = '$#,##0.00';
-              row.getCell('marketValue').numFmt = '$#,##0.00';
-              row.getCell('unrealizedPL').numFmt = '$#,##0.00;($#,##0.00);"-"';
+              row.getCell('avgCost').numFmt = currencyNumFmtPlain;
+              row.getCell('curPrice').numFmt = currencyNumFmtPlain;
+              row.getCell('costBasis').numFmt = currencyNumFmtPlain;
+              row.getCell('marketValue').numFmt = currencyNumFmtPlain;
+              row.getCell('unrealizedPL').numFmt = currencyNumFmt;
             }
           });
         } else if (reportType === 'transactions' && transactionData) {
@@ -910,10 +964,10 @@ router.post(
           worksheet.eachRow((row, rowNum) => {
             if (rowNum > 1) {
               row.getCell('quantity').numFmt = '#,##0.0000';
-              row.getCell('price').numFmt = '$#,##0.00';
+              row.getCell('price').numFmt = currencyNumFmtPlain;
               const plCell = row.getCell('profitLoss');
               if (plCell.value !== '') {
-                plCell.numFmt = '$#,##0.00;($#,##0.00);"-"';
+                plCell.numFmt = currencyNumFmt;
               }
             }
           });
@@ -945,7 +999,7 @@ router.post(
 
           worksheet.eachRow((row, rowNum) => {
             if (rowNum > 1) {
-              row.getCell('val').numFmt = '$#,##0.00';
+              row.getCell('val').numFmt = currencyNumFmtPlain;
               row.getCell('percentage').numFmt = '0.00"%"';
             }
           });

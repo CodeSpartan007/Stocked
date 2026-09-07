@@ -7,6 +7,8 @@ const auth_1 = require("../middleware/auth");
 const validate_1 = require("../middleware/validate");
 const rateLimiter_1 = require("../middleware/rateLimiter");
 const priceFeedService_1 = require("../services/priceFeedService");
+const nseScraperService_1 = require("../services/nseScraperService");
+const currencyService_1 = require("../services/currencyService");
 const transactions_1 = require("./transactions");
 const stocks_1 = require("./stocks");
 const router = (0, express_1.Router)();
@@ -39,6 +41,12 @@ router.get('/feed', auth_1.requireAuth, async (req, res) => {
                 autoSwitchOnRateLimit: settings.autoSwitchOnRateLimit ?? true,
                 refreshInterval: settings.refreshInterval,
                 costBasisMethod: settings.costBasisMethod || 'average',
+                baseCurrency: settings.baseCurrency || 'USD',
+                exchangeRate: settings.exchangeRate ? Number(settings.exchangeRate) : 130.0,
+                customExchangeRate: settings.customExchangeRate !== null && settings.customExchangeRate !== undefined
+                    ? Number(settings.customExchangeRate)
+                    : null,
+                exchangeRateUpdatedAt: settings.exchangeRateUpdatedAt || null,
             },
         });
     }
@@ -53,9 +61,10 @@ router.get('/feed', auth_1.requireAuth, async (req, res) => {
 // POST /api/settings/feed -> Save user-scoped price feed credentials & settings
 router.post('/feed', auth_1.requireAuth, [
     (0, express_validator_1.body)('provider')
+        .optional()
         .trim()
-        .isIn(['alphavantage', 'polygon', 'manual'])
-        .withMessage('Provider must be alphavantage, polygon, or manual.'),
+        .isIn(['alphavantage', 'polygon', 'nse', 'manual'])
+        .withMessage('Provider must be alphavantage, polygon, nse, or manual.'),
     (0, express_validator_1.body)('apiKey')
         .optional({ nullable: true, checkFalsy: true })
         .trim(),
@@ -70,6 +79,7 @@ router.post('/feed', auth_1.requireAuth, [
         .isBoolean()
         .withMessage('autoSwitchOnRateLimit must be a boolean.'),
     (0, express_validator_1.body)('refreshInterval')
+        .optional()
         .isInt({ min: 10, max: 86400 })
         .withMessage('Refresh interval must be an integer between 10 seconds and 24 hours.'),
     (0, express_validator_1.body)('costBasisMethod')
@@ -77,10 +87,26 @@ router.post('/feed', auth_1.requireAuth, [
         .trim()
         .isIn(['average', 'fifo'])
         .withMessage('costBasisMethod must be either average or fifo.'),
+    (0, express_validator_1.body)('baseCurrency')
+        .optional()
+        .trim()
+        .isIn(['USD', 'KES'])
+        .withMessage('baseCurrency must be either USD or KES.'),
+    (0, express_validator_1.body)('customExchangeRate')
+        .optional({ nullable: true })
+        .custom((val) => {
+        if (val === null || val === '' || val === undefined)
+            return true;
+        const num = Number(val);
+        if (isNaN(num) || num <= 0) {
+            throw new Error('customExchangeRate must be a positive number.');
+        }
+        return true;
+    }),
 ], validate_1.handleValidationErrors, async (req, res) => {
     try {
         const userId = req.user.id;
-        const { provider, apiKey, alphaVantageApiKey, polygonApiKey, autoSwitchOnRateLimit, refreshInterval, costBasisMethod, } = req.body;
+        const { provider, apiKey, alphaVantageApiKey, polygonApiKey, autoSwitchOnRateLimit, refreshInterval, costBasisMethod, baseCurrency, customExchangeRate, } = req.body;
         const existing = await models_1.UserSetting.scope('withApiKey').findByPk(userId);
         // Helper to process masked / omitted / blank values
         const resolveUpdatedKey = (newKey, existingKey) => {
@@ -104,44 +130,46 @@ router.post('/feed', auth_1.requireAuth, [
                 updatedPolygonApiKey = trimmedLegacy;
             }
         }
+        const targetProvider = provider !== undefined ? provider : (existing?.provider || 'alphavantage');
+        const targetInterval = refreshInterval !== undefined ? Number(refreshInterval) : (existing?.refreshInterval || 60);
         // Check key requirement for active primary provider
-        const primaryKey = provider === 'alphavantage'
+        const primaryKey = targetProvider === 'alphavantage'
             ? updatedAlphaVantageApiKey
-            : provider === 'polygon'
+            : targetProvider === 'polygon'
                 ? updatedPolygonApiKey
                 : null;
-        if (provider !== 'manual' && !primaryKey) {
+        if (provider !== undefined && targetProvider !== 'manual' && targetProvider !== 'nse' && !primaryKey) {
             return res.status(400).json({
                 success: false,
                 errors: [
                     {
-                        field: provider === 'alphavantage' ? 'alphaVantageApiKey' : 'polygonApiKey',
-                        message: `API Key is required when ${provider === 'alphavantage' ? 'Alpha Vantage' : 'Polygon.io'} is active.`,
+                        field: targetProvider === 'alphavantage' ? 'alphaVantageApiKey' : 'polygonApiKey',
+                        message: `API Key is required when ${targetProvider === 'alphavantage' ? 'Alpha Vantage' : 'Polygon.io'} is active.`,
                     },
                 ],
             });
         }
         // Proactive connection test if a new key was entered for active provider
         let saveWarning = undefined;
-        const isProviderChanged = !existing || existing.provider !== provider;
+        const isProviderChanged = !existing || (provider !== undefined && existing.provider !== targetProvider);
         const isAlphaVantageKeyChanged = alphaVantageApiKey !== undefined &&
             alphaVantageApiKey !== '••••••••••••••••' &&
             (!existing || existing.alphaVantageApiKey !== updatedAlphaVantageApiKey);
         const isPolygonKeyChanged = polygonApiKey !== undefined &&
             polygonApiKey !== '••••••••••••••••' &&
             (!existing || existing.polygonApiKey !== updatedPolygonApiKey);
-        if (provider !== 'manual' &&
+        if (targetProvider !== 'manual' &&
             primaryKey &&
             (isProviderChanged ||
-                (provider === 'alphavantage' ? isAlphaVantageKeyChanged : isPolygonKeyChanged))) {
+                (targetProvider === 'alphavantage' ? isAlphaVantageKeyChanged : isPolygonKeyChanged))) {
             try {
-                if (provider === 'alphavantage') {
+                if (targetProvider === 'alphavantage') {
                     await (0, priceFeedService_1.fetchFromAlphaVantage)('AAPL', primaryKey);
                 }
-                else if (provider === 'polygon') {
+                else if (targetProvider === 'polygon') {
                     await (0, priceFeedService_1.fetchFromPolygon)('AAPL', primaryKey);
                 }
-                (0, priceFeedService_1.clearCooldown)(userId, provider);
+                (0, priceFeedService_1.clearCooldown)(userId, targetProvider);
             }
             catch (testErr) {
                 if ((0, priceFeedService_1.isRateLimitError)(testErr)) {
@@ -154,7 +182,7 @@ router.post('/feed', auth_1.requireAuth, [
                         success: false,
                         errors: [
                             {
-                                field: provider === 'alphavantage' ? 'alphaVantageApiKey' : 'polygonApiKey',
+                                field: targetProvider === 'alphavantage' ? 'alphaVantageApiKey' : 'polygonApiKey',
                                 message: `API Connection verification failed: ${testErr.message}`,
                             },
                         ],
@@ -166,22 +194,39 @@ router.post('/feed', auth_1.requireAuth, [
         const updatedAutoSwitch = autoSwitchOnRateLimit !== undefined
             ? Boolean(autoSwitchOnRateLimit)
             : existing?.autoSwitchOnRateLimit ?? true;
+        const updatedBaseCurrency = baseCurrency || existing?.baseCurrency || 'USD';
+        let updatedCustomRate = existing?.customExchangeRate !== null && existing?.customExchangeRate !== undefined
+            ? Number(existing.customExchangeRate)
+            : null;
+        let rateUpdatedAt = existing?.exchangeRateUpdatedAt || null;
+        if (customExchangeRate !== undefined) {
+            if (customExchangeRate === null || customExchangeRate === '' || Number(customExchangeRate) <= 0) {
+                updatedCustomRate = null;
+            }
+            else {
+                updatedCustomRate = Number(Number(customExchangeRate).toFixed(4));
+                rateUpdatedAt = new Date();
+            }
+        }
         const [settings] = await models_1.UserSetting.upsert({
             userId,
-            provider,
+            provider: targetProvider,
             apiKey: primaryKey,
             alphaVantageApiKey: updatedAlphaVantageApiKey,
             polygonApiKey: updatedPolygonApiKey,
             autoSwitchOnRateLimit: updatedAutoSwitch,
-            refreshInterval,
+            refreshInterval: targetInterval,
             costBasisMethod: updatedCostBasisMethod,
+            baseCurrency: updatedBaseCurrency,
+            customExchangeRate: updatedCustomRate,
+            exchangeRateUpdatedAt: rateUpdatedAt,
         });
         // Recalculate historical sales if user changed cost-basis accounting methodology
         const previousMethod = existing?.costBasisMethod || 'average';
         if (previousMethod !== updatedCostBasisMethod) {
             await (0, transactions_1.recalculateAllUserSales)(userId, undefined, updatedCostBasisMethod);
         }
-        console.log(`[SettingsRouter] Saved configurations for ${userId}. Provider: ${provider}, Interval: ${refreshInterval}s, Method: ${updatedCostBasisMethod}, AutoSwitch: ${updatedAutoSwitch}`);
+        console.log(`[SettingsRouter] Saved configurations for ${userId}. Provider: ${targetProvider}, Interval: ${targetInterval}s, Method: ${updatedCostBasisMethod}, AutoSwitch: ${updatedAutoSwitch}, BaseCurrency: ${updatedBaseCurrency}`);
         // Proactively restart poller if live sync is active
         if (process.env.NODE_ENV !== 'test' &&
             provider !== 'manual' &&
@@ -199,6 +244,12 @@ router.post('/feed', auth_1.requireAuth, [
                 autoSwitchOnRateLimit: settings.autoSwitchOnRateLimit,
                 refreshInterval: settings.refreshInterval,
                 costBasisMethod: settings.costBasisMethod || 'average',
+                baseCurrency: settings.baseCurrency,
+                exchangeRate: settings.exchangeRate ? Number(settings.exchangeRate) : 130.0,
+                customExchangeRate: settings.customExchangeRate !== null && settings.customExchangeRate !== undefined
+                    ? Number(settings.customExchangeRate)
+                    : null,
+                exchangeRateUpdatedAt: settings.exchangeRateUpdatedAt,
             },
         });
     }
@@ -214,9 +265,10 @@ router.post('/feed', auth_1.requireAuth, [
 router.post('/test-connection', auth_1.requireAuth, rateLimiter_1.apiTestRateLimiter, [
     (0, express_validator_1.body)('provider')
         .trim()
-        .isIn(['alphavantage', 'polygon'])
-        .withMessage('Provider must be alphavantage or polygon.'),
+        .isIn(['alphavantage', 'polygon', 'nse'])
+        .withMessage('Provider must be alphavantage, polygon, or nse.'),
     (0, express_validator_1.body)('apiKey')
+        .if((0, express_validator_1.body)('provider').not().equals('nse'))
         .trim()
         .notEmpty()
         .withMessage('API Key is required to test connection.'),
@@ -224,6 +276,13 @@ router.post('/test-connection', auth_1.requireAuth, rateLimiter_1.apiTestRateLim
     try {
         const userId = req.user.id;
         const { provider, apiKey } = req.body;
+        if (provider === 'nse') {
+            const stockMap = await (0, nseScraperService_1.fetchAllNseStocks)(true);
+            return res.status(200).json({
+                success: true,
+                message: `Successfully connected to Nairobi Securities Exchange live feed. ${stockMap.size} active counters discovered.`,
+            });
+        }
         let keyToTest = apiKey;
         if (apiKey === '••••••••••••••••') {
             const existing = await models_1.UserSetting.scope('withApiKey').findByPk(userId);
@@ -287,5 +346,59 @@ router.get('/price/:symbol', auth_1.requireAuth, async (req, res) => {
     const userId = req.user.id;
     const { symbol } = req.params;
     return (0, stocks_1.handleTickerPriceQuery)(symbol, userId, res);
+});
+// GET /api/settings/exchange-rate -> Return active USD/KES rate, inverse rate, source, and timestamp
+router.get('/exchange-rate', auth_1.requireAuth, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const userSetting = await models_1.UserSetting.findByPk(userId);
+        const rateInfo = await (0, currencyService_1.getUsdToKesRate)(userId);
+        const inverseRate = rateInfo.rate > 0 ? Number((1 / rateInfo.rate).toFixed(6)) : 0;
+        return res.status(200).json({
+            success: true,
+            data: {
+                rate: rateInfo.rate,
+                inverseRate,
+                source: rateInfo.source,
+                updatedAt: rateInfo.updatedAt,
+                baseCurrency: userSetting?.baseCurrency || 'USD',
+                customExchangeRate: userSetting?.customExchangeRate !== null && userSetting?.customExchangeRate !== undefined
+                    ? Number(userSetting.customExchangeRate)
+                    : null,
+            },
+        });
+    }
+    catch (error) {
+        console.error('Error fetching exchange rate:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to retrieve exchange rate.',
+        });
+    }
+});
+// POST /api/settings/exchange-rate/refresh -> Force clear cache, re-fetch live rate from API
+router.post('/exchange-rate/refresh', auth_1.requireAuth, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const freshRateInfo = await (0, currencyService_1.refreshLiveExchangeRate)(userId);
+        const inverseRate = freshRateInfo.rate > 0 ? Number((1 / freshRateInfo.rate).toFixed(6)) : 0;
+        return res.status(200).json({
+            success: true,
+            message: 'Exchange rate refreshed successfully.',
+            data: {
+                rate: freshRateInfo.rate,
+                inverseRate,
+                source: freshRateInfo.source,
+                updatedAt: freshRateInfo.updatedAt,
+            },
+        });
+    }
+    catch (error) {
+        console.error('Error refreshing exchange rate:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to refresh exchange rate.',
+        });
+    }
 });
 exports.default = router;
