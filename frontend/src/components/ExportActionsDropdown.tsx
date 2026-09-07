@@ -94,7 +94,7 @@ export default function ExportActionsDropdown({
   };
 
   return (
-    <div className="relative inline-block text-left" ref={dropdownRef}>
+    <div className="relative z-50 inline-block text-left" ref={dropdownRef}>
       <div>
         <button
           type="button"
@@ -136,7 +136,7 @@ export default function ExportActionsDropdown({
       </div>
 
       {isOpen && (
-        <div className="absolute right-0 z-50 mt-2 w-56 origin-top-right rounded-xl border border-subtle bg-surface-elevated backdrop-blur-2xl shadow-2xl p-1.5">
+        <div className="absolute right-0 z-[100] mt-2 w-56 origin-top-right rounded-xl border border-subtle bg-surface-elevated backdrop-blur-2xl shadow-2xl p-1.5">
           <div className="py-0.5 space-y-1">
             <button
               onClick={() => handleDownload('PDF')}

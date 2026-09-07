@@ -5,7 +5,7 @@ import { API_BASE } from '../../lib/api';
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/app/context/AuthContext';
 import { useTheme } from '@/app/context/ThemeContext';
-import { Sun, Moon, Monitor, CheckCircle2, Sparkles, Sliders } from 'lucide-react';
+import { Sun, Moon, Monitor, CheckCircle2, Sliders, Scale } from 'lucide-react';
 
 interface UserItem {
   id: string;
@@ -27,21 +27,29 @@ interface ToastState {
 export default function FeedSettings() {
   const { user } = useAuth();
   const { theme, resolvedTheme, setTheme } = useTheme();
-  const [activeTab, setActiveTab] = useState<'appearance' | 'feed' | 'admin'>('appearance');
+  const [activeTab, setActiveTab] = useState<'appearance' | 'feed' | 'accounting' | 'admin'>('appearance');
 
   // Price Feed Configurations State
   const [provider, setProvider] = useState<'alphavantage' | 'polygon' | 'manual'>('manual');
-  const [apiKey, setApiKey] = useState('');
-  const [apiKeyDirty, setApiKeyDirty] = useState(false);
+  const [alphaVantageApiKey, setAlphaVantageApiKey] = useState('');
+  const [alphaVantageDirty, setAlphaVantageDirty] = useState(false);
+  const [showAlphaVantageKey, setShowAlphaVantageKey] = useState(false);
+  const [avConnectionStatus, setAvConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'failed'>('idle');
+  const [avConnectionMessage, setAvConnectionMessage] = useState('');
+
+  const [polygonApiKey, setPolygonApiKey] = useState('');
+  const [polygonDirty, setPolygonDirty] = useState(false);
+  const [showPolygonKey, setShowPolygonKey] = useState(false);
+  const [polygonConnectionStatus, setPolygonConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'failed'>('idle');
+  const [polygonConnectionMessage, setPolygonConnectionMessage] = useState('');
+
+  const [autoSwitchOnRateLimit, setAutoSwitchOnRateLimit] = useState(true);
   const [refreshInterval, setRefreshInterval] = useState(60);
   const [costBasisMethod, setCostBasisMethod] = useState<'average' | 'fifo'>('average');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [showKey, setShowKey] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'failed'>('idle');
-  const [connectionMessage, setConnectionMessage] = useState('');
+  const [savingAccounting, setSavingAccounting] = useState(false);
   const [toast, setToast] = useState<ToastState>({ show: false, message: '', type: 'success' });
-  const [loadedConfig, setLoadedConfig] = useState<{ provider: 'alphavantage' | 'polygon' | 'manual'; apiKey: string } | null>(null);
 
   // System User Administration State
   const [adminUsers, setAdminUsers] = useState<UserItem[]>([]);
@@ -60,13 +68,6 @@ export default function FeedSettings() {
 
   const handleSelectProvider = (newProvider: 'alphavantage' | 'polygon' | 'manual') => {
     setProvider(newProvider);
-    if (!loadedConfig || newProvider !== loadedConfig.provider) {
-      setConnectionStatus('idle');
-      setConnectionMessage('');
-    } else if (loadedConfig.apiKey && (loadedConfig.apiKey.includes('•') || loadedConfig.apiKey.includes('*'))) {
-      setConnectionStatus('success');
-      setConnectionMessage(`API Key is active and successfully connected to ${newProvider === 'alphavantage' ? 'Alpha Vantage' : 'Polygon.io'}.`);
-    }
   };
 
   // Fetch current feed config
@@ -84,21 +85,24 @@ export default function FeedSettings() {
         const json = await response.json();
         if (json.success && json.data) {
           setProvider(json.data.provider);
-          setApiKey(json.data.apiKey || '');
-          setApiKeyDirty(false);
+          setAlphaVantageApiKey(json.data.alphaVantageApiKey || '');
+          setAlphaVantageDirty(false);
+          setPolygonApiKey(json.data.polygonApiKey || '');
+          setPolygonDirty(false);
+          setAutoSwitchOnRateLimit(json.data.autoSwitchOnRateLimit ?? true);
           setRefreshInterval(json.data.refreshInterval);
           if (json.data.costBasisMethod) {
             setCostBasisMethod(json.data.costBasisMethod);
           }
-          setLoadedConfig({
-            provider: json.data.provider,
-            apiKey: json.data.apiKey || '',
-          });
 
-          // Hydrate key status on mount if a key exists
-          if (json.data.provider !== 'manual' && json.data.apiKey === '••••••••••••••••') {
-            setConnectionStatus('success');
-            setConnectionMessage(`API Key is active and successfully connected to ${json.data.provider === 'alphavantage' ? 'Alpha Vantage' : 'Polygon.io'}.`);
+          // Hydrate key statuses on mount
+          if (json.data.alphaVantageApiKey && json.data.alphaVantageApiKey.includes('•')) {
+            setAvConnectionStatus('success');
+            setAvConnectionMessage('Alpha Vantage credentials configured.');
+          }
+          if (json.data.polygonApiKey && json.data.polygonApiKey.includes('•')) {
+            setPolygonConnectionStatus('success');
+            setPolygonConnectionMessage('Polygon.io credentials configured.');
           }
         }
       } catch (err: unknown) {
@@ -112,38 +116,64 @@ export default function FeedSettings() {
     fetchSettings();
   }, []);
 
-  const handleTestConnection = async () => {
-    if (!apiKey) {
-      triggerToast('API Key is required to test connection.', 'error');
+  const handleTestConnection = async (targetProvider: 'alphavantage' | 'polygon') => {
+    const keyToTest = targetProvider === 'alphavantage' ? alphaVantageApiKey : polygonApiKey;
+    const providerLabel = targetProvider === 'alphavantage' ? 'Alpha Vantage' : 'Polygon.io';
+
+    if (!keyToTest) {
+      triggerToast(`API Key is required to test ${providerLabel} connection.`, 'error');
       return;
     }
-    setConnectionStatus('testing');
-    setConnectionMessage('');
+
+    if (targetProvider === 'alphavantage') {
+      setAvConnectionStatus('testing');
+      setAvConnectionMessage('');
+    } else {
+      setPolygonConnectionStatus('testing');
+      setPolygonConnectionMessage('');
+    }
+
     try {
       const response = await fetch(`${API_BASE}/api/settings/test-connection`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          provider,
-          apiKey,
+          provider: targetProvider,
+          apiKey: keyToTest,
         }),
         credentials: 'include',
       });
       const json = await response.json();
       if (response.ok && json.success) {
-        setConnectionStatus('success');
-        setConnectionMessage(json.message);
+        if (targetProvider === 'alphavantage') {
+          setAvConnectionStatus('success');
+          setAvConnectionMessage(json.message);
+        } else {
+          setPolygonConnectionStatus('success');
+          setPolygonConnectionMessage(json.message);
+        }
         triggerToast(json.message, 'success');
       } else {
-        setConnectionStatus('failed');
-        setConnectionMessage(json.message || 'Connection failed.');
-        triggerToast(json.message || 'Connection failed.', 'error');
+        const errorMsg = json.message || 'Connection failed.';
+        if (targetProvider === 'alphavantage') {
+          setAvConnectionStatus('failed');
+          setAvConnectionMessage(errorMsg);
+        } else {
+          setPolygonConnectionStatus('failed');
+          setPolygonConnectionMessage(errorMsg);
+        }
+        triggerToast(errorMsg, 'error');
       }
     } catch (err: unknown) {
       console.error(err);
       const msg = err instanceof Error ? err.message : 'Network error testing API connection.';
-      setConnectionStatus('failed');
-      setConnectionMessage(msg);
+      if (targetProvider === 'alphavantage') {
+        setAvConnectionStatus('failed');
+        setAvConnectionMessage(msg);
+      } else {
+        setPolygonConnectionStatus('failed');
+        setPolygonConnectionMessage(msg);
+      }
       triggerToast(msg, 'error');
     }
   };
@@ -226,23 +256,26 @@ export default function FeedSettings() {
         provider: 'alphavantage' | 'polygon' | 'manual';
         refreshInterval: number;
         costBasisMethod: 'average' | 'fifo';
-        apiKey?: string;
+        alphaVantageApiKey?: string;
+        polygonApiKey?: string;
+        autoSwitchOnRateLimit: boolean;
       }
 
       const payload: FeedSettingsPayload = {
         provider,
         refreshInterval: Number(refreshInterval),
         costBasisMethod,
+        autoSwitchOnRateLimit,
       };
 
-      const isMasked = apiKey.includes('•') || apiKey.includes('★') || apiKey.includes('*');
-      
-      if (provider !== 'manual') {
-        if (apiKeyDirty && !isMasked) {
-          payload.apiKey = apiKey;
-        }
-      } else {
-        payload.apiKey = '';
+      const isAvMasked = alphaVantageApiKey.includes('•') || alphaVantageApiKey.includes('*');
+      const isPolyMasked = polygonApiKey.includes('•') || polygonApiKey.includes('*');
+
+      if (alphaVantageDirty && !isAvMasked) {
+        payload.alphaVantageApiKey = alphaVantageApiKey;
+      }
+      if (polygonDirty && !isPolyMasked) {
+        payload.polygonApiKey = polygonApiKey;
       }
 
       const response = await fetch(`${API_BASE}/api/settings/feed`, {
@@ -256,21 +289,21 @@ export default function FeedSettings() {
       if (response.ok && json.success) {
         triggerToast(json.message || 'Pricing configurations and credentials updated successfully.', 'success');
         if (json.data) {
-          setApiKey(json.data.apiKey || '');
-          setApiKeyDirty(false);
+          setAlphaVantageApiKey(json.data.alphaVantageApiKey || '');
+          setAlphaVantageDirty(false);
+          setPolygonApiKey(json.data.polygonApiKey || '');
+          setPolygonDirty(false);
+          setAutoSwitchOnRateLimit(json.data.autoSwitchOnRateLimit ?? true);
           if (json.data.costBasisMethod) {
             setCostBasisMethod(json.data.costBasisMethod);
           }
-          setLoadedConfig({
-            provider: json.data.provider,
-            apiKey: json.data.apiKey || '',
-          });
-          if (json.data.provider !== 'manual') {
-            setConnectionStatus('success');
-            setConnectionMessage(`API Key is active and successfully connected to ${json.data.provider === 'alphavantage' ? 'Alpha Vantage' : 'Polygon.io'}.`);
-          } else {
-            setConnectionStatus('idle');
-            setConnectionMessage('');
+          if (json.data.alphaVantageApiKey) {
+            setAvConnectionStatus('success');
+            setAvConnectionMessage('Alpha Vantage credentials configured.');
+          }
+          if (json.data.polygonApiKey) {
+            setPolygonConnectionStatus('success');
+            setPolygonConnectionMessage('Polygon.io credentials configured.');
           }
         }
       } else {
@@ -283,6 +316,44 @@ export default function FeedSettings() {
       triggerToast(msg, 'error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSaveAccounting = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingAccounting(true);
+
+    try {
+      const payload = {
+        provider,
+        refreshInterval: Number(refreshInterval),
+        costBasisMethod,
+        autoSwitchOnRateLimit,
+      };
+
+      const response = await fetch(`${API_BASE}/api/settings/feed`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        credentials: 'include',
+      });
+
+      const json = await response.json();
+      if (response.ok && json.success) {
+        triggerToast('Accounting methodology updated and historical sales recalculated successfully.', 'success');
+        if (json.data?.costBasisMethod) {
+          setCostBasisMethod(json.data.costBasisMethod);
+        }
+      } else {
+        const errorMsg = json.errors && json.errors.length > 0 ? json.errors[0].message : json.message;
+        throw new Error(errorMsg || 'Failed to update accounting methodology.');
+      }
+    } catch (err: unknown) {
+      console.error(err);
+      const msg = err instanceof Error ? err.message : 'Error occurred while saving accounting methodology.';
+      triggerToast(msg, 'error');
+    } finally {
+      setSavingAccounting(false);
     }
   };
 
@@ -385,7 +456,7 @@ export default function FeedSettings() {
         <div>
           <h1 className="text-3xl font-black tracking-tight text-main">System Settings</h1>
           <p className="text-sm text-muted mt-1">
-            Customize theme appearance, configure real-time market data providers, and manage platform administration.
+            Customize theme appearance, configure real-time market data providers, manage portfolio cost-basis accounting, and administer platform users.
           </p>
         </div>
 
@@ -410,6 +481,16 @@ export default function FeedSettings() {
             }`}
           >
             🔌 API Integrations
+          </button>
+          <button
+            onClick={() => setActiveTab('accounting')}
+            className={`pb-4 text-xs font-bold tracking-wider uppercase transition-all duration-200 border-b-2 focus:outline-none cursor-pointer flex items-center gap-2 ${
+              activeTab === 'accounting'
+                ? 'border-[#e0ff4f] text-main font-black'
+                : 'border-transparent text-muted hover:text-main'
+            }`}
+          >
+            ⚖️ Portfolio Accounting
           </button>
           {user?.role === 'admin' && (
             <button
@@ -464,7 +545,7 @@ export default function FeedSettings() {
                     )}
                   </div>
                   <p className="text-xs text-muted mt-3">
-                    Ultra-deep Gun Metal base (<code className="text-[10px] font-mono">#00272b</code>) with high-energy Chartreuse accents.
+                    Ultra-deep Gun Metal base with high-energy Chartreuse accents.
                   </p>
                   <div className="mt-4 flex items-center gap-1.5 pt-2 border-t border-subtle">
                     <div className="h-3 w-3 rounded-full bg-[#00272b] border border-subtle" />
@@ -497,7 +578,7 @@ export default function FeedSettings() {
                     )}
                   </div>
                   <p className="text-xs text-muted mt-3">
-                    Soft Mint canvas (<code className="text-[10px] font-mono">#f3f8f6</code>) with crisp Gun Metal headings and Chartreuse highlights.
+                    Soft Mint canvas with crisp Gun Metal headings and Chartreuse highlights.
                   </p>
                   <div className="mt-4 flex items-center gap-1.5 pt-2 border-t border-subtle">
                     <div className="h-3 w-3 rounded-full bg-[#f3f8f6] border border-subtle" />
@@ -542,107 +623,6 @@ export default function FeedSettings() {
                 </div>
               </div>
             </div>
-
-            {/* Interactive Color Reference Cards (Direct match to reference image!) */}
-            <div className="bg-surface backdrop-blur-xl border border-subtle rounded-3xl p-6 sm:p-8 shadow-xl space-y-6">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                <div>
-                  <h3 className="text-lg font-black text-main flex items-center gap-2">
-                    <Sparkles className="h-5 w-5 text-[#00272b] dark:text-[#e0ff4f]" />
-                    Color Palette Harmony (15.2:1 WCAG AAA)
-                  </h3>
-                  <p className="text-xs text-muted mt-1">
-                    Exact dual-theme design system cards derived from the brand reference palette.
-                  </p>
-                </div>
-                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-mono font-bold bg-[#e0ff4f] text-[#00272b] self-start">
-                  ⚡ 15.2:1 Contrast Ratio
-                </span>
-              </div>
-
-              {/* Exact Dual-Card Stack from Reference Image */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-                {/* Reference Card 1: Chartreuse */}
-                <div
-                  onClick={() => setTheme('light')}
-                  className={`rounded-3xl p-8 flex flex-col justify-between shadow-xl cursor-pointer hover:scale-[1.01] transition-transform duration-200 min-h-[260px] ${
-                    resolvedTheme === 'light'
-                      ? 'bg-[#e0ff4f] text-[#00272b] border-2 border-[#00272b]/10'
-                      : 'bg-surface border-2 border-[#e0ff4f]/60 text-main hover:border-[#e0ff4f]'
-                  }`}
-                >
-                  <div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs uppercase font-mono font-extrabold tracking-wider opacity-80">
-                        Color 01 &bull; Active Highlight
-                      </span>
-                      {resolvedTheme === 'light' && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-[#00272b] text-[#e0ff4f]">
-                          Active Mode
-                        </span>
-                      )}
-                    </div>
-                    <h2 className="text-4xl sm:text-5xl font-black tracking-tight mt-4">
-                      Chartreuse
-                    </h2>
-                  </div>
-
-                  <div className="mt-8 flex flex-wrap items-center gap-3">
-                    <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full border text-sm font-semibold ${
-                      resolvedTheme === 'light' ? 'border-[#00272b] text-[#00272b]' : 'border-[#e0ff4f] text-[#e0ff4f]'
-                    }`}>
-                      <span>Hex</span>
-                      <span className="font-bold">&rarr;</span>
-                    </div>
-                    <div className={`inline-flex items-center px-4 py-2 rounded-full border text-sm font-mono font-bold ${
-                      resolvedTheme === 'light' ? 'border-[#00272b] text-[#00272b]' : 'border-[#e0ff4f] text-[#e0ff4f]'
-                    }`}>
-                      #e0ff4f
-                    </div>
-                  </div>
-                </div>
-
-                {/* Reference Card 2: Gun Metal */}
-                <div
-                  onClick={() => setTheme('dark')}
-                  className={`rounded-3xl p-8 flex flex-col justify-between shadow-xl cursor-pointer hover:scale-[1.01] transition-transform duration-200 min-h-[260px] ${
-                    resolvedTheme === 'dark'
-                      ? 'bg-[#00272b] text-[#e0ff4f] border-2 border-[#085862]'
-                      : 'bg-surface border-2 border-subtle text-main hover:border-strong'
-                  }`}
-                >
-                  <div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs uppercase font-mono font-extrabold tracking-wider opacity-80">
-                        Color 02 &bull; Deep Foundation
-                      </span>
-                      {resolvedTheme === 'dark' && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-[#e0ff4f] text-[#00272b]">
-                          Active Mode
-                        </span>
-                      )}
-                    </div>
-                    <h2 className="text-4xl sm:text-5xl font-black tracking-tight mt-4">
-                      Gun Metal
-                    </h2>
-                  </div>
-
-                  <div className="mt-8 flex flex-wrap items-center gap-3">
-                    <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full border text-sm font-semibold ${
-                      resolvedTheme === 'dark' ? 'border-[#e0ff4f] text-[#e0ff4f]' : 'border-subtle bg-surface-elevated text-main'
-                    }`}>
-                      <span>Hex</span>
-                      <span className="font-bold">&rarr;</span>
-                    </div>
-                    <div className={`inline-flex items-center px-4 py-2 rounded-full border text-sm font-mono font-bold ${
-                      resolvedTheme === 'dark' ? 'border-[#e0ff4f] text-[#e0ff4f]' : 'border-subtle bg-surface-elevated text-main'
-                    }`}>
-                      #00272b
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
         )}
 
@@ -661,7 +641,7 @@ export default function FeedSettings() {
                 <div className="space-y-4">
                   <div>
                     <h3 className="text-base font-bold text-main">Pricing Provider Engine</h3>
-                    <p className="text-xs text-muted mt-0.5">Choose your live external feed provider or toggle manual offline fallback mode.</p>
+                    <p className="text-xs text-muted mt-0.5">Select your primary live market data provider or toggle manual offline fallback mode.</p>
                   </div>
 
                   <div 
@@ -681,14 +661,21 @@ export default function FeedSettings() {
                           handleSelectProvider('alphavantage');
                         }
                       }}
-                      className={`cursor-pointer rounded-2xl p-5 border transition-all duration-300 relative flex flex-col justify-between h-32 hover:border-[#e0ff4f]/50 hover:bg-surface-hover focus:outline-none ${
+                      className={`cursor-pointer rounded-2xl p-5 border transition-all duration-300 relative flex flex-col justify-between h-36 hover:border-[#e0ff4f]/50 hover:bg-surface-hover focus:outline-none ${
                         provider === 'alphavantage'
                           ? 'border-[#e0ff4f] bg-[#e0ff4f]/10 shadow-[0_0_15px_rgba(224,255,79,0.15)] ring-1 ring-[#e0ff4f]'
                           : 'border-subtle bg-surface-elevated'
                       }`}
                     >
                       <div className="flex items-center justify-between pointer-events-none">
-                        <span className="text-xs font-black text-main tracking-wider font-mono">ALPHA VANTAGE</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-black text-main tracking-wider font-mono">ALPHA VANTAGE</span>
+                          {provider === 'alphavantage' && (
+                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-[#00272b] dark:bg-[#e0ff4f] text-[#e0ff4f] dark:text-[#00272b]">
+                              PRIMARY
+                            </span>
+                          )}
+                        </div>
                         <div
                           className={`h-4.5 w-4.5 rounded-full border flex items-center justify-center transition-colors ${
                             provider === 'alphavantage' ? 'border-[#e0ff4f] bg-[#e0ff4f]/20' : 'border-subtle'
@@ -698,7 +685,7 @@ export default function FeedSettings() {
                         </div>
                       </div>
                       <p className="text-[11px] text-muted leading-relaxed mt-2 pointer-events-none">
-                        Global stock market queries via high-resolution quote payloads. Ideal for standard catalog listings.
+                        Global stock market queries via high-resolution quote payloads. Free tier: 25 requests/day.
                       </p>
                     </div>
 
@@ -714,14 +701,21 @@ export default function FeedSettings() {
                           handleSelectProvider('polygon');
                         }
                       }}
-                      className={`cursor-pointer rounded-2xl p-5 border transition-all duration-300 relative flex flex-col justify-between h-32 hover:border-[#e0ff4f]/50 hover:bg-surface-hover focus:outline-none ${
+                      className={`cursor-pointer rounded-2xl p-5 border transition-all duration-300 relative flex flex-col justify-between h-36 hover:border-[#e0ff4f]/50 hover:bg-surface-hover focus:outline-none ${
                         provider === 'polygon'
                           ? 'border-[#e0ff4f] bg-[#e0ff4f]/10 shadow-[0_0_15px_rgba(224,255,79,0.15)] ring-1 ring-[#e0ff4f]'
                           : 'border-subtle bg-surface-elevated'
                       }`}
                     >
                       <div className="flex items-center justify-between pointer-events-none">
-                        <span className="text-xs font-black text-main tracking-wider font-mono">POLYGON.IO</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-black text-main tracking-wider font-mono">POLYGON.IO</span>
+                          {provider === 'polygon' && (
+                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-[#00272b] dark:bg-[#e0ff4f] text-[#e0ff4f] dark:text-[#00272b]">
+                              PRIMARY
+                            </span>
+                          )}
+                        </div>
                         <div
                           className={`h-4.5 w-4.5 rounded-full border flex items-center justify-center transition-colors ${
                             provider === 'polygon' ? 'border-[#e0ff4f] bg-[#e0ff4f]/20' : 'border-subtle'
@@ -731,7 +725,7 @@ export default function FeedSettings() {
                         </div>
                       </div>
                       <p className="text-[11px] text-muted leading-relaxed mt-2 pointer-events-none">
-                        Highly scalable REST responses using historic prev-close aggregates. Perfect for charts and graphs.
+                        Highly scalable REST responses using historic prev-close aggregates. Free tier: 5 requests/min.
                       </p>
                     </div>
 
@@ -747,14 +741,21 @@ export default function FeedSettings() {
                           handleSelectProvider('manual');
                         }
                       }}
-                      className={`cursor-pointer rounded-2xl p-5 border transition-all duration-300 relative flex flex-col justify-between h-32 hover:border-[#e0ff4f]/50 hover:bg-surface-hover focus:outline-none ${
+                      className={`cursor-pointer rounded-2xl p-5 border transition-all duration-300 relative flex flex-col justify-between h-36 hover:border-[#e0ff4f]/50 hover:bg-surface-hover focus:outline-none ${
                         provider === 'manual'
                           ? 'border-[#e0ff4f] bg-[#e0ff4f]/10 shadow-[0_0_15px_rgba(224,255,79,0.15)] ring-1 ring-[#e0ff4f]'
                           : 'border-subtle bg-surface-elevated'
                       }`}
                     >
                       <div className="flex items-center justify-between pointer-events-none">
-                        <span className="text-xs font-black text-main tracking-wider font-mono">MANUAL FALLBACK</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-black text-main tracking-wider font-mono">MANUAL FALLBACK</span>
+                          {provider === 'manual' && (
+                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-[#00272b] dark:bg-[#e0ff4f] text-[#e0ff4f] dark:text-[#00272b]">
+                              ACTIVE
+                            </span>
+                          )}
+                        </div>
                         <div
                           className={`h-4.5 w-4.5 rounded-full border flex items-center justify-center transition-colors ${
                             provider === 'manual' ? 'border-[#e0ff4f] bg-[#e0ff4f]/20' : 'border-subtle'
@@ -764,173 +765,243 @@ export default function FeedSettings() {
                         </div>
                       </div>
                       <p className="text-[11px] text-muted leading-relaxed mt-2 pointer-events-none">
-                        Local pricing. Keeps transactions linked exclusively to your manually logged and seeded price logs.
+                        Local pricing only. Keeps transactions linked exclusively to your manually logged and seeded price logs.
                       </p>
                     </div>
                   </div>
                 </div>
 
                 {provider !== 'manual' && (
-                  <div className="space-y-3 animate-slide-down">
-                    <div>
-                      <label className="block text-xs font-bold text-muted uppercase tracking-wider">API Authentication Credentials</label>
-                      <p className="text-[10px] text-muted mt-0.5">Secure, server-side encrypted token. Never exposed client-side.</p>
-                    </div>
-
-                    <div className="relative">
-                      <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-muted">
-                        <svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                        </svg>
-                      </span>
-                      <input
-                        type={showKey ? 'text' : 'password'}
-                        placeholder="Input external market provider API key..."
-                        value={apiKey}
-                        onChange={(e) => {
-                          setApiKey(e.target.value);
-                          setApiKeyDirty(true);
-                          setConnectionStatus('idle');
-                          setConnectionMessage('');
-                        }}
-                        required
-                        className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl pl-11 pr-12 py-3 text-sm text-main placeholder-muted focus:outline-none transition-all font-mono"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowKey(!showKey)}
-                        className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-muted hover:text-main transition-colors cursor-pointer"
-                      >
-                        {showKey ? (
-                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                          </svg>
-                        ) : (
-                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                          </svg>
-                        )}
-                      </button>
-                    </div>
-
-                    {/* API Key Status and Test Button */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2.5 border-t border-subtle mt-3">
-                      <div className="flex-1">
-                        {connectionStatus === 'idle' && (
-                          <span className="text-[11px] text-muted font-medium">Status: Not tested yet</span>
-                        )}
-                        {connectionStatus === 'testing' && (
-                          <span className="text-[11px] text-[#00272b] dark:text-[#e0ff4f] font-semibold flex items-center gap-1.5">
-                            <svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth={4} />
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                            </svg>
-                            Verifying API key connection status...
+                  <div className="space-y-6 animate-slide-down">
+                    {/* Auto-Switch Toggle Card */}
+                    <div className="bg-surface-elevated border border-subtle rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-black text-main tracking-wider uppercase">
+                            Automatic Provider Failover
                           </span>
-                        )}
-                        {connectionStatus === 'success' && (
-                          <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
-                            ✓ {connectionMessage}
+                          <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-[#e0ff4f]/20 text-[#00272b] dark:text-[#e0ff4f] border border-[#e0ff4f]/30">
+                            RECOMMENDED
                           </span>
-                        )}
-                        {connectionStatus === 'failed' && (
-                          <span className="text-[11px] text-rose-500 font-semibold block leading-relaxed max-w-md">
-                            ✗ Connection Failed: {connectionMessage}
-                          </span>
-                        )}
+                        </div>
+                        <p className="text-xs text-muted leading-relaxed max-w-xl">
+                          When your primary provider encounters rate limits or network connection errors, automatically switch to your secondary provider to maintain uninterrupted live market data without downtime.
+                        </p>
                       </div>
                       <button
                         type="button"
-                        disabled={connectionStatus === 'testing' || !apiKey}
-                        onClick={handleTestConnection}
-                        className="px-3.5 py-1.5 text-xs font-bold text-[#00272b] dark:text-[#e0ff4f] bg-[#e0ff4f]/20 border border-[#e0ff4f]/40 hover:bg-[#e0ff4f]/30 rounded-xl transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                        role="switch"
+                        aria-checked={autoSwitchOnRateLimit}
+                        onClick={() => setAutoSwitchOnRateLimit(!autoSwitchOnRateLimit)}
+                        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                          autoSwitchOnRateLimit ? 'bg-[#00272b] dark:bg-[#e0ff4f]' : 'bg-gray-300 dark:bg-gray-700'
+                        }`}
                       >
-                        Test API Connection
+                        <span
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white dark:bg-[#00272b] shadow ring-0 transition duration-200 ease-in-out ${
+                            autoSwitchOnRateLimit ? 'translate-x-5' : 'translate-x-0'
+                          }`}
+                        />
                       </button>
+                    </div>
+
+                    {/* Section Header */}
+                    <div>
+                      <h4 className="text-xs font-bold text-muted uppercase tracking-wider">
+                        Multi-Provider Authentication Credentials
+                      </h4>
+                      <p className="text-[11px] text-muted mt-0.5">
+                        Configure credentials for both providers for seamless rate-limit and network failover. Keys are stored encrypted per user.
+                      </p>
+                    </div>
+
+                    {/* Alpha Vantage API Key Card */}
+                    <div className="bg-surface-elevated border border-subtle rounded-2xl p-5 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-black text-main tracking-wider font-mono uppercase">
+                            Alpha Vantage API Key
+                          </span>
+                          {provider === 'alphavantage' ? (
+                            <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-[#e0ff4f]/20 text-[#00272b] dark:text-[#e0ff4f] border border-[#e0ff4f]/30">
+                              PRIMARY PROVIDER
+                            </span>
+                          ) : (
+                            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-surface text-muted border border-subtle">
+                              BACKUP / FAILOVER
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-muted">25 calls/day limit</span>
+                      </div>
+
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-muted">
+                          <svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                          </svg>
+                        </span>
+                        <input
+                          type={showAlphaVantageKey ? 'text' : 'password'}
+                          placeholder="Input Alpha Vantage API key..."
+                          value={alphaVantageApiKey}
+                          onChange={(e) => {
+                            setAlphaVantageApiKey(e.target.value);
+                            setAlphaVantageDirty(true);
+                            setAvConnectionStatus('idle');
+                            setAvConnectionMessage('');
+                          }}
+                          required={provider === 'alphavantage'}
+                          className="w-full bg-surface border border-subtle focus:border-[#e0ff4f] rounded-xl pl-11 pr-12 py-3 text-sm text-main placeholder-muted focus:outline-none transition-all font-mono"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowAlphaVantageKey(!showAlphaVantageKey)}
+                          className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-muted hover:text-main transition-colors cursor-pointer"
+                        >
+                          {showAlphaVantageKey ? (
+                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                            </svg>
+                          ) : (
+                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-subtle">
+                        <div className="flex-1">
+                          {avConnectionStatus === 'idle' && (
+                            <span className="text-[11px] text-muted font-medium">Status: Not tested yet</span>
+                          )}
+                          {avConnectionStatus === 'testing' && (
+                            <span className="text-[11px] text-[#00272b] dark:text-[#e0ff4f] font-semibold flex items-center gap-1.5">
+                              <svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth={4} />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                              </svg>
+                              Testing Alpha Vantage connection...
+                            </span>
+                          )}
+                          {avConnectionStatus === 'success' && (
+                            <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
+                              ✓ {avConnectionMessage || 'Connected to Alpha Vantage'}
+                            </span>
+                          )}
+                          {avConnectionStatus === 'failed' && (
+                            <span className="text-[11px] text-rose-500 font-semibold block leading-relaxed max-w-md">
+                              ✗ Connection Failed: {avConnectionMessage}
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          disabled={avConnectionStatus === 'testing' || !alphaVantageApiKey}
+                          onClick={() => handleTestConnection('alphavantage')}
+                          className="px-3.5 py-1.5 text-xs font-bold text-[#00272b] dark:text-[#e0ff4f] bg-[#e0ff4f]/20 border border-[#e0ff4f]/40 hover:bg-[#e0ff4f]/30 rounded-xl transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                        >
+                          Test Alpha Vantage
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Polygon.io API Key Card */}
+                    <div className="bg-surface-elevated border border-subtle rounded-2xl p-5 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-black text-main tracking-wider font-mono uppercase">
+                            Polygon.io API Key
+                          </span>
+                          {provider === 'polygon' ? (
+                            <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-[#e0ff4f]/20 text-[#00272b] dark:text-[#e0ff4f] border border-[#e0ff4f]/30">
+                              PRIMARY PROVIDER
+                            </span>
+                          ) : (
+                            <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-surface text-muted border border-subtle">
+                              BACKUP / FAILOVER
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-muted">5 calls/minute limit</span>
+                      </div>
+
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-muted">
+                          <svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                          </svg>
+                        </span>
+                        <input
+                          type={showPolygonKey ? 'text' : 'password'}
+                          placeholder="Input Polygon.io API key..."
+                          value={polygonApiKey}
+                          onChange={(e) => {
+                            setPolygonApiKey(e.target.value);
+                            setPolygonDirty(true);
+                            setPolygonConnectionStatus('idle');
+                            setPolygonConnectionMessage('');
+                          }}
+                          required={provider === 'polygon'}
+                          className="w-full bg-surface border border-subtle focus:border-[#e0ff4f] rounded-xl pl-11 pr-12 py-3 text-sm text-main placeholder-muted focus:outline-none transition-all font-mono"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPolygonKey(!showPolygonKey)}
+                          className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-muted hover:text-main transition-colors cursor-pointer"
+                        >
+                          {showPolygonKey ? (
+                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                            </svg>
+                          ) : (
+                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-subtle">
+                        <div className="flex-1">
+                          {polygonConnectionStatus === 'idle' && (
+                            <span className="text-[11px] text-muted font-medium">Status: Not tested yet</span>
+                          )}
+                          {polygonConnectionStatus === 'testing' && (
+                            <span className="text-[11px] text-[#00272b] dark:text-[#e0ff4f] font-semibold flex items-center gap-1.5">
+                              <svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth={4} />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                              </svg>
+                              Testing Polygon.io connection...
+                            </span>
+                          )}
+                          {polygonConnectionStatus === 'success' && (
+                            <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
+                              ✓ {polygonConnectionMessage || 'Connected to Polygon.io'}
+                            </span>
+                          )}
+                          {polygonConnectionStatus === 'failed' && (
+                            <span className="text-[11px] text-rose-500 font-semibold block leading-relaxed max-w-md">
+                              ✗ Connection Failed: {polygonConnectionMessage}
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          disabled={polygonConnectionStatus === 'testing' || !polygonApiKey}
+                          onClick={() => handleTestConnection('polygon')}
+                          className="px-3.5 py-1.5 text-xs font-bold text-[#00272b] dark:text-[#e0ff4f] bg-[#e0ff4f]/20 border border-[#e0ff4f]/40 hover:bg-[#e0ff4f]/30 rounded-xl transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                        >
+                          Test Polygon.io
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
-
-                {/* Cost-Basis Accounting Method Toggle */}
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-xs font-bold text-muted uppercase tracking-wider">
-                      Cost-Basis Accounting Method
-                    </label>
-                    <p className="text-[10px] text-muted mt-0.5">
-                      Select how cost basis and realized gains/losses are calculated for your trade sales.
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {/* Average Cost */}
-                    <div
-                      onClick={() => setCostBasisMethod('average')}
-                      role="radio"
-                      aria-checked={costBasisMethod === 'average'}
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === ' ' || e.key === 'Enter') {
-                          e.preventDefault();
-                          setCostBasisMethod('average');
-                        }
-                      }}
-                      className={`cursor-pointer rounded-2xl p-4 border transition-all duration-300 relative flex flex-col justify-between hover:border-[#e0ff4f]/50 hover:bg-surface-hover focus:outline-none ${
-                        costBasisMethod === 'average'
-                          ? 'border-[#e0ff4f] bg-[#e0ff4f]/10 shadow-[0_0_15px_rgba(224,255,79,0.15)] ring-1 ring-[#e0ff4f]'
-                          : 'border-subtle bg-surface-elevated'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between pointer-events-none">
-                        <span className="text-xs font-black text-main tracking-wider font-mono">AVERAGE COST (DEFAULT)</span>
-                        <div
-                          className={`h-4.5 w-4.5 rounded-full border flex items-center justify-center transition-colors ${
-                            costBasisMethod === 'average' ? 'border-[#e0ff4f] bg-[#e0ff4f]/20' : 'border-subtle'
-                          }`}
-                        >
-                          {costBasisMethod === 'average' && <div className="h-2 w-2 rounded-full bg-[#00272b] dark:bg-[#e0ff4f]" />}
-                        </div>
-                      </div>
-                      <p className="text-[11px] text-muted leading-relaxed mt-2 pointer-events-none">
-                        Computes cost basis using historical volume-weighted average price. Standard for long-term investments.
-                      </p>
-                    </div>
-
-                    {/* FIFO */}
-                    <div
-                      onClick={() => setCostBasisMethod('fifo')}
-                      role="radio"
-                      aria-checked={costBasisMethod === 'fifo'}
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === ' ' || e.key === 'Enter') {
-                          e.preventDefault();
-                          setCostBasisMethod('fifo');
-                        }
-                      }}
-                      className={`cursor-pointer rounded-2xl p-4 border transition-all duration-300 relative flex flex-col justify-between hover:border-[#e0ff4f]/50 hover:bg-surface-hover focus:outline-none ${
-                        costBasisMethod === 'fifo'
-                          ? 'border-[#e0ff4f] bg-[#e0ff4f]/10 shadow-[0_0_15px_rgba(224,255,79,0.15)] ring-1 ring-[#e0ff4f]'
-                          : 'border-subtle bg-surface-elevated'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between pointer-events-none">
-                        <span className="text-xs font-black text-main tracking-wider font-mono">FIRST-IN, FIRST-OUT (FIFO)</span>
-                        <div
-                          className={`h-4.5 w-4.5 rounded-full border flex items-center justify-center transition-colors ${
-                            costBasisMethod === 'fifo' ? 'border-[#e0ff4f] bg-[#e0ff4f]/20' : 'border-subtle'
-                          }`}
-                        >
-                          {costBasisMethod === 'fifo' && <div className="h-2 w-2 rounded-full bg-[#00272b] dark:bg-[#e0ff4f]" />}
-                        </div>
-                      </div>
-                      <p className="text-[11px] text-muted leading-relaxed mt-2 pointer-events-none">
-                        Matches sales to the oldest acquired purchase lots first. Realizes profit/loss against specific acquisition prices.
-                      </p>
-                    </div>
-                  </div>
-                </div>
 
                 <div className="space-y-3">
                   <div>
@@ -993,7 +1064,145 @@ export default function FeedSettings() {
           )
         )}
 
-        {/* Tab 3: System User Administration Grid (Admins only) */}
+        {/* Tab 3: Cost-Basis & Portfolio Accounting */}
+        {activeTab === 'accounting' && (
+          loading ? (
+            <div className="bg-surface backdrop-blur-xl border border-subtle rounded-3xl p-8 shadow-xl animate-pulse space-y-6">
+              <div className="h-8 bg-surface-elevated w-1/4 rounded" />
+              <div className="h-28 bg-surface-elevated w-full rounded-2xl" />
+              <div className="h-12 bg-surface-elevated w-1/3 rounded-xl ml-auto" />
+            </div>
+          ) : (
+            <form onSubmit={handleSaveAccounting} className="space-y-6">
+              <div className="bg-surface backdrop-blur-xl border border-subtle rounded-3xl p-6 sm:p-8 shadow-xl space-y-8 relative overflow-hidden group">
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-base font-bold text-main">Cost-Basis Accounting Methodology</h3>
+                    <p className="text-xs text-muted mt-0.5">
+                      Select how acquisition cost basis and realized profit/loss are calculated for trade sales across your entire portfolio.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Average Cost */}
+                    <div
+                      onClick={() => setCostBasisMethod('average')}
+                      role="radio"
+                      aria-checked={costBasisMethod === 'average'}
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === ' ' || e.key === 'Enter') {
+                          e.preventDefault();
+                          setCostBasisMethod('average');
+                        }
+                      }}
+                      className={`cursor-pointer rounded-2xl p-5 border transition-all duration-300 relative flex flex-col justify-between hover:border-[#e0ff4f]/50 hover:bg-surface-hover focus:outline-none ${
+                        costBasisMethod === 'average'
+                          ? 'border-[#e0ff4f] bg-[#e0ff4f]/10 shadow-[0_0_15px_rgba(224,255,79,0.15)] ring-1 ring-[#e0ff4f]'
+                          : 'border-subtle bg-surface-elevated'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between pointer-events-none">
+                        <span className="text-xs font-black text-main tracking-wider font-mono">AVERAGE COST (DEFAULT)</span>
+                        <div
+                          className={`h-4.5 w-4.5 rounded-full border flex items-center justify-center transition-colors ${
+                            costBasisMethod === 'average' ? 'border-[#e0ff4f] bg-[#e0ff4f]/20' : 'border-subtle'
+                          }`}
+                        >
+                          {costBasisMethod === 'average' && <div className="h-2 w-2 rounded-full bg-[#00272b] dark:bg-[#e0ff4f]" />}
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-muted leading-relaxed mt-3 pointer-events-none">
+                        Computes cost basis using historical volume-weighted average price (VWAP). Standard for long-term investments and DCA strategies.
+                      </p>
+                      <div className="mt-4 pt-3 border-t border-subtle flex items-center justify-between text-[10px] text-muted font-mono pointer-events-none">
+                        <span>Lot Allocation</span>
+                        <span className="font-bold text-main">Blended Average</span>
+                      </div>
+                    </div>
+
+                    {/* FIFO */}
+                    <div
+                      onClick={() => setCostBasisMethod('fifo')}
+                      role="radio"
+                      aria-checked={costBasisMethod === 'fifo'}
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === ' ' || e.key === 'Enter') {
+                          e.preventDefault();
+                          setCostBasisMethod('fifo');
+                        }
+                      }}
+                      className={`cursor-pointer rounded-2xl p-5 border transition-all duration-300 relative flex flex-col justify-between hover:border-[#e0ff4f]/50 hover:bg-surface-hover focus:outline-none ${
+                        costBasisMethod === 'fifo'
+                          ? 'border-[#e0ff4f] bg-[#e0ff4f]/10 shadow-[0_0_15px_rgba(224,255,79,0.15)] ring-1 ring-[#e0ff4f]'
+                          : 'border-subtle bg-surface-elevated'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between pointer-events-none">
+                        <span className="text-xs font-black text-main tracking-wider font-mono">FIRST-IN, FIRST-OUT (FIFO)</span>
+                        <div
+                          className={`h-4.5 w-4.5 rounded-full border flex items-center justify-center transition-colors ${
+                            costBasisMethod === 'fifo' ? 'border-[#e0ff4f] bg-[#e0ff4f]/20' : 'border-subtle'
+                          }`}
+                        >
+                          {costBasisMethod === 'fifo' && <div className="h-2 w-2 rounded-full bg-[#00272b] dark:bg-[#e0ff4f]" />}
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-muted leading-relaxed mt-3 pointer-events-none">
+                        Matches trade sales against the oldest acquired purchase lots first. Compliant with standard brokerage tax reporting and specific lot matching.
+                      </p>
+                      <div className="mt-4 pt-3 border-t border-subtle flex items-center justify-between text-[10px] text-muted font-mono pointer-events-none">
+                        <span>Lot Allocation</span>
+                        <span className="font-bold text-main">Chronological Queue</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Informational notice about automatic historical recalculation */}
+                  <div className="bg-surface-elevated border border-subtle rounded-2xl p-4 flex items-start gap-3.5">
+                    <div className="p-2 rounded-xl bg-[#e0ff4f]/20 text-[#00272b] dark:text-[#e0ff4f] flex-shrink-0 mt-0.5">
+                      <Scale className="h-4 w-4" />
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-xs font-bold text-main">Automatic Historical Recalculation</span>
+                      <p className="text-[11px] text-muted leading-relaxed">
+                        Updating your accounting methodology will trigger an automatic recalculation across all historical stock sales in your portfolio. Your analytics charts, realized profit/loss metrics, and export data will immediately align with your chosen method.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <button
+                  type="submit"
+                  disabled={savingAccounting}
+                  className="inline-flex items-center px-6 py-3 rounded-xl text-sm font-black text-[#00272b] bg-[#e0ff4f] hover:bg-[#d2f33b] transition-all duration-200 shadow-md active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {savingAccounting ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-2.5 h-4 w-4 text-[#00272b]" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth={4} />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Updating Accounting Calculations...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="h-4.5 w-4.5 mr-2 text-[#00272b]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                      Save Accounting Preferences
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          )
+        )}
+
+        {/* Tab 4: System User Administration Grid (Admins only) */}
         {activeTab === 'admin' && user?.role === 'admin' && (
           <div className="space-y-6">
             <div className="bg-surface backdrop-blur-xl border border-subtle rounded-3xl p-6 sm:p-8 shadow-xl relative overflow-hidden group">

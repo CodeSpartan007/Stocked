@@ -8,6 +8,7 @@ const validate_1 = require("../middleware/validate");
 const rateLimiter_1 = require("../middleware/rateLimiter");
 const priceFeedService_1 = require("../services/priceFeedService");
 const transactions_1 = require("./transactions");
+const stocks_1 = require("./stocks");
 const router = (0, express_1.Router)();
 // GET /api/settings/feed -> Fetch active price feed configuration (with masked credentials)
 router.get('/feed', auth_1.requireAuth, async (req, res) => {
@@ -20,6 +21,9 @@ router.get('/feed', auth_1.requireAuth, async (req, res) => {
                 userId,
                 provider: 'manual',
                 apiKey: null,
+                alphaVantageApiKey: null,
+                polygonApiKey: null,
+                autoSwitchOnRateLimit: true,
                 refreshInterval: 60,
                 costBasisMethod: 'average',
             });
@@ -30,6 +34,9 @@ router.get('/feed', auth_1.requireAuth, async (req, res) => {
             data: {
                 provider: settings.provider,
                 apiKey: settings.apiKey ? '••••••••••••••••' : '',
+                alphaVantageApiKey: settings.alphaVantageApiKey ? '••••••••••••••••' : '',
+                polygonApiKey: settings.polygonApiKey ? '••••••••••••••••' : '',
+                autoSwitchOnRateLimit: settings.autoSwitchOnRateLimit ?? true,
                 refreshInterval: settings.refreshInterval,
                 costBasisMethod: settings.costBasisMethod || 'average',
             },
@@ -52,6 +59,16 @@ router.post('/feed', auth_1.requireAuth, [
     (0, express_validator_1.body)('apiKey')
         .optional({ nullable: true, checkFalsy: true })
         .trim(),
+    (0, express_validator_1.body)('alphaVantageApiKey')
+        .optional({ nullable: true })
+        .isString(),
+    (0, express_validator_1.body)('polygonApiKey')
+        .optional({ nullable: true })
+        .isString(),
+    (0, express_validator_1.body)('autoSwitchOnRateLimit')
+        .optional()
+        .isBoolean()
+        .withMessage('autoSwitchOnRateLimit must be a boolean.'),
     (0, express_validator_1.body)('refreshInterval')
         .isInt({ min: 10, max: 86400 })
         .withMessage('Refresh interval must be an integer between 10 seconds and 24 hours.'),
@@ -63,57 +80,71 @@ router.post('/feed', auth_1.requireAuth, [
 ], validate_1.handleValidationErrors, async (req, res) => {
     try {
         const userId = req.user.id;
-        const { provider, apiKey, refreshInterval, costBasisMethod } = req.body;
-        // Ensure API key is provided if provider is alphavantage or polygon
-        if (provider !== 'manual' && (!apiKey || apiKey.trim() === '')) {
-            // If we already have a saved key, we can allow keeping it
-            const existing = await models_1.UserSetting.scope('withApiKey').findByPk(userId);
-            if (!existing || !existing.apiKey) {
-                return res.status(400).json({
-                    success: false,
-                    errors: [
-                        {
-                            field: 'apiKey',
-                            message: 'API Key is required when live provider is active.',
-                        },
-                    ],
-                });
+        const { provider, apiKey, alphaVantageApiKey, polygonApiKey, autoSwitchOnRateLimit, refreshInterval, costBasisMethod, } = req.body;
+        const existing = await models_1.UserSetting.scope('withApiKey').findByPk(userId);
+        // Helper to process masked / omitted / blank values
+        const resolveUpdatedKey = (newKey, existingKey) => {
+            if (newKey === undefined || newKey === '••••••••••••••••') {
+                return existingKey || null;
+            }
+            if (newKey === null || newKey.trim() === '') {
+                return null;
+            }
+            return newKey.trim();
+        };
+        let updatedAlphaVantageApiKey = resolveUpdatedKey(alphaVantageApiKey, existing?.alphaVantageApiKey || (existing?.provider === 'alphavantage' ? existing?.apiKey : null));
+        let updatedPolygonApiKey = resolveUpdatedKey(polygonApiKey, existing?.polygonApiKey || (existing?.provider === 'polygon' ? existing?.apiKey : null));
+        // Backward compatibility: If legacy apiKey was provided but specific provider key was not
+        if (apiKey !== undefined && apiKey !== '••••••••••••••••') {
+            const trimmedLegacy = apiKey === null || apiKey.trim() === '' ? null : apiKey.trim();
+            if (provider === 'alphavantage' && alphaVantageApiKey === undefined) {
+                updatedAlphaVantageApiKey = trimmedLegacy;
+            }
+            else if (provider === 'polygon' && polygonApiKey === undefined) {
+                updatedPolygonApiKey = trimmedLegacy;
             }
         }
-        const existing = await models_1.UserSetting.scope('withApiKey').findByPk(userId);
-        let updatedApiKey = apiKey;
-        const isMasked = apiKey === '••••••••••••••••';
-        const isOmitted = apiKey === undefined;
-        if (isMasked || isOmitted) {
-            updatedApiKey = existing ? existing.apiKey : null;
+        // Check key requirement for active primary provider
+        const primaryKey = provider === 'alphavantage'
+            ? updatedAlphaVantageApiKey
+            : provider === 'polygon'
+                ? updatedPolygonApiKey
+                : null;
+        if (provider !== 'manual' && !primaryKey) {
+            return res.status(400).json({
+                success: false,
+                errors: [
+                    {
+                        field: provider === 'alphavantage' ? 'alphaVantageApiKey' : 'polygonApiKey',
+                        message: `API Key is required when ${provider === 'alphavantage' ? 'Alpha Vantage' : 'Polygon.io'} is active.`,
+                    },
+                ],
+            });
         }
-        else if (apiKey === '' || apiKey === null) {
-            updatedApiKey = null;
-        }
-        // Test connection before saving if a live provider is selected and credentials/provider changed
+        // Proactive connection test if a new key was entered for active provider
         let saveWarning = undefined;
         const isProviderChanged = !existing || existing.provider !== provider;
-        const isKeyChanged = !isMasked && !isOmitted && (!existing || existing.apiKey !== updatedApiKey);
-        if (provider !== 'manual' && updatedApiKey && (isProviderChanged || isKeyChanged)) {
+        const isAlphaVantageKeyChanged = alphaVantageApiKey !== undefined &&
+            alphaVantageApiKey !== '••••••••••••••••' &&
+            (!existing || existing.alphaVantageApiKey !== updatedAlphaVantageApiKey);
+        const isPolygonKeyChanged = polygonApiKey !== undefined &&
+            polygonApiKey !== '••••••••••••••••' &&
+            (!existing || existing.polygonApiKey !== updatedPolygonApiKey);
+        if (provider !== 'manual' &&
+            primaryKey &&
+            (isProviderChanged ||
+                (provider === 'alphavantage' ? isAlphaVantageKeyChanged : isPolygonKeyChanged))) {
             try {
                 if (provider === 'alphavantage') {
-                    await (0, priceFeedService_1.fetchFromAlphaVantage)('AAPL', updatedApiKey);
+                    await (0, priceFeedService_1.fetchFromAlphaVantage)('AAPL', primaryKey);
                 }
                 else if (provider === 'polygon') {
-                    await (0, priceFeedService_1.fetchFromPolygon)('AAPL', updatedApiKey);
+                    await (0, priceFeedService_1.fetchFromPolygon)('AAPL', primaryKey);
                 }
+                (0, priceFeedService_1.clearCooldown)(userId, provider);
             }
             catch (testErr) {
-                const errMsgLower = testErr.message.toLowerCase();
-                const isRateLimit = errMsgLower.includes('rate limit') ||
-                    errMsgLower.includes('thank you for visiting alpha vantage') ||
-                    errMsgLower.includes('429') ||
-                    errMsgLower.includes('standard api rate limit') ||
-                    errMsgLower.includes('call frequency') ||
-                    errMsgLower.includes('too many requests') ||
-                    errMsgLower.includes('maximum number of requests') ||
-                    errMsgLower.includes('request limit reached');
-                if (isRateLimit) {
+                if ((0, priceFeedService_1.isRateLimitError)(testErr)) {
                     saveWarning = `Settings saved successfully, but the provider is currently rate limited: ${testErr.message}`;
                     console.warn(`[SettingsRouter] Saved configuration despite rate limit warning: ${testErr.message}`);
                 }
@@ -123,7 +154,7 @@ router.post('/feed', auth_1.requireAuth, [
                         success: false,
                         errors: [
                             {
-                                field: 'apiKey',
+                                field: provider === 'alphavantage' ? 'alphaVantageApiKey' : 'polygonApiKey',
                                 message: `API Connection verification failed: ${testErr.message}`,
                             },
                         ],
@@ -132,10 +163,16 @@ router.post('/feed', auth_1.requireAuth, [
             }
         }
         const updatedCostBasisMethod = costBasisMethod || existing?.costBasisMethod || 'average';
+        const updatedAutoSwitch = autoSwitchOnRateLimit !== undefined
+            ? Boolean(autoSwitchOnRateLimit)
+            : existing?.autoSwitchOnRateLimit ?? true;
         const [settings] = await models_1.UserSetting.upsert({
             userId,
             provider,
-            apiKey: updatedApiKey,
+            apiKey: primaryKey,
+            alphaVantageApiKey: updatedAlphaVantageApiKey,
+            polygonApiKey: updatedPolygonApiKey,
+            autoSwitchOnRateLimit: updatedAutoSwitch,
             refreshInterval,
             costBasisMethod: updatedCostBasisMethod,
         });
@@ -144,9 +181,11 @@ router.post('/feed', auth_1.requireAuth, [
         if (previousMethod !== updatedCostBasisMethod) {
             await (0, transactions_1.recalculateAllUserSales)(userId, undefined, updatedCostBasisMethod);
         }
-        console.log(`[SettingsRouter] Saved configurations for ${userId}. Provider: ${provider}, Interval: ${refreshInterval}s, Method: ${updatedCostBasisMethod}`);
+        console.log(`[SettingsRouter] Saved configurations for ${userId}. Provider: ${provider}, Interval: ${refreshInterval}s, Method: ${updatedCostBasisMethod}, AutoSwitch: ${updatedAutoSwitch}`);
         // Proactively restart poller if live sync is active
-        if (provider !== 'manual' && updatedApiKey) {
+        if (process.env.NODE_ENV !== 'test' &&
+            provider !== 'manual' &&
+            (primaryKey || (updatedAutoSwitch && (updatedAlphaVantageApiKey || updatedPolygonApiKey)))) {
             (0, priceFeedService_1.startPriceSyncPoller)(userId, refreshInterval);
         }
         return res.status(200).json({
@@ -154,7 +193,10 @@ router.post('/feed', auth_1.requireAuth, [
             message: saveWarning || 'Settings updated successfully.',
             data: {
                 provider: settings.provider,
-                apiKey: updatedApiKey ? '••••••••••••••••' : '',
+                apiKey: settings.apiKey ? '••••••••••••••••' : '',
+                alphaVantageApiKey: settings.alphaVantageApiKey ? '••••••••••••••••' : '',
+                polygonApiKey: settings.polygonApiKey ? '••••••••••••••••' : '',
+                autoSwitchOnRateLimit: settings.autoSwitchOnRateLimit,
                 refreshInterval: settings.refreshInterval,
                 costBasisMethod: settings.costBasisMethod || 'average',
             },
@@ -185,16 +227,20 @@ router.post('/test-connection', auth_1.requireAuth, rateLimiter_1.apiTestRateLim
         let keyToTest = apiKey;
         if (apiKey === '••••••••••••••••') {
             const existing = await models_1.UserSetting.scope('withApiKey').findByPk(userId);
-            if (!existing || !existing.apiKey) {
+            if (provider === 'alphavantage') {
+                keyToTest = existing?.alphaVantageApiKey || (existing?.provider === 'alphavantage' ? existing?.apiKey : null);
+            }
+            else if (provider === 'polygon') {
+                keyToTest = existing?.polygonApiKey || (existing?.provider === 'polygon' ? existing?.apiKey : null);
+            }
+            if (!keyToTest) {
                 return res.status(400).json({
                     success: false,
-                    message: 'No existing API key found to test.',
+                    message: `No existing API key found to test for ${provider === 'alphavantage' ? 'Alpha Vantage' : 'Polygon.io'}.`,
                 });
             }
-            keyToTest = existing.apiKey;
         }
         console.log(`[SettingsRouter] Testing connection for user ${userId} using ${provider}...`);
-        // Test with a standard symbol AAPL
         if (provider === 'alphavantage') {
             await (0, priceFeedService_1.fetchFromAlphaVantage)('AAPL', keyToTest);
         }
@@ -204,6 +250,7 @@ router.post('/test-connection', auth_1.requireAuth, rateLimiter_1.apiTestRateLim
         else {
             throw new Error('Unsupported provider for testing.');
         }
+        (0, priceFeedService_1.clearCooldown)(userId, provider);
         return res.status(200).json({
             success: true,
             message: `API Key is active and successfully connected to ${provider === 'alphavantage' ? 'Alpha Vantage' : 'Polygon.io'}.`,
@@ -234,5 +281,11 @@ router.get('/status', auth_1.requireAuth, async (req, res) => {
             message: 'Failed to retrieve API status.',
         });
     }
+});
+// GET /api/settings/price/:symbol -> Alias for ticker price query
+router.get('/price/:symbol', auth_1.requireAuth, async (req, res) => {
+    const userId = req.user.id;
+    const { symbol } = req.params;
+    return (0, stocks_1.handleTickerPriceQuery)(symbol, userId, res);
 });
 exports.default = router;

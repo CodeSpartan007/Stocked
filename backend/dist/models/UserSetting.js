@@ -30,17 +30,84 @@ UserSetting.init({
         get() {
             const rawValue = this.getDataValue('apiKey');
             const userId = this.getDataValue('userId') || this.userId;
-            return rawValue ? (0, crypto_1.decrypt)(rawValue, userId) : null;
+            if (rawValue) {
+                return (0, crypto_1.decrypt)(rawValue, userId);
+            }
+            const provider = this.getDataValue('provider');
+            if (provider === 'alphavantage') {
+                return this.alphaVantageApiKey;
+            }
+            else if (provider === 'polygon') {
+                return this.polygonApiKey;
+            }
+            return null;
         },
         set(value) {
+            const userId = this.getDataValue('userId') || this.userId;
             if (value) {
-                const userId = this.getDataValue('userId') || this.userId;
                 this.setDataValue('apiKey', (0, crypto_1.encrypt)(value, userId));
             }
             else {
                 this.setDataValue('apiKey', null);
             }
         },
+    },
+    alphaVantageApiKey: {
+        type: sequelize_1.DataTypes.TEXT,
+        allowNull: true,
+        get() {
+            const rawValue = this.getDataValue('alphaVantageApiKey');
+            const userId = this.getDataValue('userId') || this.userId;
+            if (rawValue) {
+                return (0, crypto_1.decrypt)(rawValue, userId);
+            }
+            const provider = this.getDataValue('provider');
+            if (provider === 'alphavantage') {
+                const rawLegacy = this.getDataValue('apiKey');
+                return rawLegacy ? (0, crypto_1.decrypt)(rawLegacy, userId) : null;
+            }
+            return null;
+        },
+        set(value) {
+            const userId = this.getDataValue('userId') || this.userId;
+            if (value) {
+                this.setDataValue('alphaVantageApiKey', (0, crypto_1.encrypt)(value, userId));
+            }
+            else {
+                this.setDataValue('alphaVantageApiKey', null);
+            }
+        },
+    },
+    polygonApiKey: {
+        type: sequelize_1.DataTypes.TEXT,
+        allowNull: true,
+        get() {
+            const rawValue = this.getDataValue('polygonApiKey');
+            const userId = this.getDataValue('userId') || this.userId;
+            if (rawValue) {
+                return (0, crypto_1.decrypt)(rawValue, userId);
+            }
+            const provider = this.getDataValue('provider');
+            if (provider === 'polygon') {
+                const rawLegacy = this.getDataValue('apiKey');
+                return rawLegacy ? (0, crypto_1.decrypt)(rawLegacy, userId) : null;
+            }
+            return null;
+        },
+        set(value) {
+            const userId = this.getDataValue('userId') || this.userId;
+            if (value) {
+                this.setDataValue('polygonApiKey', (0, crypto_1.encrypt)(value, userId));
+            }
+            else {
+                this.setDataValue('polygonApiKey', null);
+            }
+        },
+    },
+    autoSwitchOnRateLimit: {
+        type: sequelize_1.DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: true,
     },
     refreshInterval: {
         type: sequelize_1.DataTypes.INTEGER,
@@ -57,11 +124,35 @@ UserSetting.init({
     modelName: 'UserSetting',
     tableName: 'UserSettings',
     defaultScope: {
-        attributes: { exclude: ['apiKey'] },
+        attributes: { exclude: ['apiKey', 'alphaVantageApiKey', 'polygonApiKey'] },
     },
     scopes: {
         withApiKey: {
-            attributes: { include: ['apiKey'] },
+            attributes: { include: ['apiKey', 'alphaVantageApiKey', 'polygonApiKey'] },
         },
     },
+});
+UserSetting.beforeSave((instance) => {
+    const userId = instance.getDataValue('userId') || instance.userId;
+    if (!userId)
+        return;
+    // Synchronize legacy apiKey column with active provider credentials
+    if (instance.provider === 'alphavantage') {
+        const avRaw = instance.getDataValue('alphaVantageApiKey');
+        if (avRaw) {
+            instance.setDataValue('apiKey', avRaw);
+        }
+        else if (instance.getDataValue('apiKey')) {
+            instance.setDataValue('alphaVantageApiKey', instance.getDataValue('apiKey'));
+        }
+    }
+    else if (instance.provider === 'polygon') {
+        const polyRaw = instance.getDataValue('polygonApiKey');
+        if (polyRaw) {
+            instance.setDataValue('apiKey', polyRaw);
+        }
+        else if (instance.getDataValue('apiKey')) {
+            instance.setDataValue('polygonApiKey', instance.getDataValue('apiKey'));
+        }
+    }
 });

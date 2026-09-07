@@ -83,17 +83,26 @@ export default function StocksCatalog() {
       setLivePriceError(null);
       setLivePrice(null);
 
-      const res = await fetch(`${API_BASE}/api/settings/price/${symbol.toUpperCase()}`, {
+      const res = await fetch(`${API_BASE}/api/stocks/ticker-price/${symbol.toUpperCase()}`, {
         credentials: 'include'
       });
-      const json = await res.json();
-      if (res.ok && json.success) {
+      let json: {
+        success?: boolean;
+        data?: { price: number; provider: string; change?: number; changePercent?: number };
+        message?: string;
+      } | null = null;
+      try {
+        json = await res.json();
+      } catch {
+        // Handle non-JSON responses gracefully
+      }
+      if (res.ok && json?.success && json.data) {
         setLivePrice(json.data);
       } else {
-        setLivePriceError(json.message || 'Live quote not reachable right now.');
+        setLivePriceError(json?.message || 'Live quote not reachable right now.');
       }
-    } catch {
-      setLivePriceError('Network request failed fetching quote.');
+    } catch (err: unknown) {
+      setLivePriceError(err instanceof Error ? err.message : 'Network request failed fetching quote.');
     } finally {
       setLivePriceLoading(false);
     }

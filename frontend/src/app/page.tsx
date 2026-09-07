@@ -196,28 +196,18 @@ export default function Dashboard() {
       )}
 
       {/* Hero Welcome Banner */}
-      <div className="relative rounded-3xl bg-surface text-main p-8 sm:p-10 shadow-xl border border-subtle flex flex-col md:flex-row md:items-center md:justify-between gap-6 overflow-hidden">
-        <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#00272b] via-[#0d7b88] to-[#e0ff4f] dark:from-[#e0ff4f] dark:via-emerald-400 dark:to-[#0d7b88]" />
+      <div className="relative z-20 rounded-3xl bg-surface text-main p-8 sm:p-10 shadow-xl border border-subtle flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+        <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-[#00272b] via-[#0d7b88] to-[#e0ff4f] dark:from-[#e0ff4f] dark:via-emerald-400 dark:to-[#0d7b88] rounded-t-3xl" />
         <div className="absolute right-0 bottom-0 top-0 w-1/2 bg-gradient-to-l from-[#e0ff4f]/15 dark:from-[#e0ff4f]/10 to-transparent pointer-events-none rounded-r-3xl" />
         <div className="relative z-10 space-y-4 max-w-2xl">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-subtle bg-surface-elevated text-secondary dark:border-[#e0ff4f]/40 dark:text-[#e0ff4f] dark:bg-[#e0ff4f]/10 text-xs font-bold font-mono shadow-sm">
-              <span>Hex</span>
-              <span className="text-muted dark:text-[#e0ff4f]">&rarr;</span>
-              <span className="font-extrabold text-main dark:text-[#e0ff4f]">#e0ff4f</span>
-            </div>
-            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-[#e0ff4f] text-[#00272b] shadow-sm">
-              ⚡ System Online
-            </span>
-          </div>
           <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-main">
             Welcome back, <span className="text-[#00272b] dark:text-[#e0ff4f]">{user ? user.email.split('@')[0] : 'Developer'}</span>!
           </h1>
           <p className="text-secondary text-sm leading-relaxed">
-            Monitor overall portfolio health using the Valuation Engine. Review real-time asset costs, locked-in profits, active value changes, and log transactions.
+            Monitor overall portfolio health. Review real-time asset costs, locked-in profits, active value changes, and log transactions.
           </p>
         </div>
-        <div className="relative z-20 flex-shrink-0">
+        <div className="relative z-50 flex-shrink-0">
           <ExportActionsDropdown reportType="summary" />
         </div>
       </div>
@@ -534,7 +524,7 @@ export default function Dashboard() {
             >
               <div className="h-10 w-10 rounded-lg bg-[#e0ff4f] text-[#00272b] flex items-center justify-center mr-4 group-hover:scale-110 transition-transform shadow-sm">
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 11l3-3m0 0l3 3m-3-3v8m0-13a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                 </svg>
               </div>
               <div className="flex-1">
@@ -549,7 +539,7 @@ export default function Dashboard() {
             >
               <div className="h-10 w-10 rounded-lg bg-[#e0ff4f] text-[#00272b] flex items-center justify-center mr-4 group-hover:scale-110 transition-transform shadow-sm">
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                 </svg>
               </div>
               <div className="flex-1">

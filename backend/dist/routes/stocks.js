@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.handleTickerPriceQuery = handleTickerPriceQuery;
 const express_1 = require("express");
 const express_validator_1 = require("express-validator");
 const sequelize_1 = require("sequelize");
@@ -29,6 +30,65 @@ async function limitConcurrency(items, concurrency, fn) {
     return results;
 }
 const router = (0, express_1.Router)();
+// Helper to query live price using unified failover engine
+async function handleTickerPriceQuery(symbol, userId, res) {
+    if (!symbol || symbol.trim() === '') {
+        return res.status(400).json({
+            success: false,
+            message: 'Symbol parameter is required.',
+        });
+    }
+    const upperSymbol = symbol.trim().toUpperCase();
+    try {
+        const result = await (0, priceFeedService_1.fetchWithFailover)(upperSymbol, userId);
+        return res.status(200).json({
+            success: true,
+            data: {
+                symbol: upperSymbol,
+                price: result.tickerData.price,
+                change: result.tickerData.change,
+                changePercent: result.tickerData.changePercent,
+                volume: result.tickerData.volume,
+                provider: result.provider,
+                isFailover: result.isFailover,
+            },
+        });
+    }
+    catch (error) {
+        console.error(`Error querying ticker price for ${upperSymbol}:`, error);
+        // If failover failed or provider not configured, check for previously recorded price
+        const stock = await models_1.Stock.findOne({
+            where: { userId, symbol: upperSymbol },
+        });
+        if (stock) {
+            const cached = await (0, priceFeedService_1.getLocalCachedPriceForStock)(stock, userId);
+            if (cached && cached.price > 0) {
+                return res.status(200).json({
+                    success: true,
+                    data: {
+                        symbol: upperSymbol,
+                        price: cached.price,
+                        change: cached.change,
+                        changePercent: cached.changePercent,
+                        volume: 0,
+                        provider: 'manual fallback',
+                        isFailover: false,
+                    },
+                });
+            }
+        }
+        const msg = error?.message || 'Failed to fetch live price for ticker.';
+        const isConfigError = msg.includes('not configured') ||
+            msg.includes('manual mode') ||
+            msg.includes('Real-time API key not configured');
+        return res.status(400).json({
+            success: false,
+            message: isConfigError
+                ? 'No market data API key configured in Settings. You can add the stock manually or configure Alpha Vantage / Polygon.'
+                : msg,
+        });
+    }
+}
 // GET /api/stocks/live-prices -> View live price metadata for active tickers (from local cache)
 router.get('/live-prices', auth_1.requireAuth, async (req, res) => {
     try {
@@ -53,66 +113,17 @@ router.get('/live-prices', auth_1.requireAuth, async (req, res) => {
         });
     }
 });
-// GET /api/stocks/search-price?symbol=AAPL -> Query live price for an arbitrary symbol using the user's active API settings
+// GET /api/stocks/ticker-price/:symbol -> Query live price for an arbitrary symbol using unified failover logic
+router.get('/ticker-price/:symbol', auth_1.requireAuth, async (req, res) => {
+    const userId = req.user.id;
+    const { symbol } = req.params;
+    return handleTickerPriceQuery(symbol, userId, res);
+});
+// GET /api/stocks/search-price?symbol=AAPL -> Query live price for an arbitrary symbol using unified failover logic
 router.get('/search-price', auth_1.requireAuth, async (req, res) => {
-    try {
-        const userId = req.user.id;
-        const symbol = req.query.symbol;
-        if (!symbol || symbol.trim() === '') {
-            return res.status(400).json({
-                success: false,
-                message: 'Symbol query parameter is required.',
-            });
-        }
-        const upperSymbol = symbol.trim().toUpperCase();
-        // Retrieve user settings to get active provider and API key
-        let provider = process.env.PRICE_FEED_PROVIDER || 'manual';
-        let apiKey = process.env.MARKET_API_KEY || '';
-        const settings = await models_1.UserSetting.scope('withApiKey').findByPk(userId);
-        if (settings) {
-            provider = settings.provider;
-            if (settings.apiKey) {
-                apiKey = settings.apiKey;
-            }
-        }
-        if (provider === 'manual' || !apiKey) {
-            return res.status(400).json({
-                success: false,
-                message: 'Real-time API key not configured or set to manual mode. Configure Alpha Vantage or Polygon in Settings first.',
-            });
-        }
-        let tickerData;
-        if (provider === 'alphavantage') {
-            tickerData = await (0, priceFeedService_1.fetchFromAlphaVantage)(upperSymbol, apiKey);
-        }
-        else if (provider === 'polygon') {
-            tickerData = await (0, priceFeedService_1.fetchFromPolygon)(upperSymbol, apiKey);
-        }
-        else {
-            return res.status(400).json({
-                success: false,
-                message: `Unsupported provider: ${provider}`,
-            });
-        }
-        return res.status(200).json({
-            success: true,
-            data: {
-                symbol: upperSymbol,
-                price: tickerData.price,
-                change: tickerData.change,
-                changePercent: tickerData.changePercent,
-                volume: tickerData.volume,
-                provider,
-            },
-        });
-    }
-    catch (error) {
-        console.error(`Error searching ticker price:`, error);
-        return res.status(400).json({
-            success: false,
-            message: error.message || 'Failed to fetch live price for ticker.',
-        });
-    }
+    const userId = req.user.id;
+    const symbol = req.query.symbol;
+    return handleTickerPriceQuery(symbol, userId, res);
 });
 // GET /api/stocks -> View all registered stocks with aggregated summary data
 router.get('/', auth_1.requireAuth, async (req, res) => {

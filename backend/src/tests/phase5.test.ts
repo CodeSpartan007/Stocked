@@ -159,8 +159,13 @@ describe('Phase 5: Database Concurrency & Migrations', () => {
 
     it('should execute pending migrations up and create all core tables and evolution columns', async () => {
       const applied = await testMigrator.up();
-      expect(applied.length).toBe(2);
-      expect(applied.map(m => m.name)).toEqual(['0001_initial_schema', '0002_add_change_and_cost_basis']);
+      expect(applied.length).toBe(4);
+      expect(applied.map(m => m.name)).toEqual([
+        '0001_initial_schema',
+        '0002_add_change_and_cost_basis',
+        '0003_add_multi_provider_api_keys',
+        '0004_fix_unique_constraints_and_indexes',
+      ]);
 
       // Verify all tables were created
       const queryInterface = migrationDb.getQueryInterface();
@@ -180,37 +185,43 @@ describe('Phase 5: Database Concurrency & Migrations', () => {
       expect(dailyPricesDesc.change).toBeDefined();
       expect(dailyPricesDesc.changePercent).toBeDefined();
 
-      // Verify UserSettings has costBasisMethod column
+      // Verify UserSettings has costBasisMethod column and multi-provider columns
       const userSettingsDesc = await queryInterface.describeTable('UserSettings');
       expect(userSettingsDesc.costBasisMethod).toBeDefined();
+      expect(userSettingsDesc.alphaVantageApiKey).toBeDefined();
+      expect(userSettingsDesc.polygonApiKey).toBeDefined();
+      expect(userSettingsDesc.autoSwitchOnRateLimit).toBeDefined();
     });
 
-    it('should correctly revert the latest migration (down) and remove added columns', async () => {
+    it('should correctly revert migrations (down) and remove added columns', async () => {
+      const reverted0004 = await testMigrator.down();
+      expect(reverted0004.length).toBe(1);
+      expect(reverted0004[0].name).toBe('0004_fix_unique_constraints_and_indexes');
+
       const reverted = await testMigrator.down();
       expect(reverted.length).toBe(1);
-      expect(reverted[0].name).toBe('0002_add_change_and_cost_basis');
+      expect(reverted[0].name).toBe('0003_add_multi_provider_api_keys');
 
       const queryInterface = migrationDb.getQueryInterface();
-      const dailyPricesDesc = await queryInterface.describeTable('DailyPrices');
-      expect(dailyPricesDesc.change).toBeUndefined();
-      expect(dailyPricesDesc.changePercent).toBeUndefined();
-
       const userSettingsDesc = await queryInterface.describeTable('UserSettings');
-      expect(userSettingsDesc.costBasisMethod).toBeUndefined();
+      expect(userSettingsDesc.alphaVantageApiKey).toBeUndefined();
+      expect(userSettingsDesc.polygonApiKey).toBeUndefined();
+      expect(userSettingsDesc.autoSwitchOnRateLimit).toBeUndefined();
     });
 
     it('should re-apply migration up and restore columns', async () => {
       const applied = await testMigrator.up();
-      expect(applied.length).toBe(1);
-      expect(applied[0].name).toBe('0002_add_change_and_cost_basis');
+      expect(applied.length).toBe(2);
+      expect(applied.map(m => m.name)).toEqual([
+        '0003_add_multi_provider_api_keys',
+        '0004_fix_unique_constraints_and_indexes',
+      ]);
 
       const queryInterface = migrationDb.getQueryInterface();
-      const dailyPricesDesc = await queryInterface.describeTable('DailyPrices');
-      expect(dailyPricesDesc.change).toBeDefined();
-      expect(dailyPricesDesc.changePercent).toBeDefined();
-
       const userSettingsDesc = await queryInterface.describeTable('UserSettings');
-      expect(userSettingsDesc.costBasisMethod).toBeDefined();
+      expect(userSettingsDesc.alphaVantageApiKey).toBeDefined();
+      expect(userSettingsDesc.polygonApiKey).toBeDefined();
+      expect(userSettingsDesc.autoSwitchOnRateLimit).toBeDefined();
     });
 
     it('should integrate with initDb() seamlessly', async () => {

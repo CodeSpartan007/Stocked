@@ -85,6 +85,15 @@ export const up = async ({ context: queryInterface }: { context: QueryInterface 
         allowNull: false,
       },
     });
+
+    try {
+      await queryInterface.addIndex('Stocks', ['userId', 'symbol'], {
+        unique: true,
+        name: 'stocks_user_symbol_unique',
+      });
+    } catch {
+      // Ignore if index already exists
+    }
   }
 
   // 3. DailyPrices table (base schema without change & changePercent)
@@ -138,6 +147,15 @@ export const up = async ({ context: queryInterface }: { context: QueryInterface 
         allowNull: false,
       },
     });
+
+    try {
+      await queryInterface.addIndex('DailyPrices', ['stockId', 'date'], {
+        unique: true,
+        name: 'daily_prices_stock_date_unique',
+      });
+    } catch {
+      // Ignore if index already exists
+    }
   }
 
   // 4. Purchases table

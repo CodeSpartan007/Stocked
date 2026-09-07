@@ -2,24 +2,76 @@
 
 import { API_BASE } from '../lib/api';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/app/context/AuthContext';
 import { useTheme } from '@/app/context/ThemeContext';
 import { Sun, Moon } from 'lucide-react';
 
+function subscribeSidebar(callback: () => void) {
+  window.addEventListener('storage', callback);
+  window.addEventListener('stocked_sidebar_change', callback);
+  return () => {
+    window.removeEventListener('storage', callback);
+    window.removeEventListener('stocked_sidebar_change', callback);
+  };
+}
+
+function getStoredSidebar(): boolean {
+  try {
+    return localStorage.getItem('stocked_sidebar_collapsed') === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function getServerStoredSidebar(): boolean {
+  return false;
+}
+
 export default function SidebarLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const sidebarCollapsed = useSyncExternalStore(
+    subscribeSidebar,
+    getStoredSidebar,
+    getServerStoredSidebar
+  );
   const { user, loading, logout } = useAuth();
   const { resolvedTheme, toggleTheme } = useTheme();
+
+  const toggleSidebar = () => {
+    const next = !getStoredSidebar();
+    try {
+      localStorage.setItem('stocked_sidebar_collapsed', String(next));
+      window.dispatchEvent(new Event('stocked_sidebar_change'));
+    } catch {
+      // Ignore
+    }
+  };
+
+  // Keyboard shortcut Ctrl+B / Cmd+B to toggle sidebar
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        toggleSidebar();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   const [apiStatus, setApiStatus] = useState<{
     provider: 'alphavantage' | 'polygon' | 'manual';
     connected: boolean;
     statusText: string;
     message: string;
     callsRemainingText: string;
+    activeProvider?: string;
+    isFailoverActive?: boolean;
+    failoverMessage?: string;
   } | null>(null);
 
   useEffect(() => {
@@ -194,18 +246,37 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
   return (
     <div className="flex h-dvh w-screen overflow-hidden bg-app text-main">
       {/* Sidebar for Desktop */}
-      <aside className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 bg-surface backdrop-blur-xl border-r border-subtle">
+      <aside
+        className={`hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 z-30 bg-surface backdrop-blur-xl border-r border-subtle transition-transform duration-300 ease-in-out ${
+          sidebarCollapsed ? 'md:-translate-x-full' : 'md:translate-x-0'
+        }`}
+      >
         <div className="flex flex-col flex-grow pt-5 pb-4 overflow-y-auto">
-          {/* Logo */}
-          <div className="flex items-center px-6 mb-8">
-            <div className="h-9 w-9 rounded-xl bg-[#e0ff4f] flex items-center justify-center shadow-lg shadow-[#e0ff4f]/25">
-              <svg className="h-5 w-5 text-[#00272b]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-              </svg>
+          {/* Logo & Collapse Button */}
+          <div className="flex items-center justify-between px-6 mb-8">
+            <div className="flex items-center">
+              <div className="h-9 w-9 rounded-xl bg-[#e0ff4f] flex items-center justify-center shadow-lg shadow-[#e0ff4f]/25">
+                <svg className="h-5 w-5 text-[#00272b]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                </svg>
+              </div>
+              <span className="ml-3 text-xl font-black tracking-wider text-main">
+                STOCKED
+              </span>
             </div>
-            <span className="ml-3 text-xl font-black tracking-wider text-main">
-              STOCKED
-            </span>
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              className="p-1.5 rounded-xl border border-subtle bg-surface-elevated hover:bg-surface-hover hover:border-[#e0ff4f]/60 text-secondary hover:text-main transition-colors cursor-pointer"
+              title="Hide sidebar (Ctrl+B)"
+              aria-label="Hide sidebar"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <rect width="18" height="18" x="3" y="3" rx="2" />
+                <path d="M9 3v18" />
+                <path d="m16 15-3-3 3-3" />
+              </svg>
+            </button>
           </div>
 
           {/* Navigation Links */}
@@ -236,19 +307,14 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
           <button
             onClick={toggleTheme}
             type="button"
-            className="w-full flex items-center justify-between px-3.5 py-2.5 border border-subtle bg-surface-elevated hover:bg-surface-hover text-secondary hover:text-main text-xs font-semibold rounded-xl transition-all duration-200 cursor-pointer"
+            className="w-full flex items-center gap-2.5 px-3.5 py-2.5 border border-subtle bg-surface-elevated hover:bg-surface-hover text-secondary hover:text-main text-xs font-semibold rounded-xl transition-all duration-200 cursor-pointer"
           >
-            <div className="flex items-center gap-2.5">
-              {resolvedTheme === 'dark' ? (
-                <Sun className="h-4 w-4 text-[#e0ff4f]" />
-              ) : (
-                <Moon className="h-4 w-4 text-[#00272b]" />
-              )}
-              <span>{resolvedTheme === 'dark' ? 'Dark Mode' : 'Light Mode'}</span>
-            </div>
-            <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-app border border-subtle text-muted">
-              Toggle
-            </span>
+            {resolvedTheme === 'dark' ? (
+              <Sun className="h-4 w-4 text-[#e0ff4f]" />
+            ) : (
+              <Moon className="h-4 w-4 text-[#00272b]" />
+            )}
+            <span>{resolvedTheme === 'dark' ? 'Dark Mode' : 'Light Mode'}</span>
           </button>
 
           <div className="flex items-center w-full">
@@ -326,19 +392,14 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
               <button
                 onClick={toggleTheme}
                 type="button"
-                className="w-full flex items-center justify-between px-3.5 py-2 border border-subtle bg-surface-elevated hover:bg-surface-hover text-secondary hover:text-main text-xs font-semibold rounded-xl transition-all duration-200 cursor-pointer"
+                className="w-full flex items-center gap-2.5 px-3.5 py-2 border border-subtle bg-surface-elevated hover:bg-surface-hover text-secondary hover:text-main text-xs font-semibold rounded-xl transition-all duration-200 cursor-pointer"
               >
-                <div className="flex items-center gap-2">
-                  {resolvedTheme === 'dark' ? (
-                    <Sun className="h-4 w-4 text-[#e0ff4f]" />
-                  ) : (
-                    <Moon className="h-4 w-4 text-[#00272b]" />
-                  )}
-                  <span>{resolvedTheme === 'dark' ? 'Dark Mode' : 'Light Mode'}</span>
-                </div>
-                <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-app border border-subtle text-muted">
-                  Toggle
-                </span>
+                {resolvedTheme === 'dark' ? (
+                  <Sun className="h-4 w-4 text-[#e0ff4f]" />
+                ) : (
+                  <Moon className="h-4 w-4 text-[#00272b]" />
+                )}
+                <span>{resolvedTheme === 'dark' ? 'Dark Mode' : 'Light Mode'}</span>
               </button>
 
               <div className="flex items-center">
@@ -362,7 +423,71 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
       )}
 
       {/* Main Content Area */}
-      <div className="flex flex-col flex-1 overflow-hidden md:pl-64">
+      <div className={`flex flex-col flex-1 overflow-hidden transition-all duration-300 ease-in-out ${sidebarCollapsed ? 'md:pl-0' : 'md:pl-64'}`}>
+        {/* Desktop Header when Sidebar is Collapsed */}
+        {sidebarCollapsed && (
+          <header className="hidden md:flex items-center justify-between h-14 px-6 bg-surface/80 backdrop-blur-xl border-b border-subtle shrink-0 relative z-30">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={toggleSidebar}
+                className="p-2 rounded-xl border border-subtle bg-surface-elevated hover:bg-surface-hover hover:border-[#e0ff4f]/60 text-secondary hover:text-main transition-all cursor-pointer shadow-xs"
+                title="Unhide side navbar (Ctrl+B)"
+                aria-label="Unhide side navbar"
+              >
+                <svg className="h-4 w-4 text-[#00272b] dark:text-[#e0ff4f]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <rect width="18" height="18" x="3" y="3" rx="2" />
+                  <path d="M9 3v18" />
+                  <path d="m14 9 3 3-3 3" />
+                </svg>
+              </button>
+
+              <div className="flex items-center gap-2.5 ml-2">
+                <div className="h-7 w-7 rounded-lg bg-[#e0ff4f] flex items-center justify-center shadow-xs">
+                  <svg className="h-4 w-4 text-[#00272b]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                  </svg>
+                </div>
+                <span className="font-black tracking-wider text-main text-sm">STOCKED</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <nav className="flex items-center gap-1">
+                {navigation.map((item) => {
+                  const active = pathname === item.href;
+                  return (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                        active
+                          ? 'bg-[#e0ff4f]/20 text-[#00272b] dark:text-[#e0ff4f] font-bold'
+                          : 'text-secondary hover:text-main hover:bg-surface-hover'
+                      }`}
+                    >
+                      {item.name}
+                    </Link>
+                  );
+                })}
+              </nav>
+              <div className="h-4 w-px bg-subtle" />
+              <button
+                type="button"
+                onClick={toggleTheme}
+                className="p-1.5 rounded-lg text-secondary hover:bg-surface-hover hover:text-main cursor-pointer"
+                title="Toggle Theme"
+              >
+                {resolvedTheme === 'dark' ? (
+                  <Sun className="h-4 w-4 text-[#e0ff4f]" />
+                ) : (
+                  <Moon className="h-4 w-4 text-[#00272b]" />
+                )}
+              </button>
+            </div>
+          </header>
+        )}
+
         {/* Mobile Header Bar */}
         <header className="md:hidden flex items-center justify-between h-16 px-4 bg-surface border-b border-subtle shrink-0 relative z-30">
           <div className="flex items-center">
@@ -405,36 +530,62 @@ export default function SidebarLayout({ children }: { children: React.ReactNode 
           <div className="absolute top-0 right-1/4 w-[500px] h-[500px] bg-[#e0ff4f]/5 rounded-full blur-[120px] pointer-events-none -z-10" />
           <div className="absolute bottom-0 left-1/4 w-[400px] h-[400px] bg-[#00272b]/10 dark:bg-[#00272b]/40 rounded-full blur-[100px] pointer-events-none -z-10" />
 
-          <div className="max-w-7xl mx-auto min-h-full flex flex-col">
+          <div className={`min-h-full flex flex-col transition-all duration-300 ${sidebarCollapsed ? 'w-full' : 'max-w-7xl mx-auto w-full'}`}>
             {apiStatus && apiStatus.provider !== 'manual' && (
-              <div className={`mb-6 p-4 rounded-2xl border backdrop-blur-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs font-semibold shadow-lg transition-all duration-300 ${
-                apiStatus.statusText === 'Rate Limited'
-                  ? 'bg-amber-500/10 border-amber-500/25 text-amber-600 dark:text-amber-300'
-                  : !apiStatus.connected
+              <div
+                className={`mb-6 p-4 rounded-2xl border backdrop-blur-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs font-semibold shadow-lg transition-all duration-300 ${
+                  apiStatus.isFailoverActive
+                    ? 'bg-teal-500/10 border-teal-500/30 text-teal-700 dark:text-teal-300 shadow-[0_0_20px_rgba(20,184,166,0.15)]'
+                    : apiStatus.statusText === 'Rate Limited'
+                    ? 'bg-amber-500/10 border-amber-500/25 text-amber-600 dark:text-amber-300'
+                    : !apiStatus.connected
                     ? 'bg-rose-500/10 border-rose-500/25 text-rose-600 dark:text-rose-300'
                     : 'bg-emerald-500/10 border-emerald-500/25 text-emerald-600 dark:text-emerald-300'
-              }`}>
+                }`}
+              >
                 <div className="flex items-center gap-2.5">
-                  <span className={`h-2.5 w-2.5 rounded-full ${
-                    apiStatus.statusText === 'Rate Limited'
-                      ? 'bg-amber-500 animate-pulse'
-                      : !apiStatus.connected
+                  <span
+                    className={`h-2.5 w-2.5 rounded-full ${
+                      apiStatus.isFailoverActive
+                        ? 'bg-teal-400 animate-pulse'
+                        : apiStatus.statusText === 'Rate Limited'
+                        ? 'bg-amber-500 animate-pulse'
+                        : !apiStatus.connected
                         ? 'bg-rose-500'
                         : 'bg-emerald-500'
-                  }`} />
-                  <span>
-                    <span className="font-extrabold uppercase tracking-wider mr-1">
-                      {apiStatus.provider === 'alphavantage' ? 'Alpha Vantage' : 'Polygon.io'} Feed:
-                    </span>{' '}
-                    {apiStatus.statusText === 'Rate Limited'
-                      ? 'Request limit reached. Data updates are temporarily paused.'
-                      : !apiStatus.connected
-                        ? 'Connection offline. Please check your API credentials.'
-                        : 'Live pricing active.'}
-                  </span>
+                    }`}
+                  />
+                  <div className="flex flex-wrap items-center gap-2">
+                    {apiStatus.isFailoverActive && (
+                      <span className="px-2 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md bg-teal-500/20 border border-teal-500/40 text-teal-800 dark:text-teal-200">
+                        Failover Active
+                      </span>
+                    )}
+                    <span>
+                      {apiStatus.isFailoverActive ? (
+                        <span>
+                          {apiStatus.failoverMessage ||
+                            (apiStatus.provider === 'alphavantage'
+                              ? 'Alpha Vantage Rate Limited — Live via Polygon.io (Failover Active)'
+                              : 'Polygon.io Rate Limited — Live via Alpha Vantage (Failover Active)')}
+                        </span>
+                      ) : (
+                        <>
+                          <span className="font-extrabold uppercase tracking-wider mr-1">
+                            {apiStatus.provider === 'alphavantage' ? 'Alpha Vantage' : 'Polygon.io'} Feed:
+                          </span>{' '}
+                          {apiStatus.statusText === 'Rate Limited'
+                            ? (apiStatus.message || 'Request limit reached. Data updates are temporarily paused.')
+                            : !apiStatus.connected
+                            ? 'Connection offline. Please check your API credentials.'
+                            : 'Live pricing active.'}
+                        </>
+                      )}
+                    </span>
+                  </div>
                 </div>
                 {apiStatus.callsRemainingText && (
-                  <span className="text-[10px] font-bold uppercase tracking-wider opacity-90 bg-surface-elevated px-3 py-1 rounded-xl border border-subtle text-secondary">
+                  <span className="text-[10px] font-bold uppercase tracking-wider opacity-90 bg-surface-elevated px-3 py-1 rounded-xl border border-subtle text-secondary shrink-0">
                     {apiStatus.callsRemainingText}
                   </span>
                 )}
