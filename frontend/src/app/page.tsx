@@ -317,10 +317,10 @@ export default function Dashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-xs font-bold text-main uppercase tracking-wider">Top Performers</h3>
-                <p className="text-[9px] text-muted mt-0.5">Daily performance gain</p>
+                <p className="text-[9px] text-muted mt-0.5">Month-to-date (MTD) gain</p>
               </div>
               <span className="text-[9px] font-black text-[#00272b] bg-[#e0ff4f] px-2 py-0.5 rounded shadow-sm">
-                📈 GAINS
+                📈 MTD GAINS
               </span>
             </div>
 
@@ -361,7 +361,7 @@ export default function Dashboard() {
             )}
           </div>
           <div className="mt-4 pt-3 border-t border-subtle flex items-center justify-between">
-            <span className="text-[9px] text-muted font-mono">Real-time indicators</span>
+            <span className="text-[9px] text-muted font-mono">Monthly benchmark</span>
             <Link href="/analytics" className="text-[10px] font-bold text-[#00272b] dark:text-[#e0ff4f] hover:underline flex items-center">
               Analytics &rarr;
             </Link>

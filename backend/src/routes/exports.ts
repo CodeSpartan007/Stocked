@@ -504,7 +504,7 @@ router.post(
             else if (t.targetType === 'annualized_return') currentMetric = annualizedReturnPercent;
 
             const targetVal = Number(t.targetValue);
-            const progress = targetVal > 0 ? Math.min(100, (currentMetric / targetVal) * 100) : 0;
+            const progress = targetVal > 0 ? Math.max(0, Math.min(100, (currentMetric / targetVal) * 100)) : 0;
             return {
               name: t.targetName,
               type: t.targetType,

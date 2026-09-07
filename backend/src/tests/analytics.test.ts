@@ -337,6 +337,43 @@ describe('Phase 6: Analytics, Performance Engine & Target Tracking Suite', () =>
       expect(t2.isAchieved).toBe(false);
     });
 
+    it('clamps progressPercent to 0 when returns are negative', async () => {
+      await Purchase.create({
+        userId: userA.id,
+        stockId: stockA1.id,
+        quantity: 10,
+        purchasePrice: 100,
+        purchaseDate: '2026-01-01',
+      });
+      // Price drops to $50 (-50% return)
+      await DailyPrice.create({
+        userId: userA.id,
+        stockId: stockA1.id,
+        price: 50,
+        volume: 100,
+        date: '2026-01-02',
+      });
+
+      await PerformanceTarget.create({
+        userId: userA.id,
+        targetName: 'Achieve 20% Return',
+        targetType: 'total_return',
+        targetValue: 20,
+        targetDate: '2026-12-31',
+        isAchieved: false,
+      });
+
+      const res = await request(app)
+        .get('/api/analytics/targets')
+        .set('Authorization', `Bearer ${tokenA}`);
+
+      expect(res.status).toBe(200);
+      const target = res.body.data.find((t: any) => t.targetName === 'Achieve 20% Return');
+      expect(target.currentValue).toBe(-50);
+      expect(target.progressPercent).toBe(0);
+      expect(target.isAchieved).toBe(false);
+    });
+
     it('updates and deletes targets with user isolation enforcement', async () => {
       // Create a target for User A
       const targetA = await PerformanceTarget.create({

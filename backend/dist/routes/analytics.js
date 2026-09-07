@@ -743,7 +743,7 @@ router.get('/targets', auth_1.requireAuth, async (req, res) => {
             }
             const targetVal = Number(t.targetValue);
             if (targetVal > 0) {
-                progressPercent = Math.min(100, (currentMetric / targetVal) * 100);
+                progressPercent = Math.max(0, Math.min(100, (currentMetric / targetVal) * 100));
             }
             const achieved = progressPercent >= 100;
             // If target achieves milestone now and was not marked achieved, update DB silently

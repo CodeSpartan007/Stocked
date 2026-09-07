@@ -864,7 +864,13 @@ export default function AnalyticsPage() {
                       <h4 className="text-xs font-bold text-main">{t.targetName}</h4>
                       <p className="text-[10px] text-muted mt-0.5 font-mono">
                         Target Date: {t.targetDate} &bull; Type:{' '}
-                        <span className="font-extrabold text-[#00272b] dark:text-[#e0ff4f]">{t.targetType.replace('_', ' ')}</span>
+                        <span className="font-extrabold text-[#00272b] dark:text-[#e0ff4f]">
+                          {t.targetType === 'portfolio_value'
+                            ? 'Portfolio Value'
+                            : t.targetType === 'total_return'
+                            ? 'Total Return'
+                            : 'Annual CAGR'}
+                        </span>
                       </p>
                     </div>
 
@@ -904,15 +910,19 @@ export default function AnalyticsPage() {
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between text-[10px] font-mono">
                       <span className="text-muted font-medium">
-                        Current: {t.targetType === 'portfolio_value' ? '$' : ''}
-                        {t.currentValue.toLocaleString()}
-                        {t.targetType !== 'portfolio_value' ? '%' : ''}
+                        Current:{' '}
+                        {t.targetType === 'portfolio_value'
+                          ? `$${t.currentValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                          : `${t.currentValue >= 0 ? '+' : ''}${t.currentValue.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })}%`}
                       </span>
-                      <span className="text-main font-bold">{t.progressPercent}%</span>
+                      <span className="text-main font-bold">
+                        {Math.max(0, Math.min(100, t.progressPercent))}%
+                      </span>
                       <span className="text-muted font-medium font-mono">
-                        Goal: {t.targetType === 'portfolio_value' ? '$' : ''}
-                        {t.targetValue.toLocaleString()}
-                        {t.targetType !== 'portfolio_value' ? '%' : ''}
+                        Goal:{' '}
+                        {t.targetType === 'portfolio_value'
+                          ? `$${t.targetValue.toLocaleString()}`
+                          : `${t.targetValue.toLocaleString()}%`}
                       </span>
                     </div>
 
@@ -923,7 +933,7 @@ export default function AnalyticsPage() {
                             ? 'bg-gradient-to-r from-emerald-500 to-teal-400 shadow-[0_0_8px_rgba(16,185,129,0.3)]'
                             : 'bg-gradient-to-r from-[#e0ff4f] to-emerald-400 shadow-[0_0_8px_rgba(224,255,79,0.3)]'
                         }`}
-                        style={{ width: `${Math.min(100, t.progressPercent)}%` }}
+                        style={{ width: `${Math.max(0, Math.min(100, t.progressPercent))}%` }}
                       />
                     </div>
                   </div>
@@ -976,18 +986,54 @@ export default function AnalyticsPage() {
 
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-muted mb-1.5">
-                  Target Amount
+                  {newTargetType === 'portfolio_value'
+                    ? 'Target Amount ($)'
+                    : newTargetType === 'total_return'
+                    ? 'Target Return (%)'
+                    : 'Target Annual CAGR (%)'}
                 </label>
-                <input
-                  type="number"
-                  required
-                  min="0.01"
-                  step="any"
-                  value={newTargetValue}
-                  onChange={(e) => setNewTargetValue(e.target.value)}
-                  placeholder="e.g. 50000"
-                  className="w-full bg-surface-elevated border border-subtle rounded-lg px-3 py-2 text-xs text-main focus:outline-none focus:border-[#e0ff4f] font-mono"
-                />
+                <div className="relative">
+                  {newTargetType === 'portfolio_value' && (
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono text-muted select-none pointer-events-none">
+                      $
+                    </span>
+                  )}
+                  <input
+                    type="number"
+                    required
+                    min="0.01"
+                    step="any"
+                    value={newTargetValue}
+                    onChange={(e) => setNewTargetValue(e.target.value)}
+                    placeholder={
+                      newTargetType === 'portfolio_value'
+                        ? 'e.g. 50000'
+                        : newTargetType === 'total_return'
+                        ? 'e.g. 25.0'
+                        : 'e.g. 12.0'
+                    }
+                    className={`w-full bg-surface-elevated border border-subtle rounded-lg py-2 text-xs text-main focus:outline-none focus:border-[#e0ff4f] font-mono ${
+                      newTargetType === 'portfolio_value' ? 'pl-7 pr-3' : 'pl-3 pr-7'
+                    }`}
+                  />
+                  {newTargetType !== 'portfolio_value' && (
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-mono text-muted select-none pointer-events-none">
+                      %
+                    </span>
+                  )}
+                </div>
+                <p className="text-[10px] text-muted mt-1">
+                  {newTargetType === 'portfolio_value'
+                    ? 'Total portfolio market value in USD'
+                    : 'Enter whole percentage (e.g. 20 for 20%)'}
+                </p>
+                {newTargetType !== 'portfolio_value' &&
+                  Number(newTargetValue) > 0 &&
+                  Number(newTargetValue) < 1 && (
+                    <p className="text-[10px] text-amber-500 dark:text-amber-400 font-semibold mt-1">
+                      Tip: Enter {Number(newTargetValue) * 100} for {Number(newTargetValue) * 100}%, not {newTargetValue}.
+                    </p>
+                  )}
               </div>
             </div>
 
@@ -1059,31 +1105,69 @@ export default function AnalyticsPage() {
 
               <div>
                 <label className="block text-[10px] font-bold text-muted uppercase tracking-wider mb-1">
-                  Target Metric Type
+                  Target Metric
                 </label>
                 <select
                   value={editTargetType}
                   onChange={(e) => setEditTargetType(e.target.value as 'portfolio_value' | 'total_return' | 'annualized_return')}
-                  className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-3.5 py-2 text-xs text-main focus:outline-none cursor-pointer"
+                  className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-3.5 py-2 text-xs text-main focus:outline-none cursor-pointer font-semibold"
                 >
-                  <option value="portfolio_value">Total Portfolio Market Value ($)</option>
-                  <option value="total_return">Overall Portfolio Gain/Yield (%)</option>
-                  <option value="annualized_return">Annualized Compound Return (%)</option>
+                  <option value="portfolio_value">Portfolio Value ($)</option>
+                  <option value="total_return">Total Return (%)</option>
+                  <option value="annualized_return">Annual CAGR (%)</option>
                 </select>
               </div>
 
               <div>
                 <label className="block text-[10px] font-bold text-muted uppercase tracking-wider mb-1">
-                  Target Goal Value
+                  {editTargetType === 'portfolio_value'
+                    ? 'Target Amount ($)'
+                    : editTargetType === 'total_return'
+                    ? 'Target Return (%)'
+                    : 'Target Annual CAGR (%)'}
                 </label>
-                <input
-                  type="number"
-                  step="any"
-                  value={editTargetValue}
-                  onChange={(e) => setEditTargetValue(e.target.value)}
-                  required
-                  className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-3.5 py-2 text-xs text-main focus:outline-none font-mono"
-                />
+                <div className="relative">
+                  {editTargetType === 'portfolio_value' && (
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-mono text-muted select-none pointer-events-none">
+                      $
+                    </span>
+                  )}
+                  <input
+                    type="number"
+                    step="any"
+                    min="0.01"
+                    value={editTargetValue}
+                    onChange={(e) => setEditTargetValue(e.target.value)}
+                    required
+                    placeholder={
+                      editTargetType === 'portfolio_value'
+                        ? 'e.g. 50000'
+                        : editTargetType === 'total_return'
+                        ? 'e.g. 25.0'
+                        : 'e.g. 12.0'
+                    }
+                    className={`w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl py-2 text-xs text-main focus:outline-none font-mono ${
+                      editTargetType === 'portfolio_value' ? 'pl-7 pr-3.5' : 'pl-3.5 pr-7'
+                    }`}
+                  />
+                  {editTargetType !== 'portfolio_value' && (
+                    <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-mono text-muted select-none pointer-events-none">
+                      %
+                    </span>
+                  )}
+                </div>
+                <p className="text-[10px] text-muted mt-1">
+                  {editTargetType === 'portfolio_value'
+                    ? 'Total portfolio market value in USD'
+                    : 'Enter whole percentage (e.g. 20 for 20%)'}
+                </p>
+                {editTargetType !== 'portfolio_value' &&
+                  Number(editTargetValue) > 0 &&
+                  Number(editTargetValue) < 1 && (
+                    <p className="text-[10px] text-amber-500 dark:text-amber-400 font-semibold mt-1">
+                      Tip: Enter {Number(editTargetValue) * 100} for {Number(editTargetValue) * 100}%, not {editTargetValue}.
+                    </p>
+                  )}
               </div>
 
               <div>
