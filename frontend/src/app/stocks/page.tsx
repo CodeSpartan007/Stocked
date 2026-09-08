@@ -1,9 +1,23 @@
 'use client';
 
 import { API_BASE } from '../../lib/api';
+import { getCached, setCached, clearCache } from '../../lib/cache';
 
 import React, { useEffect, useState } from 'react';
 import { useCurrency } from '@/app/context/CurrencyContext';
+import {
+  X,
+  Search,
+  Check,
+  TrendingUp,
+  TrendingDown,
+  Building2,
+  RefreshCw,
+  AlertCircle,
+  ChevronDown,
+  Sparkles,
+  DollarSign,
+} from 'lucide-react';
 
 interface StockSummary {
   id: string;
@@ -94,6 +108,7 @@ export default function StocksCatalog() {
   const [formCurrency, setFormCurrency] = useState<'USD' | 'KES'>('USD');
   const [activeStockId, setActiveStockId] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<{ field: string; message: string }[]>([]);
+  const [submitting, setSubmitting] = useState(false);
 
   // Searchable Dropdown and Live Price States
   const [useCustomTicker, setUseCustomTicker] = useState(false);
@@ -150,6 +165,7 @@ export default function StocksCatalog() {
       const json = await response.json();
       if (json.success) {
         setStocks(json.data);
+        setCached('stocks_catalog', json.data);
       }
     } catch (err: unknown) {
       console.error(err);
@@ -160,9 +176,17 @@ export default function StocksCatalog() {
   };
 
   useEffect(() => {
+    // 1. Instant Cache Hydration: Render immediately if data is already in memory
+    const cached = getCached<StockSummary[]>('stocks_catalog');
+    if (cached) {
+      setStocks(cached);
+      setLoading(false);
+    }
+
     let ignore = false;
     async function loadInitialStocks() {
       try {
+        if (!cached) setLoading(true);
         const response = await fetch(`${API_BASE}/api/stocks`, {
           credentials: 'include'
         });
@@ -172,9 +196,10 @@ export default function StocksCatalog() {
         const json = await response.json();
         if (!ignore && json.success) {
           setStocks(json.data);
+          setCached('stocks_catalog', json.data);
         }
       } catch (err: unknown) {
-        if (!ignore) {
+        if (!ignore && !cached) {
           console.error(err);
           setError('Could not load catalog. Verify backend connectivity.');
         }
@@ -187,8 +212,19 @@ export default function StocksCatalog() {
 
     loadInitialStocks();
 
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setAddModalOpen(false);
+        setEditModalOpen(false);
+        setDeleteModalOpen(false);
+        setDropdownOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
     return () => {
       ignore = true;
+      window.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
 
@@ -230,6 +266,7 @@ export default function StocksCatalog() {
   const handleAddStock = async (e: React.FormEvent) => {
     e.preventDefault();
     setValidationErrors([]);
+    setSubmitting(true);
 
     try {
       const response = await fetch(`${API_BASE}/api/stocks`, {
@@ -247,6 +284,7 @@ export default function StocksCatalog() {
 
       const json = await response.json();
       if (response.ok && json.success) {
+        clearCache(); // Invalidate frontend memory cache so all views update
         setAddModalOpen(false);
         fetchStocks();
       } else {
@@ -259,6 +297,8 @@ export default function StocksCatalog() {
     } catch (err: unknown) {
       console.error(err);
       setError('Network communication failure while registering stock.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -283,6 +323,7 @@ export default function StocksCatalog() {
 
       const json = await response.json();
       if (response.ok && json.success) {
+        clearCache();
         setEditModalOpen(false);
         fetchStocks();
       } else {
@@ -310,6 +351,7 @@ export default function StocksCatalog() {
 
       const json = await response.json();
       if (response.ok && json.success) {
+        clearCache();
         setDeleteModalOpen(false);
         fetchStocks();
       } else {
@@ -578,294 +620,353 @@ export default function StocksCatalog() {
 
       {/* Add Stock Modal */}
       {addModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setAddModalOpen(false)} />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm transition-opacity" onClick={() => setAddModalOpen(false)} />
 
-          <div className="relative bg-surface border border-subtle rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-6">
-            <div>
-              <h3 className="text-xl font-bold text-main">Register Stock</h3>
-            </div>
-            {/* Segment Toggle */}
-            <div className="grid grid-cols-2 gap-2 bg-surface-elevated p-1 rounded-xl border border-subtle">
+          <div className="relative bg-surface border border-subtle rounded-3xl max-w-xl w-full shadow-2xl overflow-hidden flex flex-col my-auto max-h-[min(90vh,820px)] animate-fade-in z-10">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-5 border-b border-subtle bg-surface-elevated/40 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-2xl bg-[#e0ff4f]/20 border border-[#e0ff4f]/40 flex items-center justify-center text-[#00272b] dark:text-[#e0ff4f]">
+                  <TrendingUp className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-main">Register Stock</h3>
+                  <p className="text-xs text-muted">Add Nairobi (NSE) or Global equities to your tracker</p>
+                </div>
+              </div>
               <button
                 type="button"
-                onClick={() => {
-                  setUseCustomTicker(false);
-                  const firstStock = POPULAR_STOCKS[0];
-                  setFormName(firstStock.name);
-                  setFormSymbol(firstStock.symbol);
-                  setFormCategory(firstStock.category);
-                  setFormDescription(firstStock.description);
-                  setSearchTerm(`${firstStock.symbol} - ${firstStock.name}`);
-                  fetchLivePrice(firstStock.symbol);
-                }}
-                className={`py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                  !useCustomTicker
-                    ? 'bg-[#e0ff4f] text-[#00272b] shadow-sm font-black'
-                    : 'text-muted hover:text-main'
-                }`}
+                onClick={() => setAddModalOpen(false)}
+                className="p-2 rounded-xl text-muted hover:text-main hover:bg-surface-hover transition-colors cursor-pointer"
+                aria-label="Close modal"
               >
-                🔌 Predefined Asset
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setUseCustomTicker(true);
-                  setFormName('');
-                  setFormSymbol('');
-                  setFormCategory('Technology');
-                  setFormDescription('');
-                  setSearchTerm('');
-                  setLivePrice(null);
-                  setLivePriceError(null);
-                }}
-                className={`py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                  useCustomTicker
-                    ? 'bg-[#e0ff4f] text-[#00272b] shadow-sm font-black'
-                    : 'text-muted hover:text-main'
-                }`}
-              >
-                ✍️ Custom Ticker
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleAddStock} className="space-y-4">
-              {!useCustomTicker ? (
-                /* Predefined Asset Selection UI */
-                <div className="space-y-4">
-                  <div className="relative">
-                    <label className="block text-xs font-bold text-muted uppercase mb-2">Select Popular Stock</label>
+            <form onSubmit={handleAddStock} className="flex flex-col flex-1 min-h-0">
+              <div className="p-6 space-y-5 overflow-y-auto flex-1">
+                {/* Segment Toggle */}
+                <div className="grid grid-cols-2 gap-2 bg-surface-elevated p-1.5 rounded-2xl border border-subtle">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUseCustomTicker(false);
+                      const firstStock = POPULAR_STOCKS[0];
+                      setFormName(firstStock.name);
+                      setFormSymbol(firstStock.symbol);
+                      setFormCategory(firstStock.category);
+                      setFormDescription(firstStock.description);
+                      setFormCurrency(firstStock.currency);
+                      setSearchTerm(`${firstStock.symbol} - ${firstStock.name}`);
+                      fetchLivePrice(firstStock.symbol);
+                    }}
+                    className={`py-2.5 px-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                      !useCustomTicker
+                        ? 'bg-[#e0ff4f] text-[#00272b] shadow-sm font-black'
+                        : 'text-muted hover:text-main hover:bg-surface'
+                    }`}
+                  >
+                    <Building2 className="w-4 h-4" />
+                    <span>NSE & Popular Equities</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUseCustomTicker(true);
+                      setFormName('');
+                      setFormSymbol('');
+                      setFormCategory('Technology');
+                      setFormDescription('');
+                      setSearchTerm('');
+                      setLivePrice(null);
+                      setLivePriceError(null);
+                    }}
+                    className={`py-2.5 px-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                      useCustomTicker
+                        ? 'bg-[#e0ff4f] text-[#00272b] shadow-sm font-black'
+                        : 'text-muted hover:text-main hover:bg-surface'
+                    }`}
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    <span>Custom Ticker</span>
+                  </button>
+                </div>
+
+                {!useCustomTicker ? (
+                  /* Predefined Asset Selection UI */
+                  <div className="space-y-4">
                     <div className="relative">
-                      <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-muted">
-                        <svg className="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                        </svg>
-                      </span>
-                      <input
-                        type="text"
-                        placeholder="Search popular stocks (e.g. AAPL, TSLA)..."
-                        value={searchTerm}
-                        onFocus={() => setDropdownOpen(true)}
-                        onChange={(e) => {
-                          setSearchTerm(e.target.value);
-                          setDropdownOpen(true);
-                        }}
-                        className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl pl-11 pr-10 py-2.5 text-sm text-main placeholder-muted focus:outline-none transition-all"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setDropdownOpen(!dropdownOpen)}
-                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-muted hover:text-main cursor-pointer"
-                      >
-                        <svg className={`h-4.5 w-4.5 transform transition-transform duration-200 ${dropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </button>
-                    </div>
+                      <label className="block text-xs font-bold text-muted uppercase mb-2">Search Stock Catalog</label>
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-muted">
+                          <Search className="h-4 w-4" />
+                        </span>
+                        <input
+                          type="text"
+                          placeholder="Search popular or NSE stocks (e.g. SCOM, EQTY, AAPL)..."
+                          value={searchTerm}
+                          onFocus={() => setDropdownOpen(true)}
+                          onChange={(e) => {
+                            setSearchTerm(e.target.value);
+                            setDropdownOpen(true);
+                          }}
+                          className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl pl-10 pr-10 py-2.5 text-sm text-main placeholder-muted focus:outline-none transition-all font-medium"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setDropdownOpen(!dropdownOpen)}
+                          className="absolute inset-y-0 right-0 pr-3 flex items-center text-muted hover:text-main cursor-pointer"
+                        >
+                          <ChevronDown className={`h-4 w-4 transform transition-transform duration-200 ${dropdownOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                      </div>
 
-                    {/* Dropdown list */}
-                    {dropdownOpen && (
-                      <>
-                        <div className="fixed inset-0 z-10" onClick={() => setDropdownOpen(false)} />
-                        <div className="absolute left-0 right-0 mt-2 max-h-52 overflow-y-auto bg-surface border border-subtle rounded-xl shadow-2xl z-20 divide-y divide-subtle">
-                          {POPULAR_STOCKS.filter(stock => 
-                            stock.symbol.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                            stock.name.toLowerCase().includes(searchTerm.toLowerCase())
-                          ).length === 0 ? (
-                            <div className="p-3 text-xs text-muted text-center">
-                              No matching popular stocks. Try &quot;Custom Ticker&quot;!
-                            </div>
-                          ) : (
-                            POPULAR_STOCKS.filter(stock => 
+                      {/* Dropdown list */}
+                      {dropdownOpen && (
+                        <>
+                          <div className="fixed inset-0 z-20" onClick={() => setDropdownOpen(false)} />
+                          <div className="absolute left-0 right-0 mt-2 max-h-56 overflow-y-auto bg-surface border border-subtle rounded-2xl shadow-2xl z-30 divide-y divide-subtle">
+                            {POPULAR_STOCKS.filter(stock => 
                               stock.symbol.toLowerCase().includes(searchTerm.toLowerCase()) || 
                               stock.name.toLowerCase().includes(searchTerm.toLowerCase())
-                            ).map((stock) => (
-                              <div
-                                key={stock.symbol}
-                                onClick={() => {
-                                  setFormName(stock.name);
-                                  setFormSymbol(stock.symbol);
-                                  setFormCategory(stock.category);
-                                  setFormDescription(stock.description || '');
-                                  setFormCurrency(stock.currency);
-                                  setSearchTerm(`${stock.symbol} - ${stock.name}`);
-                                  setDropdownOpen(false);
-                                  fetchLivePrice(stock.symbol);
-                                }}
-                                className="p-3 text-left hover:bg-surface-hover cursor-pointer transition-colors flex items-center justify-between"
-                              >
-                                <div>
-                                  <span className="text-xs font-mono font-black text-main bg-surface-elevated border border-subtle px-2 py-0.5 rounded mr-2">
-                                    {stock.symbol}
-                                  </span>
-                                  <span className="text-xs font-bold text-main">{stock.name}</span>
-                                </div>
-                                <span className="text-[10px] text-muted font-semibold">{stock.category} ({stock.currency})</span>
+                            ).length === 0 ? (
+                              <div className="p-4 text-xs text-muted text-center">
+                                No matching popular stocks found. Try &quot;Custom Ticker&quot; to enter any equity code!
                               </div>
-                            ))
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </div>
-
-                  {/* Preselected stock dashboard */}
-                  {formSymbol && (
-                    <div className="space-y-3 bg-surface-elevated border border-subtle p-4 rounded-2xl relative overflow-hidden">
-                      <div>
-                        <span className="block text-[10px] font-bold text-muted uppercase tracking-wider">Stock Profile</span>
-                        <span className="block text-sm font-bold text-main mt-1">{formName} ({formSymbol})</span>
-                      </div>
-                      <div className="flex gap-4">
-                        <div>
-                          <span className="block text-[10px] font-bold text-muted uppercase tracking-wider">Sector</span>
-                          <span className="inline-flex px-2 py-0.5 text-[9px] font-bold bg-surface border border-subtle text-secondary rounded mt-1">{formCategory}</span>
-                        </div>
-                        <div>
-                          <span className="block text-[10px] font-bold text-muted uppercase tracking-wider">Currency</span>
-                          <span className="inline-flex px-2 py-0.5 text-[9px] font-bold bg-surface border border-subtle text-secondary rounded mt-1 font-mono">{formCurrency}</span>
-                        </div>
-                      </div>
-                      {formDescription && (
-                        <div>
-                          <span className="block text-[10px] font-bold text-muted uppercase tracking-wider">Profile Overview</span>
-                          <p className="text-xs text-muted mt-1 leading-relaxed">{formDescription}</p>
-                        </div>
+                            ) : (
+                              POPULAR_STOCKS.filter(stock => 
+                                stock.symbol.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                stock.name.toLowerCase().includes(searchTerm.toLowerCase())
+                              ).map((stock) => (
+                                <div
+                                  key={stock.symbol}
+                                  onClick={() => {
+                                    setFormName(stock.name);
+                                    setFormSymbol(stock.symbol);
+                                    setFormCategory(stock.category);
+                                    setFormDescription(stock.description || '');
+                                    setFormCurrency(stock.currency);
+                                    setSearchTerm(`${stock.symbol} - ${stock.name}`);
+                                    setDropdownOpen(false);
+                                    fetchLivePrice(stock.symbol);
+                                  }}
+                                  className="p-3 text-left hover:bg-surface-hover cursor-pointer transition-colors flex items-center justify-between gap-2"
+                                >
+                                  <div className="flex items-center gap-2.5 min-w-0">
+                                    <span className="text-xs font-mono font-black text-main bg-surface-elevated border border-subtle px-2 py-0.5 rounded shrink-0">
+                                      {stock.symbol}
+                                    </span>
+                                    <span className="text-xs font-bold text-main truncate">{stock.name}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                      stock.currency === 'KES'
+                                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                                        : 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20'
+                                    }`}>
+                                      {stock.currency === 'KES' ? 'NSE (KES)' : 'US (USD)'}
+                                    </span>
+                                    <span className="text-[10px] text-muted font-medium hidden sm:inline">{stock.category}</span>
+                                  </div>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </>
                       )}
                     </div>
-                  )}
-                </div>
-              ) : (
-                /* Custom Ticker Form Inputs */
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-bold text-muted uppercase mb-2">Stock Code (Ticker)</label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        required
-                        placeholder="e.g. AAPL"
-                        value={formSymbol}
-                        onChange={(e) => setFormSymbol(e.target.value.toUpperCase())}
-                        className="flex-1 bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-4 py-2.5 text-sm text-main placeholder-muted focus:outline-none transition-all uppercase font-mono font-bold"
-                      />
-                      <button
-                        type="button"
-                        disabled={!formSymbol || livePriceLoading}
-                        onClick={() => fetchLivePrice(formSymbol)}
-                        className="px-4 py-2 bg-[#e0ff4f]/20 hover:bg-[#e0ff4f]/30 border border-[#e0ff4f]/40 text-[#00272b] dark:text-[#e0ff4f] rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
-                      >
-                        Check Price
-                      </button>
-                    </div>
-                    {getFieldError('symbol') && (
-                      <p className="text-rose-500 text-xs mt-1.5 font-medium">{getFieldError('symbol')}</p>
+
+                    {/* Preselected stock preview card */}
+                    {formSymbol && (
+                      <div className="space-y-3 bg-surface-elevated border border-subtle p-4 rounded-2xl relative overflow-hidden">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <span className="block text-[10px] font-bold text-muted uppercase tracking-wider">Selected Counter</span>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="font-mono font-black text-base text-main bg-surface px-2.5 py-0.5 rounded-lg border border-subtle">
+                                {formSymbol}
+                              </span>
+                              <span className="text-sm font-bold text-main">{formName}</span>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <span className="inline-flex px-2 py-0.5 text-[10px] font-bold bg-surface border border-subtle text-secondary rounded-lg">
+                              {formCategory}
+                            </span>
+                            <span className="inline-flex px-2 py-0.5 text-[10px] font-bold bg-surface border border-subtle text-secondary rounded-lg font-mono">
+                              {formCurrency}
+                            </span>
+                          </div>
+                        </div>
+
+                        {formDescription && (
+                          <p className="text-xs text-muted leading-relaxed line-clamp-2">{formDescription}</p>
+                        )}
+                      </div>
                     )}
                   </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-muted uppercase mb-2">Stock Name</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Apple Inc."
-                      value={formName}
-                      onChange={(e) => setFormName(e.target.value)}
-                      className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-4 py-2.5 text-sm text-main placeholder-muted focus:outline-none transition-all"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-muted uppercase mb-2">Sector / Category</label>
-                    <select
-                      value={formCategory}
-                      onChange={(e) => setFormCategory(e.target.value)}
-                      className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-4 py-2.5 text-sm text-main focus:outline-none transition-all cursor-pointer"
-                    >
-                      {categoriesList.filter((cat) => cat !== 'All').map((cat) => (
-                        <option key={cat} value={cat}>
-                          {cat}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-muted uppercase mb-2">Trading Currency</label>
-                    <select
-                      value={formCurrency}
-                      onChange={(e) => setFormCurrency(e.target.value as 'USD' | 'KES')}
-                      className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-4 py-2.5 text-sm text-main focus:outline-none transition-all cursor-pointer font-semibold"
-                    >
-                      <option value="USD">USD ($) — US Dollars</option>
-                      <option value="KES">KES (KSh) — Kenyan Shilling</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-muted uppercase mb-2">Description (Optional)</label>
-                    <textarea
-                      placeholder="Details about company profile or metrics..."
-                      value={formDescription}
-                      onChange={(e) => setFormDescription(e.target.value)}
-                      rows={3}
-                      className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-4 py-2.5 text-sm text-main placeholder-muted focus:outline-none transition-all resize-none"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Live Price Fetching Status Card */}
-              {(livePriceLoading || livePrice || livePriceError) && (
-                <div className="p-4 rounded-2xl border border-subtle bg-surface-elevated backdrop-blur-md transition-all duration-300">
-                  {livePriceLoading && (
-                    <div className="flex items-center justify-center gap-2 py-2 text-xs font-semibold text-[#00272b] dark:text-[#e0ff4f] animate-pulse">
-                      <svg className="animate-spin h-4 w-4 text-[#00272b] dark:text-[#e0ff4f]" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth={4} />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                      </svg>
-                      Querying live pricing details...
-                    </div>
-                  )}
-                  {livePriceError && (
-                    <div className="text-xs text-rose-500 font-semibold py-1 leading-relaxed">
-                      ⚠️ {livePriceError}
-                    </div>
-                  )}
-                  {livePrice && (
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="text-[10px] font-bold text-muted uppercase block tracking-wider">Current Market Price</span>
-                        <span className="text-lg font-black text-main font-mono">
-                          {formatMoney(livePrice.price, livePrice.currency || formCurrency)}
-                        </span>
+                ) : (
+                  /* Custom Ticker Form Inputs */
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-muted uppercase mb-2">Stock Code (Ticker)</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          required
+                          placeholder="e.g. AAPL, SCOM, TSLA"
+                          value={formSymbol}
+                          onChange={(e) => setFormSymbol(e.target.value.toUpperCase())}
+                          className="flex-1 bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-4 py-2.5 text-sm text-main placeholder-muted focus:outline-none transition-all uppercase font-mono font-bold"
+                        />
+                        <button
+                          type="button"
+                          disabled={!formSymbol.trim() || livePriceLoading}
+                          onClick={() => fetchLivePrice(formSymbol)}
+                          className="px-4 py-2 bg-[#e0ff4f]/20 hover:bg-[#e0ff4f]/30 border border-[#e0ff4f]/40 text-[#00272b] dark:text-[#e0ff4f] rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 shrink-0"
+                        >
+                          {livePriceLoading ? (
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Search className="w-3.5 h-3.5" />
+                          )}
+                          Check Price
+                        </button>
                       </div>
-                      {livePrice.change !== undefined && livePrice.changePercent !== undefined && (
-                        <div className="text-right">
-                          <span className="text-[10px] font-bold text-muted uppercase block tracking-wider">Today&apos;s Shift</span>
-                          <span className={`text-xs font-black ${livePrice.change >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                            {livePrice.change >= 0 ? '▲' : '▼'} {formatMoney(Math.abs(livePrice.change), livePrice.currency || formCurrency)} ({livePrice.changePercent.toFixed(2)}%)
+                      {getFieldError('symbol') && (
+                        <p className="text-rose-500 text-xs mt-1.5 font-medium">{getFieldError('symbol')}</p>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-muted uppercase mb-2">Stock Name</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="e.g. Apple Inc."
+                          value={formName}
+                          onChange={(e) => setFormName(e.target.value)}
+                          className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-4 py-2.5 text-sm text-main placeholder-muted focus:outline-none transition-all font-medium"
+                        />
+                        {getFieldError('name') && (
+                          <p className="text-rose-500 text-xs mt-1.5 font-medium">{getFieldError('name')}</p>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-muted uppercase mb-2">Trading Currency</label>
+                        <select
+                          value={formCurrency}
+                          onChange={(e) => setFormCurrency(e.target.value as 'USD' | 'KES')}
+                          className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-4 py-2.5 text-sm text-main focus:outline-none transition-all cursor-pointer font-semibold"
+                        >
+                          <option value="USD">USD ($) — US Dollars</option>
+                          <option value="KES">KES (KSh) — Kenyan Shilling</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-muted uppercase mb-2">Sector / Category</label>
+                      <select
+                        value={formCategory}
+                        onChange={(e) => setFormCategory(e.target.value)}
+                        className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-4 py-2.5 text-sm text-main focus:outline-none transition-all cursor-pointer"
+                      >
+                        {categoriesList.filter((cat) => cat !== 'All').map((cat) => (
+                          <option key={cat} value={cat}>
+                            {cat}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-muted uppercase mb-2">Description (Optional)</label>
+                      <textarea
+                        placeholder="Company profile, business overview, or thesis..."
+                        value={formDescription}
+                        onChange={(e) => setFormDescription(e.target.value)}
+                        rows={2}
+                        className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-4 py-2.5 text-sm text-main placeholder-muted focus:outline-none transition-all resize-none"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Live Price Quote Preview Card */}
+                {(livePriceLoading || livePrice || livePriceError) && (
+                  <div className="p-4 rounded-2xl border border-subtle bg-surface-elevated transition-all">
+                    {livePriceLoading && (
+                      <div className="flex items-center justify-center gap-2 py-2 text-xs font-semibold text-[#00272b] dark:text-[#e0ff4f]">
+                        <RefreshCw className="w-4 h-4 animate-spin text-[#00272b] dark:text-[#e0ff4f]" />
+                        Fetching latest market price...
+                      </div>
+                    )}
+                    {livePriceError && !livePriceLoading && (
+                      <div className="flex items-center gap-2 text-xs text-rose-500 font-semibold py-1">
+                        <AlertCircle className="w-4 h-4 shrink-0" />
+                        <span>{livePriceError}</span>
+                      </div>
+                    )}
+                    {livePrice && !livePriceLoading && (
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-bold text-muted uppercase tracking-wider">Latest Market Quote</span>
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-surface border border-subtle text-muted">
+                              {livePrice.provider === 'nse' ? 'NSE Kenya Feed' : livePrice.provider}
+                            </span>
+                          </div>
+                          <span className="text-xl font-black text-main font-mono mt-0.5 block">
+                            {formatMoney(livePrice.price, livePrice.currency || formCurrency)}
                           </span>
                         </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
+                        {livePrice.change !== undefined && livePrice.changePercent !== undefined && (
+                          <div className="text-right">
+                            <span className="text-[10px] font-bold text-muted uppercase block tracking-wider">Day Change</span>
+                            <span className={`text-xs font-black inline-flex items-center gap-1 ${
+                              livePrice.change >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                            }`}>
+                              {livePrice.change >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
+                              {formatMoney(Math.abs(livePrice.change), livePrice.currency || formCurrency)} ({livePrice.changePercent.toFixed(2)}%)
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
 
-              <div className="flex justify-end space-x-3 pt-4 border-t border-subtle">
+              {/* Modal Sticky Footer */}
+              <div className="flex items-center justify-between px-6 py-4 border-t border-subtle bg-surface-elevated/40 shrink-0">
                 <button
                   type="button"
                   onClick={() => setAddModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-muted hover:text-main transition-all cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl text-xs font-semibold text-muted hover:text-main hover:bg-surface-hover transition-all cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl text-xs font-black text-[#00272b] bg-[#e0ff4f] hover:bg-[#d2f33b] transition-all cursor-pointer shadow-md"
+                  disabled={submitting || !formSymbol.trim()}
+                  className="px-6 py-2.5 rounded-xl text-xs font-black text-[#00272b] bg-[#e0ff4f] hover:bg-[#d2f33b] transition-all cursor-pointer shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
-                  Register Stock
+                  {submitting ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      Registering...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      Register Stock
+                    </>
+                  )}
                 </button>
               </div>
             </form>
@@ -875,91 +976,112 @@ export default function StocksCatalog() {
 
       {/* Edit Stock Modal */}
       {editModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setEditModalOpen(false)} />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm transition-opacity" onClick={() => setEditModalOpen(false)} />
 
-          <div className="relative bg-surface border border-subtle rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-6">
-            <div>
-              <h3 className="text-xl font-bold text-main">Edit Stock</h3>
-              <p className="text-xs text-muted mt-1">Modify stock profile details.</p>
+          <div className="relative bg-surface border border-subtle rounded-3xl max-w-lg w-full shadow-2xl overflow-hidden flex flex-col my-auto max-h-[min(90vh,720px)] animate-fade-in z-10">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-subtle bg-surface-elevated/40 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-2xl bg-[#e0ff4f]/20 border border-[#e0ff4f]/40 flex items-center justify-center text-[#00272b] dark:text-[#e0ff4f]">
+                  <Building2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-main">Edit Stock</h3>
+                  <p className="text-xs text-muted">Modify profile details for {formSymbol}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditModalOpen(false)}
+                className="p-2 rounded-xl text-muted hover:text-main hover:bg-surface-hover transition-colors cursor-pointer"
+                aria-label="Close modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
-            <form onSubmit={handleEditStock} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-muted uppercase mb-2">Stock Name</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Apple Inc."
-                  value={formName}
-                  onChange={(e) => setFormName(e.target.value)}
-                  className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-4 py-2.5 text-sm text-main placeholder-muted focus:outline-none transition-all"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-muted uppercase mb-2">Stock Code (Ticker)</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. AAPL"
-                  value={formSymbol}
-                  onChange={(e) => setFormSymbol(e.target.value.toUpperCase())}
-                  className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-4 py-2.5 text-sm text-main placeholder-muted focus:outline-none transition-all uppercase font-mono font-bold"
-                />
-                {getFieldError('symbol') && (
-                  <p className="text-rose-500 text-xs mt-1.5 font-medium">{getFieldError('symbol')}</p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-muted uppercase mb-2">Sector / Category</label>
-                <select
-                  value={formCategory}
-                  onChange={(e) => setFormCategory(e.target.value)}
-                  className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-4 py-2.5 text-sm text-main focus:outline-none transition-all cursor-pointer"
-                >
-                  {categoriesList.filter((cat) => cat !== 'All').map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-muted uppercase mb-2">Trading Currency</label>
-                <div className="w-full bg-surface-elevated/60 border border-subtle rounded-xl px-4 py-2.5 text-xs text-secondary font-mono font-bold">
-                  {formCurrency === 'KES' ? 'KES (KSh) — Kenyan Shilling' : 'USD ($) — US Dollars'}
+            <form onSubmit={handleEditStock} className="flex flex-col flex-1 min-h-0">
+              <div className="p-6 space-y-4 overflow-y-auto flex-1">
+                <div>
+                  <label className="block text-xs font-bold text-muted uppercase mb-2">Stock Name</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Apple Inc."
+                    value={formName}
+                    onChange={(e) => setFormName(e.target.value)}
+                    className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-4 py-2.5 text-sm text-main placeholder-muted focus:outline-none transition-all font-medium"
+                  />
+                  {getFieldError('name') && (
+                    <p className="text-rose-500 text-xs mt-1.5 font-medium">{getFieldError('name')}</p>
+                  )}
                 </div>
-                <p className="text-[10px] text-muted mt-1">
-                  Trading currency cannot be modified to preserve transaction and ledger integrity.
-                </p>
+
+                <div>
+                  <label className="block text-xs font-bold text-muted uppercase mb-2">Stock Code (Ticker)</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. AAPL"
+                    value={formSymbol}
+                    onChange={(e) => setFormSymbol(e.target.value.toUpperCase())}
+                    className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-4 py-2.5 text-sm text-main placeholder-muted focus:outline-none transition-all uppercase font-mono font-bold"
+                  />
+                  {getFieldError('symbol') && (
+                    <p className="text-rose-500 text-xs mt-1.5 font-medium">{getFieldError('symbol')}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-muted uppercase mb-2">Sector / Category</label>
+                  <select
+                    value={formCategory}
+                    onChange={(e) => setFormCategory(e.target.value)}
+                    className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-4 py-2.5 text-sm text-main focus:outline-none transition-all cursor-pointer"
+                  >
+                    {categoriesList.filter((cat) => cat !== 'All').map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-muted uppercase mb-2">Trading Currency</label>
+                  <div className="w-full bg-surface-elevated/60 border border-subtle rounded-xl px-4 py-2.5 text-xs text-secondary font-mono font-bold">
+                    {formCurrency === 'KES' ? 'KES (KSh) — Kenyan Shilling' : 'USD ($) — US Dollars'}
+                  </div>
+                  <p className="text-[10px] text-muted mt-1">
+                    Trading currency cannot be modified to preserve transaction and ledger integrity.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-muted uppercase mb-2">Description (Optional)</label>
+                  <textarea
+                    placeholder="Details about company profile or metrics..."
+                    value={formDescription}
+                    onChange={(e) => setFormDescription(e.target.value)}
+                    rows={3}
+                    className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-4 py-2.5 text-sm text-main placeholder-muted focus:outline-none transition-all resize-none"
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-muted uppercase mb-2">Description (Optional)</label>
-                <textarea
-                  placeholder="Details about company profile or metrics..."
-                  value={formDescription}
-                  onChange={(e) => setFormDescription(e.target.value)}
-                  rows={3}
-                  className="w-full bg-surface-elevated border border-subtle focus:border-[#e0ff4f] rounded-xl px-4 py-2.5 text-sm text-main placeholder-muted focus:outline-none transition-all resize-none"
-                />
-              </div>
-
-              <div className="flex justify-end space-x-3 pt-4 border-t border-subtle">
+              <div className="flex items-center justify-between px-6 py-4 border-t border-subtle bg-surface-elevated/40 shrink-0">
                 <button
                   type="button"
                   onClick={() => setEditModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-muted hover:text-main transition-all cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl text-xs font-semibold text-muted hover:text-main hover:bg-surface-hover transition-all cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl text-xs font-black text-[#00272b] bg-[#e0ff4f] hover:bg-[#d2f33b] transition-all cursor-pointer shadow-md"
+                  className="px-6 py-2.5 rounded-xl text-xs font-black text-[#00272b] bg-[#e0ff4f] hover:bg-[#d2f33b] transition-all cursor-pointer shadow-md flex items-center gap-2"
                 >
+                  <Check className="w-3.5 h-3.5" />
                   Save Changes
                 </button>
               </div>
@@ -970,21 +1092,19 @@ export default function StocksCatalog() {
 
       {/* Delete Stock Confirmation Modal */}
       {deleteModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setDeleteModalOpen(false)} />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm transition-opacity" onClick={() => setDeleteModalOpen(false)} />
 
-          <div className="relative bg-surface border border-subtle rounded-3xl p-6 sm:p-8 max-w-sm w-full shadow-2xl space-y-6">
-            <div className="h-12 w-12 rounded-xl bg-rose-500/15 flex items-center justify-center text-rose-500 mx-auto">
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
+          <div className="relative bg-surface border border-subtle rounded-3xl p-6 sm:p-8 max-w-sm w-full shadow-2xl space-y-6 my-auto z-10 animate-fade-in">
+            <div className="h-12 w-12 rounded-2xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-500 mx-auto">
+              <AlertCircle className="h-6 w-6" />
             </div>
 
             <div className="text-center space-y-2">
               <h3 className="text-lg font-bold text-main">Delete Stock?</h3>
               <p className="text-xs text-muted leading-relaxed">
                 Are you sure you want to delete <span className="font-bold text-main">{formName} ({formSymbol})</span>?
-                This will also delete all price records linked to it.
+                This will also delete all historical price logs associated with this counter.
               </p>
             </div>
 
@@ -992,13 +1112,13 @@ export default function StocksCatalog() {
               <button
                 type="button"
                 onClick={() => setDeleteModalOpen(false)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-muted hover:text-main transition-all cursor-pointer"
+                className="px-4 py-2.5 rounded-xl text-xs font-semibold text-muted hover:text-main hover:bg-surface-hover transition-all cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 onClick={handleDeleteStock}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 transition-all cursor-pointer shadow-md"
+                className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 transition-all cursor-pointer shadow-md"
               >
                 Delete Stock
               </button>

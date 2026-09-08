@@ -1,6 +1,7 @@
 'use client';
 
 import { API_BASE } from '../lib/api';
+import { getCached, setCached } from '../lib/cache';
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -81,6 +82,14 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  interface DashboardCache {
+    stocks: StockSummary[];
+    portfolio: PortfolioSummary | null;
+    recentTx: RecentTransaction[];
+    topPerformers: BenchmarkItem[];
+    tickerItems: LiveTickerItem[];
+  }
+
   const fetchTickerPrices = async () => {
     try {
       const res = await fetch(`${API_BASE}/api/stocks/live-prices`, {
@@ -90,6 +99,10 @@ export default function Dashboard() {
         const json = await res.json();
         if (json.success) {
           setTickerItems(json.data);
+          const currentCache = getCached<DashboardCache>('dashboard_data');
+          if (currentCache) {
+            setCached('dashboard_data', { ...currentCache, tickerItems: json.data });
+          }
         }
       }
     } catch (err) {
@@ -98,9 +111,22 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    async function fetchDashboardData() {
+    // 1. Instant Cache Hydration: If data was viewed recently, load immediately without blocking spinner
+    const cached = getCached<DashboardCache>('dashboard_data');
+    if (cached) {
+      setStocks(cached.stocks);
+      setPortfolio(cached.portfolio);
+      setRecentTx(cached.recentTx);
+      setTopPerformers(cached.topPerformers);
+      setTickerItems(cached.tickerItems);
+      setLoading(false);
+    }
+
+    async function fetchDashboardData(isBackgroundRevalidate = false) {
       try {
-        setLoading(true);
+        if (!isBackgroundRevalidate) {
+          setLoading(true);
+        }
 
         const [stocksRes, portfolioRes, txRes, tickerRes] = await Promise.all([
           fetch(`${API_BASE}/api/stocks`, { credentials: 'include' }),
@@ -117,20 +143,26 @@ export default function Dashboard() {
         const portfolioJson = await portfolioRes.json();
         const txJson = await txRes.json();
 
+        let latestTickers: LiveTickerItem[] = [];
         if (tickerRes.ok) {
           const tickerJson = await tickerRes.json();
           if (tickerJson.success) {
-            setTickerItems(tickerJson.data);
+            latestTickers = tickerJson.data;
+            setTickerItems(latestTickers);
           }
         }
 
         if (stocksJson.success && portfolioJson.success && txJson.success) {
-          setStocks(stocksJson.data);
-          setPortfolio(portfolioJson.data);
-
+          const loadedStocks = stocksJson.data;
+          const loadedPortfolio = portfolioJson.data;
           const history = txJson.data as RecentTransaction[];
-          setRecentTx(history.slice(0, 5));
+          const loadedRecentTx = history.slice(0, 5);
 
+          setStocks(loadedStocks);
+          setPortfolio(loadedPortfolio);
+          setRecentTx(loadedRecentTx);
+
+          let loadedPerformers: BenchmarkItem[] = [];
           try {
             const today = new Date();
             const year = today.getFullYear();
@@ -145,27 +177,41 @@ export default function Dashboard() {
             if (benchRes.ok) {
               const benchJson = await benchRes.json();
               if (benchJson.success && benchJson.data) {
-                setTopPerformers(benchJson.data);
+                loadedPerformers = benchJson.data;
+                setTopPerformers(loadedPerformers);
               }
             }
           } catch (benchErr) {
             console.error('Could not fetch top performers:', benchErr);
           }
+
+          // Persist snapshot in client-side memory cache for instant navigation
+          setCached<DashboardCache>('dashboard_data', {
+            stocks: loadedStocks,
+            portfolio: loadedPortfolio,
+            recentTx: loadedRecentTx,
+            topPerformers: loadedPerformers,
+            tickerItems: latestTickers,
+          });
         } else {
           throw new Error('Backend responded with unhandled status code.');
         }
       } catch (err: unknown) {
-        if (err instanceof Error) {
-          setError(err.message);
-        } else {
-          setError('Failed to fetch dashboard metrics.');
+        if (!cached) {
+          if (err instanceof Error) {
+            setError(err.message);
+          } else {
+            setError('Failed to fetch dashboard metrics.');
+          }
         }
       } finally {
         setLoading(false);
       }
     }
 
-    fetchDashboardData();
+    // Run fetch (silent revalidation if cache is already displayed)
+    fetchDashboardData(Boolean(cached));
+
     const tickerInterval = setInterval(fetchTickerPrices, 30000);
     return () => clearInterval(tickerInterval);
   }, []);

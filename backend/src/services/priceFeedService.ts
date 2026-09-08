@@ -4,6 +4,7 @@ import {
   isNseSymbol,
   fetchNseStockQuote,
   fetchNseStockHistory,
+  fetchAllNseStocks,
 } from './nseScraperService';
 
 // Multi-user scheduler maps
@@ -835,32 +836,35 @@ export async function getLivePriceForStock(
       // Recalculate stock price history to correct day-over-day price change columns
       await recalculateStockPriceHistory(stock.id, userId);
 
-      // If NSE stock and few history records exist, opportunistically backfill history
+      // If NSE stock and few history records exist, opportunistically backfill history in background
       if (activeProvider === 'nse') {
-        const historyCount = await DailyPrice.count({ where: { stockId: stock.id, userId } });
-        if (historyCount <= 1) {
-          try {
-            const hist = await fetchNseStockHistory(stock.symbol);
-            for (const h of hist) {
-              await DailyPrice.findOrCreate({
-                where: { userId, stockId: stock.id, date: h.date },
-                defaults: {
-                  userId,
-                  stockId: stock.id,
-                  date: h.date,
-                  price: h.close,
-                  volume: h.volume,
-                  source: 'api',
-                  change: h.change,
-                  changePercent: h.changePercent,
-                },
-              });
+        DailyPrice.count({ where: { stockId: stock.id, userId } }).then(async (historyCount) => {
+          if (historyCount <= 1) {
+            try {
+              const hist = await fetchNseStockHistory(stock.symbol);
+              for (const h of hist) {
+                await DailyPrice.findOrCreate({
+                  where: { userId, stockId: stock.id, date: h.date },
+                  defaults: {
+                    userId,
+                    stockId: stock.id,
+                    date: h.date,
+                    price: h.close,
+                    volume: h.volume,
+                    source: 'api',
+                    change: h.change,
+                    changePercent: h.changePercent,
+                  },
+                });
+              }
+              await recalculateStockPriceHistory(stock.id, userId);
+            } catch (histErr: any) {
+              console.warn(`[PriceFeedService] Could not backfill history for ${stock.symbol}:`, histErr?.message);
             }
-            await recalculateStockPriceHistory(stock.id, userId);
-          } catch (histErr: any) {
-            console.warn(`[PriceFeedService] Could not backfill history for ${stock.symbol}:`, histErr?.message);
           }
-        }
+        }).catch((err) => {
+          console.warn(`[PriceFeedService] History count check failed for ${stock.symbol}:`, err?.message);
+        });
       }
     } catch (dbError: any) {
       console.error(`[PriceFeedService] Failed to cache live price for ${stock.symbol} to database:`, dbError);
@@ -1065,6 +1069,16 @@ async function syncUserPrices(userId: string) {
     if (stocks.length === 0) {
       console.log(`[PriceSyncPoller] No stocks registered for user ${userId}. skipping sync cycle.`);
       return;
+    }
+
+    // Pre-warm NSE bulk snapshot once if any stocks are from Nairobi Securities Exchange
+    const hasNseStocks = stocks.some((s) => isNseSymbol(s.symbol));
+    if (hasNseStocks) {
+      try {
+        await fetchAllNseStocks(false);
+      } catch (nseErr: any) {
+        console.warn(`[PriceSyncPoller] Pre-warming NSE stock cache had issue:`, nseErr?.message);
+      }
     }
 
     for (const stock of stocks) {
