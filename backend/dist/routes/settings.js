@@ -278,9 +278,17 @@ router.post('/test-connection', auth_1.requireAuth, rateLimiter_1.apiTestRateLim
         const { provider, apiKey } = req.body;
         if (provider === 'nse') {
             const stockMap = await (0, nseScraperService_1.fetchAllNseStocks)(true);
+            const source = (0, nseScraperService_1.getLastNseFetchSource)();
+            const message = source === 'catalog baseline'
+                ? `Using verified offline catalog baseline for Nairobi Securities Exchange (${stockMap.size} counters).`
+                : `Connected to live Nairobi Securities Exchange feed (source: ${source}, ${stockMap.size} counters).`;
             return res.status(200).json({
                 success: true,
-                message: `Successfully connected to Nairobi Securities Exchange live feed. ${stockMap.size} active counters discovered.`,
+                message,
+                metadata: {
+                    source,
+                    counters: stockMap.size,
+                },
             });
         }
         let keyToTest = apiKey;

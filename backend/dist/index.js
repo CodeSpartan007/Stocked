@@ -5,6 +5,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.app = void 0;
 exports.startServer = startServer;
+const dns_1 = __importDefault(require("dns"));
+if (dns_1.default.setDefaultResultOrder) {
+    dns_1.default.setDefaultResultOrder('ipv4first');
+}
 require("dotenv/config");
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));

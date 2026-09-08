@@ -12,7 +12,7 @@ import {
   clearCooldown,
   isRateLimitError,
 } from '../services/priceFeedService';
-import { fetchAllNseStocks } from '../services/nseScraperService';
+import { fetchAllNseStocks, getLastNseFetchSource } from '../services/nseScraperService';
 import { getUsdToKesRate, refreshLiveExchangeRate } from '../services/currencyService';
 import { recalculateAllUserSales } from './transactions';
 import { handleTickerPriceQuery } from './stocks';
@@ -345,9 +345,19 @@ router.post(
 
       if (provider === 'nse') {
         const stockMap = await fetchAllNseStocks(true);
+        const source = getLastNseFetchSource();
+        const message =
+          source === 'catalog baseline'
+            ? `Using verified offline catalog baseline for Nairobi Securities Exchange (${stockMap.size} counters).`
+            : `Connected to live Nairobi Securities Exchange feed (source: ${source}, ${stockMap.size} counters).`;
+
         return res.status(200).json({
           success: true,
-          message: `Successfully connected to Nairobi Securities Exchange live feed. ${stockMap.size} active counters discovered.`,
+          message,
+          metadata: {
+            source,
+            counters: stockMap.size,
+          },
         });
       }
 

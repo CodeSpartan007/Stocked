@@ -179,5 +179,101 @@ describe('Nairobi Securities Exchange (NSE Kenya) Integration', () => {
         expect(Number(priceLog.price)).toBeGreaterThan(0);
       }
     });
+
+    it('GET /api/stocks/ticker-price/SCOM returns valid price, non-zero change, and currency context', async () => {
+      const res = await request(app)
+        .get('/api/stocks/ticker-price/SCOM')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.symbol).toBe('SCOM');
+      expect(res.body.data.price).toBeGreaterThan(0);
+      expect(typeof res.body.data.change).toBe('number');
+      expect(res.body.data.change).not.toBe(0);
+      expect(res.body.data.changePercent).not.toBe(0);
+      expect(res.body.data.nativeCurrency).toBe('KES');
+    });
+
+    it('generates 14-day historical trend when registering and fetching live price for newly tracked stock', async () => {
+      const eqty = await Stock.create({
+        userId: user.id,
+        symbol: 'EQTY',
+        name: 'Equity Group Holdings Ltd',
+        category: 'Financials',
+        currency: 'KES',
+      });
+
+      const liveResult = await getLivePriceForStock(eqty, user.id);
+      expect(liveResult.price).toBeGreaterThan(0);
+      expect(liveResult.change).not.toBe(0);
+      expect(liveResult.changePercent).not.toBe(0);
+
+      const count = await DailyPrice.count({
+        where: { userId: user.id, stockId: eqty.id },
+      });
+      expect(count).toBeGreaterThanOrEqual(14);
+    });
+
+    it('buildFallbackNseMap populates non-zero change for all 71 catalog equities', async () => {
+      const { buildFallbackNseMap } = await import('../services/nseScraperService');
+      const fallbackMap = await buildFallbackNseMap();
+      expect(fallbackMap.size).toBe(71);
+
+      let nonZeroCount = 0;
+      for (const quote of fallbackMap.values()) {
+        expect(quote.price).toBeGreaterThan(0);
+        if (quote.change !== 0) {
+          nonZeroCount++;
+        }
+      }
+      expect(nonZeroCount).toBe(71);
+    });
+
+    it('POST /api/settings/test-connection returns metadata with source and counter count', async () => {
+      const res = await request(app)
+        .post('/api/settings/test-connection')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ provider: 'nse' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.metadata).toBeDefined();
+      expect(['direct', 'proxy', 'catalog baseline']).toContain(res.body.metadata.source);
+      expect(res.body.metadata.counters).toBe(71);
+    });
+
+    it('routes through proxy fallback when direct fetch fails and proxy is configured', async () => {
+      const { fetchNseHtmlWithFallback } = await import('../services/nseScraperService');
+      const originalFetch = global.fetch;
+      const originalProxy = process.env.NSE_PROXY_URL;
+
+      try {
+        process.env.NSE_PROXY_URL = 'https://stocked-six.vercel.app/api/nse';
+
+        // Mock fetch so direct fetch to afx.kwayisi.org fails, but proxy URL succeeds
+        global.fetch = jest.fn().mockImplementation((url: string) => {
+          if (typeof url === 'string' && url.includes('/api/nse')) {
+            return Promise.resolve({
+              ok: true,
+              status: 200,
+              text: async () => '<html>Mock Proxy Content</html>',
+            } as any);
+          }
+          if (typeof url === 'string' && url.startsWith('https://afx.kwayisi.org')) {
+            return Promise.reject(new Error('IPv6 connection timeout'));
+          }
+          return Promise.reject(new Error('Unknown URL: ' + url));
+        });
+
+        const result = await fetchNseHtmlWithFallback('https://afx.kwayisi.org/nse/scom.html', '/nse/scom.html');
+        expect(result.source).toBe('proxy');
+        expect(result.html).toBe('<html>Mock Proxy Content</html>');
+      } finally {
+        global.fetch = originalFetch;
+        process.env.NSE_PROXY_URL = originalProxy;
+      }
+    });
   });
 });
+

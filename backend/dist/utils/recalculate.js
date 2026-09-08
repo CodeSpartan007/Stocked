@@ -18,8 +18,15 @@ async function recalculateStockPriceHistory(stockId, userId) {
         const current = prices[i];
         const pCurrent = Number(current.price);
         if (i === 0) {
-            current.change = 0.00;
-            current.changePercent = 0.00;
+            if (prices.length === 1 && (Number(current.change) !== 0 || Number(current.changePercent) !== 0)) {
+                // Retain pre-calculated day-over-day change from live feed quote
+                current.change = Number(Number(current.change).toFixed(2));
+                current.changePercent = Number(Number(current.changePercent).toFixed(2));
+            }
+            else {
+                current.change = 0.00;
+                current.changePercent = 0.00;
+            }
         }
         else {
             const prevPrice = Number(prices[i - 1].price);
