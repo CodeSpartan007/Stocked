@@ -45,17 +45,27 @@ async function handleTickerPriceQuery(symbol, userId, res) {
     const existingStock = await models_1.Stock.findOne({
         where: { userId, symbol: upperSymbol },
     });
-    const nativeCurrency = existingStock?.currency || ((0, nseScraperService_1.isNseSymbol)(upperSymbol) ? 'KES' : 'USD');
+    let nativeCurrency;
+    if ((0, nseScraperService_1.isNseSymbol)(upperSymbol)) {
+        nativeCurrency = upperSymbol === 'TRFC' ? 'USD' : 'KES';
+    }
+    else {
+        nativeCurrency = existingStock?.currency || 'USD';
+    }
     try {
         const result = await (0, priceFeedService_1.fetchWithFailover)(upperSymbol, userId);
         const convertedPrice = (0, currencyService_1.convertPrice)(result.tickerData.price, nativeCurrency, baseCurrency, exchangeRate);
         const convertedChange = (0, currencyService_1.convertPrice)(result.tickerData.change, nativeCurrency, baseCurrency, exchangeRate);
+        let convertedChangeNum = Number(convertedChange.toFixed(2));
+        if (convertedChangeNum === 0 && convertedChange !== 0) {
+            convertedChangeNum = Number(convertedChange.toFixed(4));
+        }
         return res.status(200).json({
             success: true,
             data: {
                 symbol: upperSymbol,
                 price: Number(convertedPrice.toFixed(2)),
-                change: Number(convertedChange.toFixed(2)),
+                change: convertedChangeNum,
                 changePercent: result.tickerData.changePercent,
                 volume: result.tickerData.volume,
                 provider: result.provider,
@@ -77,15 +87,21 @@ async function handleTickerPriceQuery(symbol, userId, res) {
         if (stock) {
             const cached = await (0, priceFeedService_1.getLocalCachedPriceForStock)(stock, userId);
             if (cached && cached.price > 0) {
-                const stockCurrency = stock.currency || nativeCurrency;
+                const stockCurrency = (0, nseScraperService_1.isNseSymbol)(stock.symbol) && stock.symbol.toUpperCase() !== 'TRFC'
+                    ? 'KES'
+                    : (stock.currency || nativeCurrency);
                 const convertedPrice = (0, currencyService_1.convertPrice)(cached.price, stockCurrency, baseCurrency, exchangeRate);
                 const convertedChange = (0, currencyService_1.convertPrice)(cached.change, stockCurrency, baseCurrency, exchangeRate);
+                let convertedChangeNum = Number(convertedChange.toFixed(2));
+                if (convertedChangeNum === 0 && convertedChange !== 0) {
+                    convertedChangeNum = Number(convertedChange.toFixed(4));
+                }
                 return res.status(200).json({
                     success: true,
                     data: {
                         symbol: upperSymbol,
                         price: Number(convertedPrice.toFixed(2)),
-                        change: Number(convertedChange.toFixed(2)),
+                        change: convertedChangeNum,
                         changePercent: cached.changePercent,
                         volume: 0,
                         provider: 'manual fallback',
@@ -124,7 +140,9 @@ router.get('/live-prices', auth_1.requireAuth, async (req, res) => {
         // Resolve current cached prices in parallel from local DB logs
         const livePrices = await Promise.all(stocks.map(async (stock) => {
             const cached = await (0, priceFeedService_1.getLocalCachedPriceForStock)(stock, userId);
-            const stockCurrency = stock.currency || 'USD';
+            const stockCurrency = (0, nseScraperService_1.isNseSymbol)(stock.symbol) && stock.symbol.toUpperCase() !== 'TRFC'
+                ? 'KES'
+                : (stock.currency || 'USD');
             const convertedPrice = (0, currencyService_1.convertPrice)(cached.price, stockCurrency, baseCurrency, exchangeRate);
             const convertedChange = (0, currencyService_1.convertPrice)(cached.change, stockCurrency, baseCurrency, exchangeRate);
             return {
@@ -242,19 +260,25 @@ router.get('/', auth_1.requireAuth, async (req, res) => {
                 nativePriceChange = nativeLatestPrice - firstPrice;
                 priceChangePercent = firstPrice !== 0 ? (nativePriceChange / firstPrice) * 100 : 0;
             }
-            const stockCurrency = stock.currency || 'USD';
+            const stockCurrency = (0, nseScraperService_1.isNseSymbol)(stock.symbol) && stock.symbol.toUpperCase() !== 'TRFC'
+                ? 'KES'
+                : (stock.currency || 'USD');
             const latestPrice = (0, currencyService_1.convertPrice)(nativeLatestPrice, stockCurrency, baseCurrency, exchangeRate);
             const averagePrice = (0, currencyService_1.convertPrice)(nativeAveragePrice, stockCurrency, baseCurrency, exchangeRate);
             const highestPrice = (0, currencyService_1.convertPrice)(nativeHighestPrice, stockCurrency, baseCurrency, exchangeRate);
             const lowestPrice = (0, currencyService_1.convertPrice)(nativeLowestPrice, stockCurrency, baseCurrency, exchangeRate);
             const priceChange = (0, currencyService_1.convertPrice)(nativePriceChange, stockCurrency, baseCurrency, exchangeRate);
+            let priceChangeNum = Number(priceChange.toFixed(2));
+            if (priceChangeNum === 0 && priceChange !== 0) {
+                priceChangeNum = Number(priceChange.toFixed(4));
+            }
             return {
                 id: stock.id,
                 name: stock.name,
                 symbol: stock.symbol,
                 description: stock.description,
                 category: stock.category,
-                currency: stock.currency,
+                currency: stockCurrency,
                 createdAt: stock.createdAt,
                 updatedAt: stock.updatedAt,
                 summary: {
@@ -268,7 +292,7 @@ router.get('/', auth_1.requireAuth, async (req, res) => {
                     nativeHighestPrice: Number(nativeHighestPrice.toFixed(2)),
                     lowestPrice: Number(lowestPrice.toFixed(2)),
                     nativeLowestPrice: Number(nativeLowestPrice.toFixed(2)),
-                    priceChange: Number(priceChange.toFixed(2)),
+                    priceChange: priceChangeNum,
                     nativePriceChange: Number(nativePriceChange.toFixed(2)),
                     priceChangePercent: Number(priceChangePercent.toFixed(2)),
                     currency: baseCurrency,
@@ -330,7 +354,14 @@ router.post('/', auth_1.requireAuth, [
                 ],
             });
         }
-        const stockCurrency = currency || ((0, nseScraperService_1.isNseSymbol)(symbol) ? 'KES' : 'USD');
+        let stockCurrency;
+        if ((0, nseScraperService_1.isNseSymbol)(symbol)) {
+            // TRFC is USD-denominated green REIT on the NSE; all other 70 NSE equities are strictly KES
+            stockCurrency = symbol.toUpperCase() === 'TRFC' ? 'USD' : 'KES';
+        }
+        else {
+            stockCurrency = currency || 'USD';
+        }
         const newStock = await models_1.Stock.create({
             userId,
             name,
@@ -426,7 +457,10 @@ router.put('/:id', auth_1.requireAuth, [
             const purchasesCount = await models_1.Purchase.count({ where: { stockId: id, userId } });
             const salesCount = await models_1.Sales.count({ where: { stockId: id, userId } });
             const pricesCount = await models_1.DailyPrice.count({ where: { stockId: id, userId } });
-            if (purchasesCount > 0 || salesCount > 0 || pricesCount > 0) {
+            // Allow correcting currency if it is an NSE stock that was erroneously marked as USD,
+            // since the recorded DailyPrice values from the NSE feed were already natively in KES!
+            const isNseCorrection = (0, nseScraperService_1.isNseSymbol)(stock.symbol) && stock.currency === 'USD' && currency === 'KES';
+            if (!isNseCorrection && (purchasesCount > 0 || salesCount > 0 || pricesCount > 0)) {
                 return res.status(400).json({
                     success: false,
                     message: 'Cannot change stock currency because transactions or daily price records already exist for this counter.',
@@ -445,6 +479,9 @@ router.put('/:id', auth_1.requireAuth, [
         stock.symbol = symbol;
         stock.description = description || null;
         stock.category = category || 'Other';
+        if ((0, nseScraperService_1.isNseSymbol)(symbol) && symbol.toUpperCase() !== 'TRFC' && stock.currency !== 'KES') {
+            stock.currency = 'KES';
+        }
         await stock.save();
         return res.status(200).json({
             success: true,

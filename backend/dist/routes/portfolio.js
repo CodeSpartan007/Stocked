@@ -5,6 +5,7 @@ const models_1 = require("../models");
 const auth_1 = require("../middleware/auth");
 const transactions_1 = require("./transactions");
 const currencyService_1 = require("../services/currencyService");
+const nseScraperService_1 = require("../services/nseScraperService");
 const router = (0, express_1.Router)();
 // GET /api/portfolio/summary -> Aggregate portfolio KPIs [FR5]
 router.get('/summary', auth_1.requireAuth, async (req, res) => {
@@ -22,10 +23,12 @@ router.get('/summary', auth_1.requireAuth, async (req, res) => {
         // 2. Multi-Currency Realized P&L: Fetch all user sales joined with Stock, convert by stock currency
         const userSales = await models_1.Sales.findAll({
             where: { userId },
-            include: [{ model: models_1.Stock, as: 'Stock', attributes: ['currency'] }],
+            include: [{ model: models_1.Stock, as: 'Stock', attributes: ['symbol', 'currency'] }],
         });
         totalRealizedPL = userSales.reduce((sum, s) => {
-            const stockCurrency = s.Stock?.currency || 'USD';
+            const stockCurrency = s.Stock && (0, nseScraperService_1.isNseSymbol)(s.Stock.symbol) && s.Stock.symbol.toUpperCase() !== 'TRFC'
+                ? 'KES'
+                : (s.Stock?.currency || 'USD');
             return sum + (0, currencyService_1.convertPrice)(Number(s.profitLoss), stockCurrency, baseCurrency, exchangeRate);
         }, 0);
         // 3. Process remaining assets concurrently
@@ -47,7 +50,9 @@ router.get('/summary', auth_1.requireAuth, async (req, res) => {
             if (!item)
                 continue;
             const { stock, holdings, latestPriceRecord } = item;
-            const stockCurrency = stock.currency || 'USD';
+            const stockCurrency = (0, nseScraperService_1.isNseSymbol)(stock.symbol) && stock.symbol.toUpperCase() !== 'TRFC'
+                ? 'KES'
+                : (stock.currency || 'USD');
             // Native prices
             const nativeCurrentPrice = latestPriceRecord
                 ? Number(latestPriceRecord.price)

@@ -38,6 +38,7 @@ interface StockSummary {
     lowestPrice: number;
     nativeLowestPrice?: number;
     priceChange: number;
+    nativePriceChange?: number;
     priceChangePercent: number;
     source?: 'live' | 'cache' | 'manual fallback';
     lastUpdated?: string | null;
@@ -46,22 +47,96 @@ interface StockSummary {
 
 const POPULAR_STOCKS: { symbol: string; name: string; category: string; description: string; currency: 'USD' | 'KES' }[] = [
   // Nairobi Securities Exchange (Kenya)
-  { symbol: 'SCOM', name: 'Safaricom Plc', category: 'Technology', currency: 'KES', description: 'Leading telecommunications, mobile money (M-Pesa), and data services provider in Kenya.' },
-  { symbol: 'EQTY', name: 'Equity Group Holdings Ltd', category: 'Financials', currency: 'KES', description: 'Leading financial services and banking conglomerate operating in East and Central Africa.' },
-  { symbol: 'KCB', name: 'KCB Group Plc', category: 'Financials', currency: 'KES', description: 'One of the oldest and largest commercial banking groups in East Africa.' },
-  { symbol: 'EABL', name: 'East African Breweries Ltd', category: 'Consumer Goods', currency: 'KES', description: 'Leading alcoholic beverage producer, brewery, and spirits distributor in East Africa.' },
-  { symbol: 'COOP', name: 'Co-operative Bank of Kenya', category: 'Financials', currency: 'KES', description: 'Major commercial bank providing services to retail and cooperative societies.' },
-  { symbol: 'BAT', name: 'British American Tobacco Kenya', category: 'Consumer Goods', currency: 'KES', description: 'Cigarette, tobacco, and nicotine product manufacturing and distribution.' },
-  { symbol: 'ABSA', name: 'Absa Bank Kenya Plc', category: 'Financials', currency: 'KES', description: 'Full-service commercial bank operating across corporate and retail banking.' },
-  { symbol: 'SCBK', name: 'Standard Chartered Bank Kenya', category: 'Financials', currency: 'KES', description: 'Tier-1 international commercial bank operating in Kenya.' },
+  // Telecommunication & Technology
+  { symbol: 'SCOM', name: 'Safaricom Plc', category: 'Technology', currency: 'KES', description: 'Leading telecommunications, mobile payments (M-Pesa), and data service provider in East Africa.' },
+
+  // Banking & Financial Services
+  { symbol: 'ABSA', name: 'Absa Bank Kenya Plc', category: 'Financials', currency: 'KES', description: 'Commercial banking and financial services group.' },
+  { symbol: 'BKG', name: 'BK Group Plc', category: 'Financials', currency: 'KES', description: 'Banking and financial services conglomerate headquartered in Rwanda.' },
+  { symbol: 'COOP', name: 'Co-operative Bank of Kenya', category: 'Financials', currency: 'KES', description: 'Major retail and corporate bank providing banking to cooperatives and businesses.' },
+  { symbol: 'DTK', name: 'Diamond Trust Bank Kenya Ltd', category: 'Financials', currency: 'KES', description: 'Leading commercial banking group operating across East Africa.' },
+  { symbol: 'EQTY', name: 'Equity Group Holdings Ltd', category: 'Financials', currency: 'KES', description: 'One of the largest financial services conglomerates in Central and East Africa.' },
+  { symbol: 'FMLY', name: 'Family Bank Ltd', category: 'Financials', currency: 'KES', description: 'Commercial bank offering retail, SME, and corporate banking.' },
+  { symbol: 'HFCB', name: 'HF Group Plc', category: 'Financials', currency: 'KES', description: 'Mortgage finance, banking, and real estate development group.' },
+  { symbol: 'IMH', name: 'I&M Group Plc', category: 'Financials', currency: 'KES', description: 'Regional commercial banking and investment group.' },
+  { symbol: 'KCB', name: 'KCB Group Plc', category: 'Financials', currency: 'KES', description: 'One of the oldest and largest banking institutions in East Africa.' },
   { symbol: 'NCBA', name: 'NCBA Group Plc', category: 'Financials', currency: 'KES', description: 'Financial services group formed through CBA and NIC Bank merger.' },
-  { symbol: 'KEGN', name: 'KenGen Plc', category: 'Energy', currency: 'KES', description: 'Kenya Electricity Generating Company, leading electric power generation.' },
-  { symbol: 'KPLC', name: 'Kenya Power & Lighting Company', category: 'Energy', currency: 'KES', description: 'National electricity transmission and retail distribution utility.' },
+  { symbol: 'SBIC', name: 'Stanbic Holdings Plc', category: 'Financials', currency: 'KES', description: 'Financial services provider affiliated with Standard Bank Group.' },
+  { symbol: 'SCBK', name: 'Standard Chartered Bank Kenya', category: 'Financials', currency: 'KES', description: 'Tier-1 international commercial bank operating in Kenya.' },
+
+  // Manufacturing, Industrial & Allied
+  { symbol: 'ARM', name: 'ARM Cement Ltd', category: 'Industrial', currency: 'KES', description: 'Manufacturer of cement, lime, industrial minerals, and special building products.' },
   { symbol: 'BAMB', name: 'Bamburi Cement Ltd', category: 'Industrial', currency: 'KES', description: 'Leading cement and building materials manufacturer in East Africa.' },
-  { symbol: 'BRIT', name: 'Britam Holdings Ltd', category: 'Financials', currency: 'KES', description: 'Diversified financial services, insurance, and asset management group.' },
-  { symbol: 'NSE', name: 'Nairobi Securities Exchange Plc', category: 'Financials', currency: 'KES', description: 'The principal securities exchange in Kenya providing listing and trading.' },
+  { symbol: 'BOC', name: 'BOC Kenya Ltd', category: 'Industrial', currency: 'KES', description: 'Industrial, medical, and specialty gas production.' },
+  { symbol: 'CABL', name: 'East African Cables Ltd', category: 'Industrial', currency: 'KES', description: 'Manufacturer of copper and aluminum electrical cables and conductors.' },
+  { symbol: 'CARB', name: 'Carbacid Investments Plc', category: 'Industrial', currency: 'KES', description: 'Mining and marketing of natural food-grade carbon dioxide gas.' },
+  { symbol: 'CRWN', name: 'Crown Paints Kenya Ltd', category: 'Industrial', currency: 'KES', description: 'Manufacturer and distributor of paints and decorative coatings.' },
+  { symbol: 'NBV', name: 'Nairobi Business Ventures Ltd', category: 'Industrial', currency: 'KES', description: 'Cement manufacturing, infrastructure, and industrial maintenance services.' },
+  { symbol: 'PORT', name: 'East African Portland Cement', category: 'Industrial', currency: 'KES', description: 'Manufacturer of construction cement and concrete products.' },
+  { symbol: 'SMER', name: 'Sameer Africa Plc', category: 'Industrial', currency: 'KES', description: 'Distribution of pneumatic tires, automotive accessories, and real estate leasing.' },
+  { symbol: 'TCL', name: 'TransCentury Plc', category: 'Industrial', currency: 'KES', description: 'Infrastructure development and engineering investment firm.' },
+
+  // Consumer Goods & Food Products
+  { symbol: 'BAT', name: 'British American Tobacco Kenya', category: 'Consumer Goods', currency: 'KES', description: 'Cigarette and tobacco product manufacturing and distribution.' },
+  { symbol: 'CGEN', name: 'Car and General (Kenya) Ltd', category: 'Consumer Goods', currency: 'KES', description: 'Supplier of power generation, automotive, industrial, and agricultural equipment.' },
+  { symbol: 'EABL', name: 'East African Breweries Ltd', category: 'Consumer Goods', currency: 'KES', description: 'Leading alcoholic beverage producer, brewery, and spirits distributor.' },
+  { symbol: 'EVRD', name: 'Eveready East Africa Ltd', category: 'Consumer Goods', currency: 'KES', description: 'Marketing and distribution of dry-cell batteries, flashlights, and lighting products.' },
+  { symbol: 'FTGH', name: 'Flame Tree Group Holdings', category: 'Consumer Goods', currency: 'KES', description: 'Manufacturer of plastic tanks, cosmetics, and snacks.' },
+  { symbol: 'UNGA', name: 'Unga Group Ltd', category: 'Consumer Goods', currency: 'KES', description: 'Flour milling, grain processing, and animal nutrition products.' },
+
+  // Energy & Petroleum
+  { symbol: 'KEGN', name: 'KenGen Plc', category: 'Energy', currency: 'KES', description: 'Kenya Electricity Generating Company, leading electric power generation.' },
+  { symbol: 'KPC', name: 'Kenya Pipeline Company', category: 'Energy', currency: 'KES', description: 'Oil transport, storage, and pipeline infrastructure operator.' },
+  { symbol: 'KPLC', name: 'Kenya Power & Lighting Company', category: 'Energy', currency: 'KES', description: 'National electricity transmission and retail distribution utility.' },
+  { symbol: 'KPLC-P4', name: 'Kenya Power 4% Preference Shares', category: 'Energy', currency: 'KES', description: '4% fixed-dividend cumulative preference shares of Kenya Power & Lighting Company.' },
+  { symbol: 'KPLC-P7', name: 'Kenya Power 7% Preference Shares', category: 'Energy', currency: 'KES', description: '7% fixed-dividend cumulative preference shares of Kenya Power & Lighting Company.' },
+  { symbol: 'TOTL', name: 'TotalEnergies Marketing Kenya', category: 'Energy', currency: 'KES', description: 'Petroleum product marketing and fuel distribution network.' },
+  { symbol: 'UMME', name: 'Umeme Ltd', category: 'Energy', currency: 'KES', description: 'Regional electricity distribution utility and power retail distributor.' },
+
+  // Insurance
+  { symbol: 'BRIT', name: 'Britam Holdings Ltd', category: 'Financials', currency: 'KES', description: 'Diversified financial services, life assurance, general insurance, and asset management.' },
   { symbol: 'CIC', name: 'CIC Insurance Group Ltd', category: 'Financials', currency: 'KES', description: 'Micro-insurance, life insurance, and general insurance solutions.' },
+  { symbol: 'JUB', name: 'Jubilee Holdings Ltd', category: 'Financials', currency: 'KES', description: 'Leading insurance and healthcare risk provider in East Africa.' },
+  { symbol: 'KNRE', name: 'Kenya Re-Insurance Corporation', category: 'Financials', currency: 'KES', description: 'State-backed reinsurance services and risk underwriting.' },
+  { symbol: 'LBTY', name: 'Liberty Kenya Holdings Ltd', category: 'Financials', currency: 'KES', description: 'Insurance and asset management provider.' },
+  { symbol: 'SLAM', name: 'Sanlam Kenya Plc', category: 'Financials', currency: 'KES', description: 'Life and general insurance provider affiliated with Sanlam Group.' },
+
+  // Agricultural
+  { symbol: 'AMAC', name: 'Africa Mega Agricorp', category: 'Agriculture', currency: 'KES', description: 'Agricultural cultivation, agro-processing, and commodity export marketing.' },
+  { symbol: 'EGAD', name: 'Eaagads Ltd', category: 'Agriculture', currency: 'KES', description: 'Cultivation, processing, and marketing of high-grade Arabica coffee.' },
+  { symbol: 'KAPC', name: 'Kapchorua Tea Company Ltd', category: 'Agriculture', currency: 'KES', description: 'Cultivation, manufacture, and wholesale packing of tea.' },
+  { symbol: 'KUKZ', name: 'Kakuzi Plc', category: 'Agriculture', currency: 'KES', description: 'Agricultural cultivation of avocados, macadamia, tea, and forestry.' },
+  { symbol: 'LIMT', name: 'Limuru Tea Company Ltd', category: 'Agriculture', currency: 'KES', description: 'Black tea growing and green leaf processing.' },
+  { symbol: 'MSC', name: 'Mumias Sugar Company Ltd', category: 'Agriculture', currency: 'KES', description: 'Sugar cane milling, ethanol distillation, and co-generation of electric power.' },
   { symbol: 'SASN', name: 'Sasini Plc', category: 'Agriculture', currency: 'KES', description: 'Tea, coffee, macadamia nuts, and avocado agribusiness.' },
+  { symbol: 'WTK', name: 'Williamson Tea Kenya Ltd', category: 'Agriculture', currency: 'KES', description: 'Growing, processing, and export marketing of fine teas.' },
+
+  // Commercial & Services
+  { symbol: 'DCON', name: 'Deacons East Africa Plc', category: 'Retail', currency: 'KES', description: 'Fashion apparel, footwear, and consumer goods retail chain operator.' },
+  { symbol: 'HBE', name: 'Homeboyz Entertainment Plc', category: 'Commercial & Services', currency: 'KES', description: 'Entertainment production, creative marketing, and multimedia event services.' },
+  { symbol: 'KQ', name: 'Kenya Airways Ltd', category: 'Commercial & Services', currency: 'KES', description: 'National flag carrier airline providing passenger and cargo air services.' },
+  { symbol: 'LKL', name: 'Longhorn Publishers Ltd', category: 'Commercial & Services', currency: 'KES', description: 'Educational and literary publishing in Eastern Africa.' },
+  { symbol: 'NMG', name: 'Nation Media Group', category: 'Commercial & Services', currency: 'KES', description: 'Leading independent media and publishing house in East and Central Africa.' },
+  { symbol: 'SCAN', name: 'WPP Scangroup Plc', category: 'Commercial & Services', currency: 'KES', description: 'Marketing communications, advertising, and digital agency network.' },
+  { symbol: 'SGL', name: 'Standard Group Ltd', category: 'Commercial & Services', currency: 'KES', description: 'Multi-media broadcasting, print, and digital journalism company.' },
+  { symbol: 'SKL', name: 'Shri Krishana Overseas Ltd', category: 'Commercial & Services', currency: 'KES', description: 'International commodities trading, logistics, and distribution services.' },
+  { symbol: 'TPSE', name: 'TPS Eastern Africa (Serena)', category: 'Commercial & Services', currency: 'KES', description: 'Eco-tourism safari lodges, resorts, and premium hotel operator.' },
+  { symbol: 'UCHM', name: 'Uchumi Supermarkets Ltd', category: 'Retail', currency: 'KES', description: 'Retail supermarket chain store operator.' },
+  { symbol: 'XPRS', name: 'Express Kenya Ltd', category: 'Commercial & Services', currency: 'KES', description: 'Clearing, freight forwarding, and warehousing logistics services.' },
+
+  // Investment & Financial Markets
+  { symbol: 'CTUM', name: 'Centum Investment Company', category: 'Financials', currency: 'KES', description: 'Public investment company investing in private equity, real estate, and marketable securities.' },
+  { symbol: 'KURV', name: 'Kurwitu Ventures Ltd', category: 'Financials', currency: 'KES', description: 'Sharia-compliant investment advisory and capital deployment.' },
+  { symbol: 'NSE', name: 'Nairobi Securities Exchange Plc', category: 'Financials', currency: 'KES', description: 'The principal securities exchange in Kenya providing listing and trading facilities.' },
+  { symbol: 'OCH', name: 'Olympia Capital Holdings Ltd', category: 'Financials', currency: 'KES', description: 'Investment holding company focusing on building products and real estate.' },
+
+  // ETFs & REITs
+  { symbol: 'ALP', name: 'ALP Real Estate Investment Trust', category: 'Real Estate', currency: 'KES', description: 'Logistics and industrial real estate investment trust.' },
+  { symbol: 'GLD', name: 'Absa NewGold ETF', category: 'Other', currency: 'KES', description: 'Exchange-traded fund tracking the spot price of physical gold.' },
+  { symbol: 'HAFR', name: 'Home Afrika Ltd', category: 'Real Estate', currency: 'KES', description: 'Property development and residential community infrastructure company.' },
+  { symbol: 'LAPR', name: 'Laptrust Imara Income-REIT', category: 'Real Estate', currency: 'KES', description: 'Closed-ended income-producing real estate investment trust.' },
+  { symbol: 'SMWF', name: 'Satrix MSCI World Feeder ETF', category: 'Other', currency: 'KES', description: 'Exchange-traded feeder fund investing in the MSCI World Index.' },
+  { symbol: 'TRFC', name: 'TRIFIC Green USD I-REIT', category: 'Real Estate', currency: 'USD', description: 'Green commercial real estate investment trust (USD-denominated).' },
 
   // US & International Equities
   { symbol: 'AAPL', name: 'Apple Inc.', category: 'Technology', currency: 'USD', description: 'Consumer electronics, software, and services company.' },
@@ -114,7 +189,16 @@ export default function StocksCatalog() {
   const [useCustomTicker, setUseCustomTicker] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [livePrice, setLivePrice] = useState<{ price: number; provider: string; change?: number; changePercent?: number; currency?: 'USD' | 'KES' } | null>(null);
+  const [livePrice, setLivePrice] = useState<{
+    price: number;
+    nativePrice?: number;
+    nativeCurrency?: 'USD' | 'KES';
+    nativeChange?: number;
+    provider: string;
+    change?: number;
+    changePercent?: number;
+    currency?: 'USD' | 'KES';
+  } | null>(null);
   const [livePriceError, setLivePriceError] = useState<string | null>(null);
   const [livePriceLoading, setLivePriceLoading] = useState(false);
 
@@ -130,7 +214,16 @@ export default function StocksCatalog() {
       });
       let json: {
         success?: boolean;
-        data?: { price: number; provider: string; change?: number; changePercent?: number; currency?: 'USD' | 'KES' };
+        data?: {
+          price: number;
+          nativePrice?: number;
+          nativeCurrency?: 'USD' | 'KES';
+          nativeChange?: number;
+          provider: string;
+          change?: number;
+          changePercent?: number;
+          currency?: 'USD' | 'KES';
+        };
         message?: string;
       } | null = null;
       try {
@@ -140,7 +233,9 @@ export default function StocksCatalog() {
       }
       if (res.ok && json?.success && json.data) {
         setLivePrice(json.data);
-        if (json.data.currency) {
+        if (json.data.nativeCurrency) {
+          setFormCurrency(json.data.nativeCurrency);
+        } else if (json.data.currency) {
           setFormCurrency(json.data.currency);
         }
       } else {
@@ -317,6 +412,7 @@ export default function StocksCatalog() {
           symbol: formSymbol,
           category: formCategory,
           description: formDescription,
+          currency: formCurrency,
         }),
         credentials: 'include',
       });
@@ -373,7 +469,7 @@ export default function StocksCatalog() {
   });
 
   // Unique categories list
-  const categoriesList = ['All', 'Technology', 'Financials', 'Consumer Goods', 'Industrial', 'Energy', 'Agriculture', 'Automotive', 'Health', 'Retail', 'Other'];
+  const categoriesList = ['All', 'Technology', 'Financials', 'Consumer Goods', 'Industrial', 'Energy', 'Agriculture', 'Commercial & Services', 'Real Estate', 'Automotive', 'Health', 'Retail', 'Other'];
 
   const getFieldError = (fieldName: string) => {
     return validationErrors.find((err) => err.field === fieldName)?.message;
@@ -487,7 +583,12 @@ export default function StocksCatalog() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {filteredStocks.map((stock) => {
             const hasData = stock.summary.totalPriceRecords > 0;
-            const isChangePositive = stock.summary.priceChange >= 0;
+            const isChangePositive =
+              stock.summary.priceChangePercent !== 0
+                ? stock.summary.priceChangePercent > 0
+                : (stock.summary.nativePriceChange !== undefined
+                    ? stock.summary.nativePriceChange >= 0
+                    : stock.summary.priceChange >= 0);
 
             return (
               <div
@@ -921,21 +1022,43 @@ export default function StocksCatalog() {
                               {livePrice.provider === 'nse' ? 'NSE Kenya Feed' : livePrice.provider}
                             </span>
                           </div>
-                          <span className="text-xl font-black text-main font-mono mt-0.5 block">
-                            {formatMoney(livePrice.price, livePrice.currency || formCurrency)}
-                          </span>
-                        </div>
-                        {livePrice.change !== undefined && livePrice.changePercent !== undefined && (
-                          <div className="text-right">
-                            <span className="text-[10px] font-bold text-muted uppercase block tracking-wider">Day Change</span>
-                            <span className={`text-xs font-black inline-flex items-center gap-1 ${
-                              livePrice.change >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
-                            }`}>
-                              {livePrice.change >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
-                              {formatMoney(Math.abs(livePrice.change), livePrice.currency || formCurrency)} ({livePrice.changePercent.toFixed(2)}%)
+                          <div className="flex items-baseline gap-2 mt-0.5">
+                            <span className="text-xl font-black text-main font-mono block">
+                              {formatMoney(
+                                livePrice.nativePrice ?? livePrice.price,
+                                livePrice.nativeCurrency || formCurrency
+                              )}
                             </span>
+                            {livePrice.nativeCurrency && livePrice.nativeCurrency !== baseCurrency && (
+                              <span className="text-xs font-semibold text-muted font-mono">
+                                (≈ {formatMoney(livePrice.price, baseCurrency)})
+                              </span>
+                            )}
                           </div>
-                        )}
+                        </div>
+                        {(livePrice.change !== undefined || livePrice.nativeChange !== undefined) && livePrice.changePercent !== undefined && (() => {
+                          const isChangePositive =
+                            livePrice.changePercent !== 0
+                              ? livePrice.changePercent > 0
+                              : (livePrice.nativeChange !== undefined
+                                  ? livePrice.nativeChange >= 0
+                                  : (livePrice.change ?? 0) >= 0);
+                          const displayChange = Math.abs(
+                            livePrice.nativeChange !== undefined ? livePrice.nativeChange : (livePrice.change ?? 0)
+                          );
+
+                          return (
+                            <div className="text-right">
+                              <span className="text-[10px] font-bold text-muted uppercase block tracking-wider">Day Change</span>
+                              <span className={`text-xs font-black inline-flex items-center gap-1 ${
+                                isChangePositive ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                              }`}>
+                                {isChangePositive ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
+                                {formatMoney(displayChange, livePrice.nativeCurrency || formCurrency)} ({livePrice.changePercent.toFixed(2)}%)
+                              </span>
+                            </div>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>

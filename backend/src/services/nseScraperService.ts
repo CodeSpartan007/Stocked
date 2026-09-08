@@ -37,12 +37,25 @@ export interface NseCatalogItem {
   description?: string;
 }
 
-// Full official directory of NSE listed equities with standard industry classification
+// Helper to decode HTML entities in scraped company names
+export function decodeHtmlEntities(str: string): string {
+  if (!str) return '';
+  return str
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .trim();
+}
+
+// Full official directory of all 71 NSE listed equities with standard industry classification
 export const NSE_CATALOG: NseCatalogItem[] = [
   // Telecommunication & Technology
   { symbol: 'SCOM', name: 'Safaricom Plc', category: 'Technology', description: 'Leading telecommunications, mobile payments (M-Pesa), and data service provider in East Africa.' },
-  
-  // Banking
+
+  // Banking & Financial Services
   { symbol: 'ABSA', name: 'Absa Bank Kenya Plc', category: 'Financials', description: 'Commercial banking and financial services group.' },
   { symbol: 'BKG', name: 'BK Group Plc', category: 'Financials', description: 'Banking and financial services conglomerate headquartered in Rwanda.' },
   { symbol: 'COOP', name: 'Co-operative Bank of Kenya', category: 'Financials', description: 'Major retail and corporate bank providing banking to cooperatives and businesses.' },
@@ -56,22 +69,34 @@ export const NSE_CATALOG: NseCatalogItem[] = [
   { symbol: 'SBIC', name: 'Stanbic Holdings Plc', category: 'Financials', description: 'Financial services provider affiliated with Standard Bank Group.' },
   { symbol: 'SCBK', name: 'Standard Chartered Bank Kenya', category: 'Financials', description: 'Tier-1 international commercial bank operating in Kenya.' },
 
-  // Manufacturing & Allied / Consumer Goods
+  // Manufacturing, Industrial & Allied
+  { symbol: 'ARM', name: 'ARM Cement Ltd', category: 'Industrial', description: 'Manufacturer of cement, lime, industrial minerals, and special building products.' },
   { symbol: 'BAMB', name: 'Bamburi Cement Ltd', category: 'Industrial', description: 'Leading cement and building materials manufacturer in East Africa.' },
-  { symbol: 'BAT', name: 'British American Tobacco Kenya', category: 'Consumer Goods', description: 'Cigarette and tobacco product manufacturing and distribution.' },
   { symbol: 'BOC', name: 'BOC Kenya Ltd', category: 'Industrial', description: 'Industrial, medical, and specialty gas production.' },
+  { symbol: 'CABL', name: 'East African Cables Ltd', category: 'Industrial', description: 'Manufacturer of copper and aluminum electrical cables and conductors.' },
   { symbol: 'CARB', name: 'Carbacid Investments Plc', category: 'Industrial', description: 'Mining and marketing of natural food-grade carbon dioxide gas.' },
-  { symbol: 'EABL', name: 'East African Breweries Ltd', category: 'Consumer Goods', description: 'Leading alcoholic beverage producer, brewery, and spirits distributor.' },
   { symbol: 'CRWN', name: 'Crown Paints Kenya Ltd', category: 'Industrial', description: 'Manufacturer and distributor of paints and decorative coatings.' },
-  { symbol: 'UNGA', name: 'Unga Group Ltd', category: 'Consumer Goods', description: 'Flour milling, grain processing, and animal nutrition products.' },
+  { symbol: 'NBV', name: 'Nairobi Business Ventures Ltd', category: 'Industrial', description: 'Cement manufacturing, infrastructure, and industrial maintenance services.' },
   { symbol: 'PORT', name: 'East African Portland Cement', category: 'Industrial', description: 'Manufacturer of construction cement and concrete products.' },
+  { symbol: 'SMER', name: 'Sameer Africa Plc', category: 'Industrial', description: 'Distribution of pneumatic tires, automotive accessories, and real estate leasing.' },
+  { symbol: 'TCL', name: 'TransCentury Plc', category: 'Industrial', description: 'Infrastructure development and engineering investment firm.' },
+
+  // Consumer Goods & Food Products
+  { symbol: 'BAT', name: 'British American Tobacco Kenya', category: 'Consumer Goods', description: 'Cigarette and tobacco product manufacturing and distribution.' },
+  { symbol: 'CGEN', name: 'Car and General (Kenya) Ltd', category: 'Consumer Goods', description: 'Supplier of power generation, automotive, industrial, and agricultural equipment.' },
+  { symbol: 'EABL', name: 'East African Breweries Ltd', category: 'Consumer Goods', description: 'Leading alcoholic beverage producer, brewery, and spirits distributor.' },
+  { symbol: 'EVRD', name: 'Eveready East Africa Ltd', category: 'Consumer Goods', description: 'Marketing and distribution of dry-cell batteries, flashlights, and lighting products.' },
   { symbol: 'FTGH', name: 'Flame Tree Group Holdings', category: 'Consumer Goods', description: 'Manufacturer of plastic tanks, cosmetics, and snacks.' },
+  { symbol: 'UNGA', name: 'Unga Group Ltd', category: 'Consumer Goods', description: 'Flour milling, grain processing, and animal nutrition products.' },
 
   // Energy & Petroleum
   { symbol: 'KEGN', name: 'KenGen Plc', category: 'Energy', description: 'Kenya Electricity Generating Company, leading electric power generation.' },
   { symbol: 'KPC', name: 'Kenya Pipeline Company', category: 'Energy', description: 'Oil transport, storage, and pipeline infrastructure operator.' },
   { symbol: 'KPLC', name: 'Kenya Power & Lighting Company', category: 'Energy', description: 'National electricity transmission and retail distribution utility.' },
+  { symbol: 'KPLC-P4', name: 'Kenya Power 4% Preference Shares', category: 'Energy', description: '4% fixed-dividend cumulative preference shares of Kenya Power & Lighting Company.' },
+  { symbol: 'KPLC-P7', name: 'Kenya Power 7% Preference Shares', category: 'Energy', description: '7% fixed-dividend cumulative preference shares of Kenya Power & Lighting Company.' },
   { symbol: 'TOTL', name: 'TotalEnergies Marketing Kenya', category: 'Energy', description: 'Petroleum product marketing and fuel distribution network.' },
+  { symbol: 'UMME', name: 'Umeme Ltd', category: 'Energy', description: 'Regional electricity distribution utility and power retail distributor.' },
 
   // Insurance
   { symbol: 'BRIT', name: 'Britam Holdings Ltd', category: 'Financials', description: 'Diversified financial services, life assurance, general insurance, and asset management.' },
@@ -82,36 +107,41 @@ export const NSE_CATALOG: NseCatalogItem[] = [
   { symbol: 'SLAM', name: 'Sanlam Kenya Plc', category: 'Financials', description: 'Life and general insurance provider affiliated with Sanlam Group.' },
 
   // Agricultural
+  { symbol: 'AMAC', name: 'Africa Mega Agricorp', category: 'Agriculture', description: 'Agricultural cultivation, agro-processing, and commodity export marketing.' },
   { symbol: 'EGAD', name: 'Eaagads Ltd', category: 'Agriculture', description: 'Cultivation, processing, and marketing of high-grade Arabica coffee.' },
   { symbol: 'KAPC', name: 'Kapchorua Tea Company Ltd', category: 'Agriculture', description: 'Cultivation, manufacture, and wholesale packing of tea.' },
   { symbol: 'KUKZ', name: 'Kakuzi Plc', category: 'Agriculture', description: 'Agricultural cultivation of avocados, macadamia, tea, and forestry.' },
   { symbol: 'LIMT', name: 'Limuru Tea Company Ltd', category: 'Agriculture', description: 'Black tea growing and green leaf processing.' },
+  { symbol: 'MSC', name: 'Mumias Sugar Company Ltd', category: 'Agriculture', description: 'Sugar cane milling, ethanol distillation, and co-generation of electric power.' },
   { symbol: 'SASN', name: 'Sasini Plc', category: 'Agriculture', description: 'Tea, coffee, macadamia nuts, and avocado agribusiness.' },
   { symbol: 'WTK', name: 'Williamson Tea Kenya Ltd', category: 'Agriculture', description: 'Growing, processing, and export marketing of fine teas.' },
 
-  // Commercial & Services
+  // Commercial, Services & Media
+  { symbol: 'DCON', name: 'Deacons East Africa Plc', category: 'Retail', description: 'Fashion apparel, footwear, and consumer goods retail chain operator.' },
+  { symbol: 'HBE', name: 'Homeboyz Entertainment Plc', category: 'Commercial & Services', description: 'Entertainment production, creative marketing, and multimedia event services.' },
   { symbol: 'KQ', name: 'Kenya Airways Ltd', category: 'Commercial & Services', description: 'National flag carrier airline providing passenger and cargo air services.' },
+  { symbol: 'LKL', name: 'Longhorn Publishers Ltd', category: 'Commercial & Services', description: 'Educational and literary publishing in Eastern Africa.' },
   { symbol: 'NMG', name: 'Nation Media Group', category: 'Commercial & Services', description: 'Leading independent media and publishing house in East and Central Africa.' },
-  { symbol: 'SGL', name: 'Standard Group Ltd', category: 'Commercial & Services', description: 'Multi-media broadcasting, print, and digital journalism company.' },
   { symbol: 'SCAN', name: 'WPP Scangroup Plc', category: 'Commercial & Services', description: 'Marketing communications, advertising, and digital agency network.' },
+  { symbol: 'SGL', name: 'Standard Group Ltd', category: 'Commercial & Services', description: 'Multi-media broadcasting, print, and digital journalism company.' },
+  { symbol: 'SKL', name: 'Shri Krishana Overseas Ltd', category: 'Commercial & Services', description: 'International commodities trading, logistics, and distribution services.' },
   { symbol: 'TPSE', name: 'TPS Eastern Africa (Serena)', category: 'Commercial & Services', description: 'Eco-tourism safari lodges, resorts, and premium hotel operator.' },
   { symbol: 'UCHM', name: 'Uchumi Supermarkets Ltd', category: 'Retail', description: 'Retail supermarket chain store operator.' },
   { symbol: 'XPRS', name: 'Express Kenya Ltd', category: 'Commercial & Services', description: 'Clearing, freight forwarding, and warehousing logistics services.' },
-  { symbol: 'LKL', name: 'Longhorn Publishers Ltd', category: 'Commercial & Services', description: 'Educational and literary publishing in Eastern Africa.' },
 
   // Investment & Financial Markets
-  { symbol: 'NSE', name: 'Nairobi Securities Exchange Plc', category: 'Financials', description: 'The principal securities exchange in Kenya providing listing and trading facilities.' },
   { symbol: 'CTUM', name: 'Centum Investment Company', category: 'Financials', description: 'Public investment company investing in private equity, real estate, and marketable securities.' },
   { symbol: 'KURV', name: 'Kurwitu Ventures Ltd', category: 'Financials', description: 'Sharia-compliant investment advisory and capital deployment.' },
+  { symbol: 'NSE', name: 'Nairobi Securities Exchange Plc', category: 'Financials', description: 'The principal securities exchange in Kenya providing listing and trading facilities.' },
   { symbol: 'OCH', name: 'Olympia Capital Holdings Ltd', category: 'Financials', description: 'Investment holding company focusing on building products and real estate.' },
-  { symbol: 'TCL', name: 'TransCentury Plc', category: 'Industrial', description: 'Infrastructure development and engineering investment firm.' },
 
   // ETFs & REITs
-  { symbol: 'GLD', name: 'Absa NewGold ETF', category: 'Other', description: 'Exchange-traded fund tracking the spot price of physical gold.' },
   { symbol: 'ALP', name: 'ALP Real Estate Investment Trust', category: 'Real Estate', description: 'Logistics and industrial real estate investment trust.' },
+  { symbol: 'GLD', name: 'Absa NewGold ETF', category: 'Other', description: 'Exchange-traded fund tracking the spot price of physical gold.' },
+  { symbol: 'HAFR', name: 'Home Afrika Ltd', category: 'Real Estate', description: 'Property development and residential community infrastructure company.' },
   { symbol: 'LAPR', name: 'Laptrust Imara Income-REIT', category: 'Real Estate', description: 'Closed-ended income-producing real estate investment trust.' },
-  { symbol: 'TRFC', name: 'TRIFIC Green USD I-REIT', category: 'Real Estate', description: 'Green commercial real estate investment trust.' },
   { symbol: 'SMWF', name: 'Satrix MSCI World Feeder ETF', category: 'Other', description: 'Exchange-traded feeder fund investing in the MSCI World Index.' },
+  { symbol: 'TRFC', name: 'TRIFIC Green USD I-REIT', category: 'Real Estate', description: 'Green commercial real estate investment trust (USD-denominated).' },
 ];
 
 export const NSE_SYMBOLS_SET = new Set(NSE_CATALOG.map((item) => item.symbol.toUpperCase()));
@@ -137,35 +167,79 @@ const SCRAPER_HEADERS = {
   Pragma: 'no-cache',
 };
 
-// Known baseline prices for NSE equities to serve as offline fallback
-const BASELINE_NSE_PRICES: Record<string, number> = {
-  SCOM: 37.20,
-  EQTY: 42.50,
-  KCB: 32.00,
-  EABL: 140.00,
-  COOP: 12.80,
-  BAT: 420.00,
-  ABSA: 13.50,
-  SCBK: 180.00,
-  NCBA: 42.00,
-  KEGN: 2.20,
-  KPLC: 1.60,
-  BAMB: 45.00,
-  BRIT: 5.50,
-  NSE: 6.00,
-  CIC: 2.10,
-  SASN: 24.00,
-  WTK: 230.00,
-  BOC: 75.00,
-  CARB: 16.00,
-  CRWN: 38.00,
-  UNGA: 17.00,
-  TOTL: 20.00,
-  JUB: 190.00,
-  KNRE: 2.00,
-  KQ: 3.80,
-  NMG: 18.00,
-  CTUM: 9.00,
+// Known accurate baseline prices for all 71 NSE equities to serve as offline fallback
+export const BASELINE_NSE_PRICES: Record<string, number> = {
+  ABSA: 34.80,
+  ALP: 1.02,
+  AMAC: 253.25,
+  ARM: 5.50,
+  BAMB: 54.00,
+  BAT: 566.00,
+  BKG: 63.75,
+  BOC: 196.00,
+  BRIT: 20.75,
+  CABL: 1.71,
+  CARB: 44.00,
+  CGEN: 294.75,
+  CIC: 4.60,
+  COOP: 37.90,
+  CRWN: 63.00,
+  CTUM: 18.15,
+  DCON: 0.45,
+  DTK: 191.50,
+  EABL: 286.00,
+  EGAD: 30.00,
+  EQTY: 102.75,
+  EVRD: 1.04,
+  FMLY: 30.00,
+  FTGH: 2.08,
+  GLD: 5315.00,
+  HAFR: 1.13,
+  HBE: 4.66,
+  HFCB: 12.90,
+  IMH: 82.00,
+  JUB: 412.75,
+  KAPC: 342.00,
+  KCB: 97.75,
+  KEGN: 10.75,
+  KNRE: 4.07,
+  KPC: 9.02,
+  KPLC: 22.80,
+  'KPLC-P4': 5.00,
+  'KPLC-P7': 6.00,
+  KQ: 5.78,
+  KUKZ: 431.00,
+  KURV: 1355.00,
+  LAPR: 20.00,
+  LBTY: 9.22,
+  LIMT: 510.00,
+  LKL: 2.72,
+  MSC: 0.28,
+  NBV: 1.38,
+  NCBA: 91.00,
+  NMG: 16.70,
+  NSE: 28.75,
+  OCH: 7.82,
+  PORT: 120.00,
+  SASN: 24.95,
+  SBIC: 288.00,
+  SCAN: 2.05,
+  SCBK: 344.00,
+  SCOM: 37.15,
+  SGL: 6.30,
+  SKL: 16.50,
+  SLAM: 10.60,
+  SMER: 18.20,
+  SMWF: 979.00,
+  TCL: 1.12,
+  TOTL: 49.50,
+  TPSE: 18.20,
+  TRFC: 1.23,
+  UCHM: 1.40,
+  UMME: 6.28,
+  UNGA: 44.25,
+  WTK: 156.00,
+  XPRS: 7.40,
 };
 
 function buildFallbackNseMap(): Map<string, NseStockQuote> {
@@ -260,14 +334,16 @@ export async function fetchAllNseStocks(forceRefresh = false): Promise<Map<strin
           const nameMatch = cells[1].match(/>([^<]+)<\/a>/);
 
           const symbol = tickerMatch ? tickerMatch[1].trim().toUpperCase() : '';
-          const name = nameMatch ? nameMatch[1].trim() : symbol;
+          const rawName = nameMatch ? nameMatch[1].trim() : symbol;
+          const name = decodeHtmlEntities(rawName);
           const volumeStr = cells[2].replace(/,/g, '').trim();
           const volume = volumeStr ? parseInt(volumeStr, 10) || 0 : 0;
           const priceStr = cells[3].replace(/,/g, '').trim();
           const price = parseFloat(priceStr);
 
-          let changeStr = cells[4] ? cells[4].replace(/[<>/a-z= ]/gi, '').trim() : '0';
-          const change = parseFloat(changeStr) || 0;
+          // Strip tags and clean non-numeric characters while preserving sign
+          const rawChangeCell = cells[4] ? cells[4].replace(/<[^>]*>/g, '').replace(/[^0-9.+-]/g, '').trim() : '0';
+          const change = parseFloat(rawChangeCell) || 0;
           const previousClose = price - change;
           const changePercent = previousClose > 0 ? (change / previousClose) * 100 : 0;
 
@@ -368,6 +444,40 @@ export async function fetchNseStockQuote(symbol: string): Promise<TickerData> {
     }
 
     const html = await response.text();
+
+    // 1. Try to extract current live intraday price from page header:
+    // e.g. <abbr title="Safaricom Plc">SCOM</abbr> • <span style=display:inline-block>37.15 <span class=lo>▾ 0.25 (0.67%)</span>
+    const headerRegex = new RegExp(
+      `<abbr[^>]*>${normalized}<\\/abbr>[^<]*•[^<]*<span[^>]*>([0-9,.]+)(?:\\s*<span[^>]*>[^0-9+-]*([+-]?[0-9,.]+)(?:\\s*\\(([0-9,.]+)%\\))?)?`,
+      'i'
+    );
+    const headerMatch = html.match(headerRegex);
+    if (headerMatch) {
+      const price = parseFloat(headerMatch[1].replace(/,/g, ''));
+      let change = headerMatch[2] ? parseFloat(headerMatch[2].replace(/,/g, '')) : 0;
+      let changePercent = headerMatch[3] ? parseFloat(headerMatch[3].replace(/,/g, '')) : 0;
+      if (headerMatch[0].includes('class=lo') && change > 0) {
+        change = -change;
+        changePercent = -changePercent;
+      }
+
+      let volume = 0;
+      const volMatch = html.match(/Traded Volume<\/td><td>([0-9,]+)/i);
+      if (volMatch) {
+        volume = parseInt(volMatch[1].replace(/,/g, ''), 10) || 0;
+      }
+
+      if (!isNaN(price) && price > 0) {
+        return {
+          price,
+          change: Number(change.toFixed(2)),
+          changePercent: Number(changePercent.toFixed(2)),
+          volume,
+        };
+      }
+    }
+
+    // 2. Fall back to historical quotes table
     const histPart = html.split('<table data-hist>')[1]?.split('</table>')[0];
 
     if (histPart) {

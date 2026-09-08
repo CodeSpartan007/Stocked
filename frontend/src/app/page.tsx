@@ -21,6 +21,7 @@ interface StockSummary {
     nativeLatestPrice?: number;
     nativeCurrency?: 'USD' | 'KES';
     priceChange: number;
+    nativePriceChange?: number;
     priceChangePercent: number;
     source?: 'live' | 'manual fallback' | 'cache';
     lastUpdated?: string | null;
@@ -554,7 +555,10 @@ export default function Dashboard() {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {stocks.slice(0, 4).map((stock) => {
-                  const isPositive = stock.summary.priceChange >= 0;
+                  const isPositive =
+                    stock.summary.priceChangePercent !== 0
+                      ? stock.summary.priceChangePercent > 0
+                      : stock.summary.priceChange >= 0;
                   return (
                     <div
                       key={stock.id}

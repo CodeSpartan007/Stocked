@@ -3,6 +3,7 @@ import { Stock, DailyPrice, Sales } from '../models';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
 import { computeStockHoldings } from './transactions';
 import { getUserCurrencyContext, convertPrice } from '../services/currencyService';
+import { isNseSymbol } from '../services/nseScraperService';
 
 const router = Router();
 
@@ -28,10 +29,13 @@ router.get(
       // 2. Multi-Currency Realized P&L: Fetch all user sales joined with Stock, convert by stock currency
       const userSales = await Sales.findAll({
         where: { userId },
-        include: [{ model: Stock, as: 'Stock', attributes: ['currency'] }],
+        include: [{ model: Stock, as: 'Stock', attributes: ['symbol', 'currency'] }],
       });
       totalRealizedPL = userSales.reduce((sum, s) => {
-        const stockCurrency = (s.Stock?.currency as 'USD' | 'KES') || 'USD';
+        const stockCurrency: 'USD' | 'KES' =
+          s.Stock && isNseSymbol(s.Stock.symbol) && s.Stock.symbol.toUpperCase() !== 'TRFC'
+            ? 'KES'
+            : ((s.Stock?.currency as 'USD' | 'KES') || 'USD');
         return sum + convertPrice(Number(s.profitLoss), stockCurrency, baseCurrency, exchangeRate);
       }, 0);
 
@@ -59,7 +63,10 @@ router.get(
         if (!item) continue;
         const { stock, holdings, latestPriceRecord } = item;
 
-        const stockCurrency = (stock.currency as 'USD' | 'KES') || 'USD';
+        const stockCurrency: 'USD' | 'KES' =
+          isNseSymbol(stock.symbol) && stock.symbol.toUpperCase() !== 'TRFC'
+            ? 'KES'
+            : ((stock.currency as 'USD' | 'KES') || 'USD');
 
         // Native prices
         const nativeCurrentPrice = latestPriceRecord

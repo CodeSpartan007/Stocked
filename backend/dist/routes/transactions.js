@@ -12,6 +12,7 @@ const models_1 = require("../models");
 const auth_1 = require("../middleware/auth");
 const validate_1 = require("../middleware/validate");
 const currencyService_1 = require("../services/currencyService");
+const nseScraperService_1 = require("../services/nseScraperService");
 const router = (0, express_1.Router)();
 /**
  * Computes holdings and cost basis chronologically up to an optional asOfDate.
@@ -847,7 +848,9 @@ router.get('/history', auth_1.requireAuth, async (req, res) => {
         // Map purchases and sales into unified structures
         let combined = [
             ...purchases.map((p) => {
-                const stockCurrency = p.Stock?.currency || 'USD';
+                const stockCurrency = p.Stock && (0, nseScraperService_1.isNseSymbol)(p.Stock.symbol) && p.Stock.symbol.toUpperCase() !== 'TRFC'
+                    ? 'KES'
+                    : (p.Stock?.currency || 'USD');
                 const nativePrice = Number(p.purchasePrice);
                 const convertedPrice = Number((0, currencyService_1.convertPrice)(nativePrice, stockCurrency, baseCurrency, exchangeRate).toFixed(2));
                 return {
@@ -870,7 +873,9 @@ router.get('/history', auth_1.requireAuth, async (req, res) => {
                 };
             }),
             ...sales.map((s) => {
-                const stockCurrency = s.Stock?.currency || 'USD';
+                const stockCurrency = s.Stock && (0, nseScraperService_1.isNseSymbol)(s.Stock.symbol) && s.Stock.symbol.toUpperCase() !== 'TRFC'
+                    ? 'KES'
+                    : (s.Stock?.currency || 'USD');
                 const nativePrice = Number(s.sellPrice);
                 const convertedPrice = Number((0, currencyService_1.convertPrice)(nativePrice, stockCurrency, baseCurrency, exchangeRate).toFixed(2));
                 const nativeProfitLoss = Number(s.profitLoss);

@@ -5,6 +5,7 @@ import { sequelize, Stock, Purchase, Sales, UserSetting } from '../models';
 import { requireAuth, AuthenticatedRequest } from '../middleware/auth';
 import { handleValidationErrors } from '../middleware/validate';
 import { getUserCurrencyContext, convertPrice } from '../services/currencyService';
+import { isNseSymbol } from '../services/nseScraperService';
 
 const router = Router();
 
@@ -1027,7 +1028,10 @@ router.get(
       // Map purchases and sales into unified structures
       let combined: any[] = [
         ...purchases.map((p) => {
-          const stockCurrency = (p.Stock?.currency as 'USD' | 'KES') || 'USD';
+          const stockCurrency: 'USD' | 'KES' =
+            p.Stock && isNseSymbol(p.Stock.symbol) && p.Stock.symbol.toUpperCase() !== 'TRFC'
+              ? 'KES'
+              : ((p.Stock?.currency as 'USD' | 'KES') || 'USD');
           const nativePrice = Number(p.purchasePrice);
           const convertedPrice = Number(
             convertPrice(nativePrice, stockCurrency, baseCurrency, exchangeRate).toFixed(2)
@@ -1052,7 +1056,10 @@ router.get(
           };
         }),
         ...sales.map((s) => {
-          const stockCurrency = (s.Stock?.currency as 'USD' | 'KES') || 'USD';
+          const stockCurrency: 'USD' | 'KES' =
+            s.Stock && isNseSymbol(s.Stock.symbol) && s.Stock.symbol.toUpperCase() !== 'TRFC'
+              ? 'KES'
+              : ((s.Stock?.currency as 'USD' | 'KES') || 'USD');
           const nativePrice = Number(s.sellPrice);
           const convertedPrice = Number(
             convertPrice(nativePrice, stockCurrency, baseCurrency, exchangeRate).toFixed(2)

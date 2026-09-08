@@ -159,13 +159,14 @@ describe('Phase 5: Database Concurrency & Migrations', () => {
 
     it('should execute pending migrations up and create all core tables and evolution columns', async () => {
       const applied = await testMigrator.up();
-      expect(applied.length).toBe(5);
+      expect(applied.length).toBe(6);
       expect(applied.map(m => m.name)).toEqual([
         '0001_initial_schema',
         '0002_add_change_and_cost_basis',
         '0003_add_multi_provider_api_keys',
         '0004_fix_unique_constraints_and_indexes',
         '0005_add_currency_and_exchange_rates',
+        '0006_fix_nse_stock_currencies',
       ]);
 
       // Verify all tables were created
@@ -197,6 +198,10 @@ describe('Phase 5: Database Concurrency & Migrations', () => {
     });
 
     it('should correctly revert migrations (down) and remove added columns', async () => {
+      const reverted0006 = await testMigrator.down();
+      expect(reverted0006.length).toBe(1);
+      expect(reverted0006[0].name).toBe('0006_fix_nse_stock_currencies');
+
       const reverted0005 = await testMigrator.down();
       expect(reverted0005.length).toBe(1);
       expect(reverted0005[0].name).toBe('0005_add_currency_and_exchange_rates');
@@ -218,11 +223,12 @@ describe('Phase 5: Database Concurrency & Migrations', () => {
 
     it('should re-apply migration up and restore columns', async () => {
       const applied = await testMigrator.up();
-      expect(applied.length).toBe(3);
+      expect(applied.length).toBe(4);
       expect(applied.map(m => m.name)).toEqual([
         '0003_add_multi_provider_api_keys',
         '0004_fix_unique_constraints_and_indexes',
         '0005_add_currency_and_exchange_rates',
+        '0006_fix_nse_stock_currencies',
       ]);
 
       const queryInterface = migrationDb.getQueryInterface();
