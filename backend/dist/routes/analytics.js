@@ -639,7 +639,7 @@ router.get('/advanced', auth_1.requireAuth, async (req, res) => {
                     dayCashFlow -= (0, currencyService_1.convertPrice)(Number(s.quantity) * Number(s.sellPrice), curr, baseCurrency, exchangeRate);
                 }
             });
-            if (dayVal > 0 || dayCashFlow > 0) {
+            if (dayVal > 0 || dayCashFlow !== 0) {
                 dailyValPoints.push({
                     date: dStr,
                     value: dayVal,
@@ -647,7 +647,32 @@ router.get('/advanced', auth_1.requireAuth, async (req, res) => {
                 });
             }
         });
-        const volatility = calculateTwrVolatility(dailyValPoints);
+        let volatility = 0;
+        if (scopedStock) {
+            // For an individual scoped stock, volatility represents the stock's price volatility over the selected period [FR8.1]
+            let stockPrices = allDailyPrices.filter((dp) => (!sDate || dp.date >= sDate) && (!eDate || dp.date <= eDate));
+            if (sDate && stockPrices.length > 0) {
+                const priorPrices = allDailyPrices.filter((dp) => dp.date < sDate);
+                if (priorPrices.length > 0) {
+                    const lastPrior = priorPrices[priorPrices.length - 1];
+                    stockPrices = [lastPrior, ...stockPrices];
+                }
+            }
+            if (stockPrices.length >= 3) {
+                const pricePoints = stockPrices.map((dp) => ({
+                    date: dp.date,
+                    value: Number(dp.price),
+                    cashFlow: 0,
+                }));
+                volatility = calculateTwrVolatility(pricePoints);
+            }
+            else {
+                volatility = calculateTwrVolatility(dailyValPoints);
+            }
+        }
+        else {
+            volatility = calculateTwrVolatility(dailyValPoints);
+        }
         return res.status(200).json({
             success: true,
             data: {

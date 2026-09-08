@@ -438,7 +438,31 @@ router.post('/generate', auth_1.requireAuth, async (req, res) => {
                         });
                     }
                 });
-                const volatility = (0, analytics_1.calculateTwrVolatility)(dailyValPoints);
+                let volatility = 0;
+                if (targetStock) {
+                    let stockPrices = allDailyPrices.filter((dp) => (!parsedStartDate || dp.date >= parsedStartDate) && (!parsedEndDate || dp.date <= parsedEndDate));
+                    if (parsedStartDate && stockPrices.length > 0) {
+                        const priorPrices = allDailyPrices.filter((dp) => dp.date < parsedStartDate);
+                        if (priorPrices.length > 0) {
+                            const lastPrior = priorPrices[priorPrices.length - 1];
+                            stockPrices = [lastPrior, ...stockPrices];
+                        }
+                    }
+                    if (stockPrices.length >= 3) {
+                        const pricePoints = stockPrices.map((dp) => ({
+                            date: dp.date,
+                            value: Number(dp.price),
+                            cashFlow: 0,
+                        }));
+                        volatility = (0, analytics_1.calculateTwrVolatility)(pricePoints);
+                    }
+                    else {
+                        volatility = (0, analytics_1.calculateTwrVolatility)(dailyValPoints);
+                    }
+                }
+                else {
+                    volatility = (0, analytics_1.calculateTwrVolatility)(dailyValPoints);
+                }
                 // Benchmarking returns
                 const benchmarks = [];
                 if (parsedStartDate && parsedEndDate) {

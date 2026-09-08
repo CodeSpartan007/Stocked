@@ -573,12 +573,46 @@ describe('Phase 6: Analytics, Performance Engine & Target Tracking Suite', () =>
       expect(data.assetAllocation[0].stockId).toBe(stockA1.id);
       expect(data.assetAllocation[0].percentage).toBe(100);
       expect(data.totalPortfolioValue).toBeGreaterThan(0);
+      expect(data.volatility).toBeGreaterThan(0);
 
       // Returns 404 for nonexistent stock
       const notFoundRes = await request(app)
         .get('/api/analytics/advanced?stockId=00000000-0000-0000-0000-000000000000')
         .set('Authorization', `Bearer ${tokenA}`);
       expect(notFoundRes.status).toBe(404);
+    });
+
+    it('GET /api/analytics/advanced?stockId=<id> computes stock price volatility even when purchased recently after prices exist', async () => {
+      // Create a stock with 4 historical prices but purchase made on the last date
+      const recentStock = await Stock.create({
+        userId: userA.id,
+        symbol: 'RCENT',
+        name: 'Recent Stock',
+        category: 'Tech',
+        currency: 'USD',
+      });
+
+      await DailyPrice.create({ userId: userA.id, stockId: recentStock.id, price: 10, volume: 100, date: '2026-03-01' });
+      await DailyPrice.create({ userId: userA.id, stockId: recentStock.id, price: 12, volume: 100, date: '2026-03-02' });
+      await DailyPrice.create({ userId: userA.id, stockId: recentStock.id, price: 11, volume: 100, date: '2026-03-03' });
+      await DailyPrice.create({ userId: userA.id, stockId: recentStock.id, price: 13, volume: 100, date: '2026-03-04' });
+
+      // User only purchased on 2026-03-04
+      await Purchase.create({
+        userId: userA.id,
+        stockId: recentStock.id,
+        quantity: 5,
+        purchasePrice: 13,
+        purchaseDate: '2026-03-04',
+      });
+
+      const res = await request(app)
+        .get(`/api/analytics/advanced?stockId=${recentStock.id}`)
+        .set('Authorization', `Bearer ${tokenA}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.volatility).toBeGreaterThan(0);
     });
 
     it('GET /api/analytics/charts/:stockId carries forward holdings and prices into subsequent date windows', async () => {

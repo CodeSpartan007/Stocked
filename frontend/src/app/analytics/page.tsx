@@ -721,7 +721,7 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Charts Container */}
-        <div className="h-[360px] w-full relative">
+        <div className="h-[360px] w-full min-w-0 relative">
           {activeChartTab === 'price' && chartData && chartData.priceTrend.length === 1 && (
             <div className="absolute top-2 right-2 z-10 bg-surface-elevated/95 backdrop-blur border border-subtle rounded-lg px-2.5 py-1 text-[11px] font-medium text-muted flex items-center gap-1.5 shadow-sm">
               <AlertCircle className="h-3.5 w-3.5 text-amber-500" />
@@ -748,7 +748,7 @@ export default function AnalyticsPage() {
               <p className="text-[10px] text-muted">Add price history points or adjust target dates.</p>
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
               {activeChartTab === 'performance' ? (
                 <AreaChart data={chartData.cumulativePerformance} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <defs>
@@ -853,14 +853,14 @@ export default function AnalyticsPage() {
             <p className="text-xs text-muted mt-1">Diversification mix of your current stocks</p>
           </div>
 
-          <div className="h-60 w-full relative flex items-center justify-center my-4">
+          <div className="h-60 w-full min-w-0 relative flex items-center justify-center my-4">
             {loading ? (
               <div className="h-16 w-16 rounded-full border-4 border-[#e0ff4f]/25 border-t-[#e0ff4f] animate-spin" />
             ) : !metrics || metrics.assetAllocation.length === 0 ? (
               <div className="text-center text-muted text-xs py-10">No active stock holdings to distribute.</div>
             ) : (
-              <div className="relative w-full h-full flex items-center justify-center">
-                <ResponsiveContainer width="100%" height="100%">
+              <div className="relative w-full h-full min-w-0 flex items-center justify-center">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <PieChart>
                     <Pie
                       data={metrics.assetAllocation}
